@@ -10,6 +10,8 @@ export interface PreviewProps {
   entry: Entry;
   client: FmClient;
   labels: Labels;
+  /** Slot in the preview header; portal toolbar actions into it. */
+  actions?: HTMLElement | null;
 }
 
 const MAX_TEXT_BYTES = 2 * 1024 * 1024;

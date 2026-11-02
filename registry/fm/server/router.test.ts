@@ -274,6 +274,45 @@ describe("mkdir and ops", () => {
       paths: ["/"],
     }))[0].error.code).toBe("INVALID");
   });
+
+  it("authorizes rename targets and overwritten entries", async () => {
+    const { json, driver } = setup({
+      files: {
+        "/a.txt": "a",
+        "/sub/x": "x",
+        "/locked/a.txt": "keep",
+        "/locked/b.txt": "b",
+      },
+      authorize: p => (p === "/locked/a.txt" || p === "/secret.txt"
+        ? READ_ONLY_CAPS
+        : {
+            ...NONE,
+            read: true,
+            write: true,
+            rename: true,
+            move: true,
+            copy: true,
+            delete: true,
+          }),
+    });
+    const ops = async (body: unknown) => (await (await json("POST", "/m/m/ops", body)).json()).results;
+
+    expect((await ops({ op: "rename", path: "/a.txt", name: "sub/a.txt" }))[0].error.code).toBe("INVALID");
+    expect((await ops({ op: "rename", path: "/a.txt", name: "secret.txt" }))[0].error.code).toBe("FORBIDDEN");
+    expect((await ops({
+      op: "move",
+      paths: ["/locked/b.txt"],
+      dest: "/locked",
+      conflict: "overwrite",
+    }))[0].ok).toBe(true);
+    expect((await ops({
+      op: "copy",
+      paths: ["/a.txt"],
+      dest: "/locked",
+      conflict: "overwrite",
+    }))[0].error.code).toBe("FORBIDDEN");
+    expect(new TextDecoder().decode(await new Response((await driver.read("/locked/a.txt")).body).arrayBuffer())).toBe("keep");
+  });
 });
 
 describe("archive", () => {

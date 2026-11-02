@@ -57,6 +57,7 @@ import { ConfirmDeleteDialog, NameDialog } from "./dialogs";
 import { filesFromDrop, filesFromInput } from "./drop";
 import { FileList } from "./file-list";
 import { FileTree } from "./file-tree";
+import { IconButton } from "./icon-button";
 import { enLabels } from "./labels";
 import { findPreviewer } from "./preview-registry";
 import { EMPTY_SELECTION, prune, select, step } from "./state";
@@ -126,6 +127,7 @@ export function FileManager(props: FileManagerProps) {
   const [rawSelection, setRawSelection] = useState<Selection>(EMPTY_SELECTION);
   const [clipboard, setClipboard] = useState<Clipboard>();
   const [preview, setPreview] = useState<Entry>();
+  const [previewActions, setPreviewActions] = useState<HTMLElement | null>(null);
   const [dialog, setDialog] = useState<DialogState>();
   const [error, setError] = useState<string>();
   const [dropActive, setDropActive] = useState(false);
@@ -375,9 +377,9 @@ export function FileManager(props: FileManagerProps) {
         aria-label={currentMount?.label}
       >
         <header className="flex flex-wrap items-center gap-1 border-b px-2 py-1.5">
-          <Button size="icon-sm" variant="ghost" aria-label={labels.up} disabled={path === "/"} onClick={() => mount && navigate(mount, dirname(path))}>
+          <IconButton label={labels.up} disabled={path === "/"} onClick={() => mount && navigate(mount, dirname(path))}>
             <ArrowUpIcon />
-          </Button>
+          </IconButton>
           <Breadcrumb className="min-w-0 flex-1 px-1">
             <BreadcrumbList className="flex-nowrap overflow-hidden">
               <BreadcrumbItem>
@@ -403,24 +405,22 @@ export function FileManager(props: FileManagerProps) {
             ? (
                 <div className="flex items-center gap-1" role="toolbar" aria-label={labels.selected(selected.length)}>
                   <span className="px-2 text-xs text-muted-foreground">{labels.selected(selected.length)}</span>
-                  <Button size="icon-sm" variant="ghost" aria-label={labels.download} onClick={() => download(selected)}><DownloadIcon /></Button>
-                  {selected.every(s => s.caps.copy) && <Button size="icon-sm" variant="ghost" aria-label={labels.copy} onClick={() => copyToClipboard("copy", selected)}><CopyIcon /></Button>}
-                  {selected.every(s => s.caps.move) && <Button size="icon-sm" variant="ghost" aria-label={labels.cut} onClick={() => copyToClipboard("cut", selected)}><ScissorsIcon /></Button>}
-                  {selected.length === 1 && selected[0]!.caps.rename && <Button size="icon-sm" variant="ghost" aria-label={labels.rename} onClick={() => setDialog({ kind: "rename", entry: selected[0]! })}><PencilIcon /></Button>}
+                  <IconButton label={labels.download} onClick={() => download(selected)}><DownloadIcon /></IconButton>
+                  {selected.every(s => s.caps.copy) && <IconButton label={labels.copy} onClick={() => copyToClipboard("copy", selected)}><CopyIcon /></IconButton>}
+                  {selected.every(s => s.caps.move) && <IconButton label={labels.cut} onClick={() => copyToClipboard("cut", selected)}><ScissorsIcon /></IconButton>}
+                  {selected.length === 1 && selected[0]!.caps.rename && <IconButton label={labels.rename} onClick={() => setDialog({ kind: "rename", entry: selected[0]! })}><PencilIcon /></IconButton>}
                   {selected.every(s => s.caps.delete) && (
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      aria-label={labels.delete}
+                    <IconButton
+                      label={labels.delete}
                       onClick={() => setDialog({
                         kind: "delete",
                         paths: selected.map(s => s.path),
                       })}
                     >
                       <Trash2Icon />
-                    </Button>
+                    </IconButton>
                   )}
-                  <Button size="icon-sm" variant="ghost" aria-label={labels.cancel} onClick={() => setRawSelection(EMPTY_SELECTION)}><XIcon /></Button>
+                  <IconButton label={labels.cancel} onClick={() => setRawSelection(EMPTY_SELECTION)}><XIcon /></IconButton>
                 </div>
               )
             : (
@@ -431,10 +431,10 @@ export function FileManager(props: FileManagerProps) {
                       {labels.paste}
                     </Button>
                   )}
-                  {canWrite && <Button size="icon-sm" variant="ghost" aria-label={labels.newFolder} onClick={() => setDialog({ kind: "mkdir" })}><FolderPlusIcon /></Button>}
+                  {canWrite && <IconButton label={labels.newFolder} onClick={() => setDialog({ kind: "mkdir" })}><FolderPlusIcon /></IconButton>}
                   {canWrite && (
                     <DropdownMenu>
-                      <DropdownMenuTrigger render={<Button size="icon-sm" variant="ghost" aria-label={labels.upload} />}><UploadIcon /></DropdownMenuTrigger>
+                      <DropdownMenuTrigger render={<IconButton label={labels.upload} />}><UploadIcon /></DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-44">
                         <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
                           <UploadIcon />
@@ -462,10 +462,8 @@ export function FileManager(props: FileManagerProps) {
                       </DropdownMenuRadioGroup>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    aria-label={view === "list"
+                  <IconButton
+                    label={view === "list"
                       ? labels.gridView
                       : labels.listView}
                     onClick={() => setView(view === "list"
@@ -475,17 +473,15 @@ export function FileManager(props: FileManagerProps) {
                     {view === "list"
                       ? <LayoutGridIcon />
                       : <ListIcon />}
-                  </Button>
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    aria-label={labels.refresh}
+                  </IconButton>
+                  <IconButton
+                    label={labels.refresh}
                     onClick={() => void qc.invalidateQueries({
                       queryKey: fmKeys.all(client),
                     })}
                   >
                     <RefreshCwIcon />
-                  </Button>
+                  </IconButton>
                 </div>
               )}
         </header>
@@ -493,7 +489,7 @@ export function FileManager(props: FileManagerProps) {
         {shownError && (
           <div role="alert" className="flex items-center gap-2 border-b bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
             <span className="flex-1">{shownError}</span>
-            <Button size="icon-xs" variant="ghost" aria-label={labels.close} onClick={() => setError(undefined)}><XIcon /></Button>
+            <IconButton size="icon-xs" label={labels.close} onClick={() => setError(undefined)}><XIcon /></IconButton>
           </div>
         )}
 
@@ -565,7 +561,8 @@ export function FileManager(props: FileManagerProps) {
           <DialogContent className="flex h-[85vh] flex-col gap-0 p-0 sm:max-w-5xl">
             <DialogHeader className="flex-row items-center gap-2 border-b py-2 pr-12 pl-4">
               <DialogTitle className="min-w-0 flex-1 truncate">{preview.name}</DialogTitle>
-              <Button size="icon-sm" variant="ghost" aria-label={labels.download} onClick={() => download([preview])}><DownloadIcon /></Button>
+              <div ref={setPreviewActions} className="flex items-center gap-2" />
+              <IconButton label={labels.download} onClick={() => download([preview])}><DownloadIcon /></IconButton>
             </DialogHeader>
             <div className="min-h-0 flex-1">
               {createElement(findPreviewer(preview), {
@@ -573,6 +570,7 @@ export function FileManager(props: FileManagerProps) {
                 entry: preview,
                 client,
                 labels,
+                actions: previewActions,
               })}
             </div>
           </DialogContent>

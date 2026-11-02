@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import { describeRoute, resolver, validator } from "hono-openapi";
 import { z } from "zod";
 import { FmError } from "../core/errors";
-import { basename, dirname, isWithin, joinPath, nextFreeName, normalizePath } from "../core/path";
+import { assertName, basename, dirname, isWithin, joinPath, nextFreeName, normalizePath } from "../core/path";
 import {
   ALL_CAPS,
   conflictSchema,
@@ -452,7 +452,9 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
         const t = await resolve(c, mountId, req.path, "rename");
         if (t.path === "/")
           throw new FmError("INVALID", "Cannot rename the root");
-        return toEntry(t, await t.mount.driver.move(t.path, joinPath(dirname(t.path), req.name)));
+        assertName(req.name);
+        const to = await resolve(c, mountId, joinPath(dirname(t.path), req.name), "write");
+        return toEntry(t, await t.mount.driver.move(t.path, to.path));
       });
     }
     else {
@@ -469,8 +471,10 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
               return toEntry(dest, await d.stat(to));
             to = await destination(d, dest.path, basename(src.path), "rename");
           }
-          if (req.conflict === "overwrite" && await exists(d, to))
+          if (req.conflict === "overwrite" && await exists(d, to)) {
+            await resolve(c, mountId, to, "delete");
             await d.remove(to);
+          }
           const moved = req.op === "move"
             ? await d.move(src.path, to)
             : await d.copy(src.path, to);

@@ -17,5 +17,6 @@ export default defineConfig({
       { find: /^@\//, replacement: `${resolve(import.meta.dirname, "src")}/` },
     ],
   },
-  server: { host: "0.0.0.0" },
+  // The demo is reached through nsl / reverse-proxy hostnames that vary per machine.
+  server: { host: "0.0.0.0", allowedHosts: true },
 });

@@ -185,6 +185,7 @@
         "context-menu",
         "breadcrumb",
         "progress",
+        "tooltip",
         "@fm/fm-client"
       ],
       "files": [
@@ -214,6 +215,11 @@
           "target": "~/src/fm/react/file-tree.tsx"
         },
         {
+          "path": "registry/fm/react/icon-button.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/icon-button.tsx"
+        },
+        {
           "path": "registry/fm/react/labels.ts",
           "type": "registry:file",
           "target": "~/src/fm/react/labels.ts"
@@ -222,6 +228,11 @@
           "path": "registry/fm/react/previewers.tsx",
           "type": "registry:file",
           "target": "~/src/fm/react/previewers.tsx"
+        },
+        {
+          "path": "registry/fm/react/preview-registry.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/preview-registry.ts"
         },
         {
           "path": "registry/fm/react/state.ts",

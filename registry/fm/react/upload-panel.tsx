@@ -4,6 +4,7 @@ import { CheckIcon, XIcon } from "lucide-react";
 import { useStore } from "zustand";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { IconButton } from "./icon-button";
 
 /** Floating panel listing in-flight and finished uploads. */
 export function UploadPanel({ queue, labels }: { queue: UploadQueue; labels: Labels }) {
@@ -34,9 +35,9 @@ export function UploadPanel({ queue, labels }: { queue: UploadQueue; labels: Lab
             {t.status === "done"
               ? <CheckIcon className="size-4 text-emerald-500" />
               : (t.status === "queued" || t.status === "uploading") && (
-                  <Button size="icon-xs" variant="ghost" aria-label={labels.cancel} onClick={() => cancel(t.id)}>
+                  <IconButton size="icon-xs" label={labels.cancel} onClick={() => cancel(t.id)}>
                     <XIcon />
-                  </Button>
+                  </IconButton>
                 )}
           </li>
         ))}
