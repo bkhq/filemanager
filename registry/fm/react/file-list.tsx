@@ -1,0 +1,260 @@
+import type { DragEvent, MouseEvent, ReactNode } from "react";
+import type { FmClient } from "../client/client";
+import type { Entry, SortKey } from "../core/schema";
+import type { Labels } from "./labels";
+import type { FileKind, Selection, SelectMode } from "./state";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { cn } from "cn";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  FileArchiveIcon,
+  FileAudioIcon,
+  FileIcon,
+  FileImageIcon,
+  FileTextIcon,
+  FileVideoIcon,
+  FolderIcon,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { formatSize, kindOf } from "./state";
+
+export const DRAG_TYPE = "application/x-fm-paths";
+
+const ICONS: Record<FileKind, typeof FileIcon> = {
+  dir: FolderIcon,
+  image: FileImageIcon,
+  video: FileVideoIcon,
+  audio: FileAudioIcon,
+  pdf: FileTextIcon,
+  text: FileTextIcon,
+  archive: FileArchiveIcon,
+  other: FileIcon,
+};
+
+export function EntryIcon({ entry, className }: { entry: Entry; className?: string }) {
+  const kind = kindOf(entry);
+  const Icon = ICONS[kind];
+  return (
+    <Icon className={cn("shrink-0", kind === "dir"
+      ? "text-sky-500"
+      : "text-muted-foreground", className)}
+    />
+  );
+}
+
+export interface FileListProps {
+  entries: Entry[];
+  view: "list" | "grid";
+  selection: Selection;
+  labels: Labels;
+  client: FmClient;
+  sort: SortKey;
+  order: "asc" | "desc";
+  onSort: (key: SortKey) => void;
+  onSelect: (path: string, mode: SelectMode) => void;
+  onClearSelection: () => void;
+  onOpen: (entry: Entry) => void;
+  /** Right-click on an entry (before the context menu opens). */
+  onEntryContextMenu: (entry: Entry) => void;
+  onDropOnFolder: (paths: string[], folder: Entry) => void;
+  hasMore: boolean;
+  onLoadMore: () => void;
+  empty: ReactNode;
+}
+
+function modeOf(e: MouseEvent): SelectMode {
+  return e.shiftKey
+    ? "range"
+    : (e.metaKey || e.ctrlKey
+        ? "toggle"
+        : "single");
+}
+
+function useEntryHandlers(p: FileListProps, entry: Entry) {
+  const [over, setOver] = useState(false);
+  const selected = p.selection.paths.has(entry.path);
+  const isDir = entry.kind === "dir";
+  return {
+    over,
+    selected,
+    props: {
+      "data-path": entry.path,
+      "draggable": entry.caps.move,
+      "onClick": (e: MouseEvent) => {
+        e.stopPropagation();
+        p.onSelect(entry.path, modeOf(e));
+      },
+      "onDoubleClick": () => p.onOpen(entry),
+      "onContextMenu": () => p.onEntryContextMenu(entry),
+      "onDragStart": (e: DragEvent) => {
+        const paths = selected
+          ? [...p.selection.paths]
+          : [entry.path];
+        e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(paths));
+        e.dataTransfer.effectAllowed = "move";
+      },
+      "onDragOver": (e: DragEvent) => {
+        if (!isDir || !entry.caps.write || !e.dataTransfer.types.includes(DRAG_TYPE))
+          return;
+        e.preventDefault();
+        e.stopPropagation();
+        setOver(true);
+      },
+      "onDragLeave": () => setOver(false),
+      "onDrop": (e: DragEvent) => {
+        setOver(false);
+        if (!isDir || !e.dataTransfer.types.includes(DRAG_TYPE))
+          return;
+        e.preventDefault();
+        e.stopPropagation();
+        const paths = (JSON.parse(e.dataTransfer.getData(DRAG_TYPE)) as string[]).filter(x => x !== entry.path);
+        if (paths.length)
+          p.onDropOnFolder(paths, entry);
+      },
+    },
+  };
+}
+
+function ListRow({ p, entry, top }: { p: FileListProps; entry: Entry; top: number }) {
+  const h = useEntryHandlers(p, entry);
+  return (
+    <div
+      {...h.props}
+      role="row"
+      aria-selected={h.selected}
+      className={cn(
+        "absolute inset-x-0 flex h-9 cursor-default items-center gap-3 rounded-md px-3 text-sm select-none hover:bg-muted/60",
+        h.selected && "bg-accent text-accent-foreground hover:bg-accent",
+        h.over && "ring-2 ring-primary",
+      )}
+      style={{ transform: `translateY(${top}px)` }}
+    >
+      <EntryIcon entry={entry} className="size-4" />
+      <span className="min-w-0 flex-1 truncate" role="gridcell">{entry.name}</span>
+      <span className="w-24 shrink-0 text-right text-xs text-muted-foreground tabular-nums" role="gridcell">
+        {entry.kind === "file"
+          ? formatSize(entry.size)
+          : ""}
+      </span>
+      <span className="hidden w-40 shrink-0 text-right text-xs text-muted-foreground tabular-nums sm:block" role="gridcell">
+        {Date.parse(entry.mtime) > 0
+          ? new Date(entry.mtime).toLocaleString()
+          : ""}
+      </span>
+    </div>
+  );
+}
+
+function GridCell({ p, entry }: { p: FileListProps; entry: Entry }) {
+  const h = useEntryHandlers(p, entry);
+  const thumb = kindOf(entry) === "image" && entry.size < 20 * 1024 * 1024;
+  return (
+    <div
+      {...h.props}
+      role="gridcell"
+      aria-selected={h.selected}
+      className={cn(
+        "flex h-full cursor-default flex-col items-center gap-2 rounded-lg p-2 text-xs select-none hover:bg-muted/60",
+        h.selected && "bg-accent text-accent-foreground hover:bg-accent",
+        h.over && "ring-2 ring-primary",
+      )}
+    >
+      <div className="flex h-20 w-full items-center justify-center overflow-hidden rounded-md">
+        {thumb
+          ? <img src={p.client.readUrl(entry.mount, entry.path, { version: entry.etag })} alt="" loading="lazy" draggable={false} className="max-h-full max-w-full object-contain" />
+          : <EntryIcon entry={entry} className="size-10" />}
+      </div>
+      <span className="line-clamp-2 w-full text-center break-all">{entry.name}</span>
+    </div>
+  );
+}
+
+function SortHeader({ p }: { p: FileListProps }) {
+  const cell = (key: SortKey, label: string, className: string) => (
+    <button type="button" className={cn("flex items-center gap-1 hover:text-foreground", className)} onClick={() => p.onSort(key)}>
+      {label}
+      {p.sort === key && (p.order === "asc"
+        ? <ArrowUpIcon className="size-3" />
+        : <ArrowDownIcon className="size-3" />)}
+    </button>
+  );
+  return (
+    <div className="flex h-8 shrink-0 items-center gap-3 border-b px-3 text-xs text-muted-foreground" role="row">
+      <span className="size-4" />
+      {cell("name", p.labels.name, "min-w-0 flex-1")}
+      {cell("size", p.labels.size, "w-24 justify-end")}
+      {cell("mtime", p.labels.modified, "hidden w-40 justify-end sm:flex")}
+    </div>
+  );
+}
+
+const ROW = 36;
+const CELL_W = 120;
+const CELL_H = 132;
+
+/** Virtualized list / grid of entries. */
+export function FileList(p: FileListProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el)
+      return;
+    const ro = new ResizeObserver(([e]) => setWidth(e?.contentRect.width ?? 0));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const cols = p.view === "grid"
+    ? Math.max(1, Math.floor(width / CELL_W))
+    : 1;
+  const rows = Math.ceil(p.entries.length / cols);
+  const virtualizer = useVirtualizer({
+    count: rows,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => (p.view === "grid"
+      ? CELL_H
+      : ROW),
+    overscan: 8,
+  });
+  useEffect(() => virtualizer.measure(), [p.view, cols, virtualizer]);
+
+  const items = virtualizer.getVirtualItems();
+  const last = items.at(-1);
+  const { hasMore, onLoadMore } = p;
+  useEffect(() => {
+    if (hasMore && last && last.index >= rows - 1)
+      onLoadMore();
+  }, [hasMore, onLoadMore, last, rows]);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col" role="grid" aria-multiselectable>
+      {p.view === "list" && <SortHeader p={p} />}
+      <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-auto p-1" onClick={p.onClearSelection}>
+        {p.entries.length === 0
+          ? p.empty
+          : (
+              <div
+                className="relative w-full"
+                style={{
+                  height: virtualizer.getTotalSize(),
+                }}
+              >
+                {p.view === "list"
+                  ? items.map(row => <ListRow key={p.entries[row.index]!.path} p={p} entry={p.entries[row.index]!} top={row.start} />)
+                  : items.map(row => (
+                      <div
+                        key={row.index}
+                        className="absolute inset-x-0 grid"
+                        style={{ transform: `translateY(${row.start}px)`, height: CELL_H, gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+                      >
+                        {p.entries.slice(row.index * cols, row.index * cols + cols).map(e => <GridCell key={e.path} p={p} entry={e} />)}
+                      </div>
+                    ))}
+              </div>
+            )}
+      </div>
+    </div>
+  );
+}

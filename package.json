@@ -1,0 +1,39 @@
+{
+  "name": "filemanager",
+  "type": "module",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p tsconfig.json && bun run --filter '*' typecheck",
+    "test": "bun test registry",
+    "test:coverage": "bun test registry --coverage",
+    "registry:build": "shadcn build registry.json --output public/r",
+    "build": "bun run registry:build && bun run --filter '*' build",
+    "check": "bun run lint && bun run typecheck && bun run test:coverage && bun run build",
+    "registry:smoke": "bash scripts/registry-smoke.sh",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "aws4fetch": "1.0.20",
+    "fflate": "0.8.3",
+    "hono": "4.13.16",
+    "hono-openapi": "1.5.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@antfu/eslint-config": "10.0.0",
+    "@eslint-react/eslint-plugin": "^5.28.8",
+    "@nsio/nsl": "0.1.7",
+    "@playwright/test": "1.64.1",
+    "@types/bun": "1.4.4",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "eslint": "10.14.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.7",
+    "shadcn": "4.23.0",
+    "typescript": "npm:@typescript/typescript6@6.0.2"
+  }
+}

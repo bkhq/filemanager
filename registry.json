@@ -1,0 +1,244 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "fm",
+  "homepage": "https://github.com/zzci/filemanager",
+  "items": [
+    {
+      "name": "fm-core",
+      "type": "registry:lib",
+      "title": "File manager core",
+      "description": "Schemas, errors and path helpers shared by server and client.",
+      "dependencies": [
+        "zod"
+      ],
+      "files": [
+        {
+          "path": "registry/fm/core/errors.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/core/errors.ts"
+        },
+        {
+          "path": "registry/fm/core/path.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/core/path.ts"
+        },
+        {
+          "path": "registry/fm/core/schema.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/core/schema.ts"
+        }
+      ]
+    },
+    {
+      "name": "fm-server",
+      "type": "registry:lib",
+      "title": "File manager server",
+      "description": "Hono router, Driver interface and streamed zip archive.",
+      "dependencies": [
+        "hono",
+        "hono-openapi",
+        "fflate"
+      ],
+      "registryDependencies": [
+        "@fm/fm-core"
+      ],
+      "files": [
+        {
+          "path": "registry/fm/server/archive.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/server/archive.ts"
+        },
+        {
+          "path": "registry/fm/server/driver.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/server/driver.ts"
+        },
+        {
+          "path": "registry/fm/server/mime.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/server/mime.ts"
+        },
+        {
+          "path": "registry/fm/server/router.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/server/router.ts"
+        }
+      ]
+    },
+    {
+      "name": "fm-driver-contract",
+      "type": "registry:lib",
+      "title": "Driver contract suite",
+      "description": "bun:test suite every driver must pass; use it when writing a new driver.",
+      "registryDependencies": [
+        "@fm/fm-server"
+      ],
+      "files": [
+        {
+          "path": "registry/fm/server/contract.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/server/contract.ts"
+        }
+      ]
+    },
+    {
+      "name": "fm-driver-memory",
+      "type": "registry:lib",
+      "title": "Memory driver",
+      "description": "In-memory driver for tests and demos.",
+      "registryDependencies": [
+        "@fm/fm-server"
+      ],
+      "files": [
+        {
+          "path": "registry/fm/drivers/memory.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/drivers/memory.ts"
+        }
+      ]
+    },
+    {
+      "name": "fm-driver-local",
+      "type": "registry:lib",
+      "title": "Local driver (Bun)",
+      "description": "Local filesystem driver jailed to a root directory.",
+      "registryDependencies": [
+        "@fm/fm-server"
+      ],
+      "files": [
+        {
+          "path": "registry/fm/drivers/local.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/drivers/local.ts"
+        }
+      ]
+    },
+    {
+      "name": "fm-driver-s3",
+      "type": "registry:lib",
+      "title": "S3 driver",
+      "description": "S3-compatible driver (AWS S3, R2, MinIO) over fetch; runs on Bun and Workers.",
+      "dependencies": [
+        "aws4fetch"
+      ],
+      "registryDependencies": [
+        "@fm/fm-server"
+      ],
+      "files": [
+        {
+          "path": "registry/fm/drivers/s3.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/drivers/s3.ts"
+        }
+      ]
+    },
+    {
+      "name": "fm-client",
+      "type": "registry:lib",
+      "title": "File manager client",
+      "description": "Typed fetch client, TanStack Query hooks and upload queue.",
+      "dependencies": [
+        "@tanstack/react-query",
+        "zustand"
+      ],
+      "registryDependencies": [
+        "@fm/fm-core"
+      ],
+      "files": [
+        {
+          "path": "registry/fm/client/client.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/client/client.ts"
+        },
+        {
+          "path": "registry/fm/client/hooks.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/client/hooks.ts"
+        },
+        {
+          "path": "registry/fm/client/upload.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/client/upload.ts"
+        }
+      ]
+    },
+    {
+      "name": "fm-react",
+      "type": "registry:block",
+      "title": "File manager UI",
+      "description": "File manager React UI: tree, list/grid, previews, uploads.",
+      "dependencies": [
+        "cn",
+        "@tanstack/react-virtual",
+        "@uiw/react-codemirror",
+        "@codemirror/language",
+        "@codemirror/language-data",
+        "@codemirror/state",
+        "lucide-react"
+      ],
+      "registryDependencies": [
+        "button",
+        "input",
+        "dialog",
+        "alert-dialog",
+        "dropdown-menu",
+        "context-menu",
+        "breadcrumb",
+        "progress",
+        "@fm/fm-client"
+      ],
+      "files": [
+        {
+          "path": "registry/fm/react/dialogs.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/dialogs.tsx"
+        },
+        {
+          "path": "registry/fm/react/drop.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/drop.ts"
+        },
+        {
+          "path": "registry/fm/react/file-list.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/file-list.tsx"
+        },
+        {
+          "path": "registry/fm/react/file-manager.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/file-manager.tsx"
+        },
+        {
+          "path": "registry/fm/react/file-tree.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/file-tree.tsx"
+        },
+        {
+          "path": "registry/fm/react/labels.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/labels.ts"
+        },
+        {
+          "path": "registry/fm/react/previewers.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/previewers.tsx"
+        },
+        {
+          "path": "registry/fm/react/state.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/state.ts"
+        },
+        {
+          "path": "registry/fm/react/text-preview.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/text-preview.tsx"
+        },
+        {
+          "path": "registry/fm/react/upload-panel.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/upload-panel.tsx"
+        }
+      ]
+    }
+  ]
+}

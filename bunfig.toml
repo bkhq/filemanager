@@ -1,0 +1,7 @@
+[test]
+coverageThreshold = { line = 0.80, function = 0.80 }
+coverageSkipTestFiles = true
+
+[install]
+# registry/ sources resolve dependencies from the root node_modules.
+linker = "hoisted"

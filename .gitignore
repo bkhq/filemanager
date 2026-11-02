@@ -1,0 +1,15 @@
+node_modules/
+dist/
+public/r/
+.tmp/
+tmp/
+coverage/
+test-results/
+playwright-report/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+.tanstack/
+.vite/

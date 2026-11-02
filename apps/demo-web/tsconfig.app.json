@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "moduleDetection": "force",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "paths": {
+      "@/fm/*": ["../../registry/fm/*"],
+      "@/*": ["./src/*"]
+    },
+    "types": ["vite/client"],
+    "allowArbitraryExtensions": true,
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noEmit": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true
+  },
+  "include": ["src", "../../registry/fm/core", "../../registry/fm/client", "../../registry/fm/react"],
+  "exclude": ["../../registry/**/*.test.ts"]
+}
