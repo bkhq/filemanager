@@ -26,7 +26,7 @@ import {
   trashItemSchema,
   usageSchema,
 } from "../core/schema";
-import { zipStream } from "./archive";
+import { collect, zipStream } from "./archive";
 import { inlineType, mimeOf } from "./mime";
 import { dropTrashItem, getTrashItem, listTrash, moveToTrash, TRASH_DIR, trashedPath } from "./trash";
 
@@ -80,6 +80,8 @@ export interface FmChangeEvent {
   mount: string;
   path: string;
   to?: string;
+  /** Destination mount id when it differs from `mount`. */
+  toMount?: string;
   trashId?: string;
   ok: boolean;
   error?: { code: string; message: string };
@@ -292,6 +294,61 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
         return candidate;
     }
     throw new FmError("EXISTS", `No free name for ${name}`);
+  };
+
+  /** Copies or moves `path` into `dest` on another mount, streaming one file at a time. */
+  const transfer = async (c: unknown, op: "move" | "copy", mountId: string, path: string, dest: Target, conflict: FmConflict, event: EventDraft): Promise<ItemOutcome> => {
+    const src = await resolve(c, mountId, path, op);
+    event.path = src.path;
+    if (src.path === "/")
+      throw new FmError("INVALID", "Cannot move or copy the root");
+    const from = src.mount.driver;
+    const into = dest.mount.driver;
+    // Walk first so limits fail before anything is written.
+    const items = await collect(from, [src.path], {
+      maxEntries: limits.archiveMaxEntries,
+      maxBytes: limits.archiveMaxBytes,
+    }, p => hidden(src.mount, p));
+    const to = await destination(into, dest.path, basename(src.path), conflict);
+    if (conflict !== "rename" && await exists(into, to)) {
+      if (conflict === "fail")
+        throw new FmError("EXISTS", `Already exists: ${to}`);
+      await resolve(c, dest.mount.id, to, "delete");
+      await into.remove(to);
+    }
+    let created = false;
+    try {
+      for (const item of items) {
+        const target = to + item.path.slice(src.path.length);
+        if (item.dir) {
+          await into.mkdir(target);
+        }
+        else {
+          const { body } = await from.read(item.path);
+          await into.write(target, body, { exclusive: true }).catch(async (e) => {
+            await body.cancel().catch(() => {});
+            throw e;
+          });
+        }
+        created = true;
+      }
+    }
+    catch (e) {
+      if (created)
+        await into.remove(to).catch(() => {});
+      throw e;
+    }
+    // The source goes only after the whole copy landed.
+    if (op === "move") {
+      if (hasTrash(src.mount))
+        await moveToTrash(from, src.path);
+      else
+        await from.remove(src.path);
+    }
+    event.to = to;
+    return {
+      entry: toEntry(dest, await into.stat(to)),
+    };
   };
 
   // Unknown errors go to the host's onError.
@@ -562,8 +619,19 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
       });
     }
     else {
-      const dest = await resolve(c, mountId, req.dest, "write");
+      const destMount = req.destMount ?? mountId;
+      const dest = await resolve(c, destMount, req.dest, "write");
       for (const p of req.paths) {
+        if (destMount !== mountId) {
+          const event: EventDraft = {
+            op: req.op,
+            mount: mountId,
+            path: p,
+            toMount: destMount,
+          };
+          await run(p, event, () => transfer(c, req.op, mountId, p, dest, req.conflict, event));
+          continue;
+        }
         const event: EventDraft = { op: req.op, mount: mountId, path: p };
         await run(p, event, async () => {
           const src = await resolve(c, mountId, p, req.op);

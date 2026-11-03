@@ -17,7 +17,7 @@ interface Item {
 }
 
 /** Walks `paths` and fails before any byte is sent when the archive would exceed the limits. */
-async function collect(driver: FmDriver, paths: string[], limits: FmArchiveLimits, skip: (path: string) => boolean): Promise<Item[]> {
+export async function collect(driver: FmDriver, paths: string[], limits: FmArchiveLimits, skip: (path: string) => boolean): Promise<Item[]> {
   const items: Item[] = [];
   let bytes = 0;
   const visit = async (path: string, name: string): Promise<void> => {
