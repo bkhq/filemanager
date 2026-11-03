@@ -93,6 +93,10 @@ export const searchResultSchema = z.object({
 });
 export type FmSearchResult = z.infer<typeof searchResultSchema>;
 
+export const SEARCH_MODES = ["substring", "fuzzy"] as const;
+export const searchModeSchema = z.enum(SEARCH_MODES);
+export type FmSearchMode = z.infer<typeof searchModeSchema>;
+
 export const CONFLICT_MODES = ["fail", "rename", "overwrite"] as const;
 export const conflictSchema = z.enum(CONFLICT_MODES);
 export type FmConflict = z.infer<typeof conflictSchema>;

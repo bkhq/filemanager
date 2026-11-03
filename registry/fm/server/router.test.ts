@@ -4,7 +4,7 @@ import type { FmMount } from "./router";
 import { describe, expect, it } from "bun:test";
 import { unzipSync } from "fflate";
 import { Hono } from "hono";
-import { READ_ONLY_CAPS } from "../core/schema";
+import { ALL_CAPS, READ_ONLY_CAPS } from "../core/schema";
 import { memoryDriver } from "../drivers/memory";
 import { createFmRouter } from "./router";
 
@@ -498,6 +498,113 @@ describe("search", () => {
     expect(res.status).toBe(400);
     expect((await res.json()).error.code).toBe("NOT_A_DIR");
     expect((await req("/m/m/search?path=/&q=%20")).status).toBe(422);
+  });
+
+  describe("fuzzy mode", () => {
+    it("ranks basename matches first and matches across folders", async () => {
+      const { req } = setup({
+        files: {
+          "/docs/maintenance.md": "d",
+          "/src/main.ts": "s",
+          "/src/lib/util.ts": "u",
+        },
+      });
+      const body = await (await req("/m/m/search?path=/&q=main&mode=fuzzy")).json();
+      expect(names(body)).toEqual(["/src/main.ts", "/docs/maintenance.md"]);
+      expect(body.truncated).toBe(false);
+      const across = await (await req("/m/m/search?path=/&q=srcmain&mode=fuzzy")).json();
+      expect(names(across)).toEqual(["/src/main.ts"]);
+    });
+
+    it("scores the path below the searched folder", async () => {
+      const { req } = setup({
+        files: { "/a/b/c.ts": "c" },
+      });
+      expect(names(await (await req("/m/m/search?path=/a&q=bc&mode=fuzzy")).json())).toEqual(["/a/b/c.ts"]);
+      expect(names(await (await req("/m/m/search?path=/a&q=ab&mode=fuzzy")).json())).toEqual([]);
+    });
+
+    it("respects authorize and the trash", async () => {
+      const driver = memoryDriver({
+        files: {
+          "/secret/needle.txt": "x",
+          "/pub/needle.txt": "p",
+          "/d/needle-gone.txt": "g",
+        },
+      });
+      const { req, json } = setup({
+        mounts: [
+          {
+            id: "m",
+            label: "Main",
+            driver,
+            trash: true,
+          },
+        ],
+        authorize: p => (p.startsWith("/secret")
+          ? NONE
+          : (p.startsWith("/pub")
+              ? READ_ONLY_CAPS
+              : ALL_CAPS)),
+      });
+      await json("POST", "/m/m/ops", {
+        op: "delete",
+        paths: ["/d/needle-gone.txt"],
+      });
+      const body = await (await req("/m/m/search?path=/&q=needle&mode=fuzzy")).json();
+      expect(names(body)).toEqual(["/pub/needle.txt"]);
+      expect(body.items[0].caps).toEqual(READ_ONLY_CAPS);
+    });
+
+    it("returns the best `limit` matches and flags truncation", async () => {
+      const { req } = setup({
+        files: { "/x/a-long-name.txt": "a", "/a1.txt": "a", "/a2.txt": "a" },
+      });
+      const cut = await (await req("/m/m/search?path=/&q=a&limit=2&mode=fuzzy")).json();
+      expect(names(cut)).toEqual(["/a1.txt", "/a2.txt"]);
+      expect(cut.truncated).toBe(true);
+      const all = await (await req("/m/m/search?path=/&q=a&limit=10&mode=fuzzy")).json();
+      expect(all.items).toHaveLength(3);
+      expect(all.truncated).toBe(false);
+    });
+
+    it("passes the mode to the driver and re-ranks its results", async () => {
+      const base = memoryDriver({ files: {} });
+      const entry = (path: string) => ({
+        path,
+        name: path.slice(path.lastIndexOf("/") + 1),
+        kind: "file" as const,
+        size: 1,
+        mtime: 0,
+        etag: path,
+      });
+      let mode: string | undefined;
+      const driver: FmDriver = {
+        ...base,
+        search: async (_dir, _q, opts) => {
+          mode = opts.mode;
+          return [
+            entry("/docs/maintenance.md"),
+            entry("/src/main.ts"),
+          ];
+        },
+      };
+      const { req } = setup({
+        mounts: [
+          { id: "m", label: "M", driver },
+        ],
+      });
+      const body = await (await req("/m/m/search?path=/&q=main&mode=fuzzy")).json();
+      expect(mode).toBe("fuzzy");
+      expect(names(body)).toEqual(["/src/main.ts", "/docs/maintenance.md"]);
+      await req("/m/m/search?path=/&q=main");
+      expect(mode).toBe("substring");
+    });
+
+    it("rejects unknown modes", async () => {
+      const { req } = setup();
+      expect((await req("/m/m/search?path=/&q=a&mode=regex")).status).toBe(422);
+    });
   });
 });
 

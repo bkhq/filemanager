@@ -1,4 +1,4 @@
-import type { FmCaps, FmEntryKind } from "../core/schema";
+import type { FmCaps, FmEntryKind, FmSearchMode } from "../core/schema";
 
 /** An entry as seen by a driver: mount-relative path, no caller caps. */
 export interface FmDriverEntry {
@@ -35,6 +35,11 @@ export interface FmWriteOptions {
 export interface FmSearchOptions {
   /** Max entries to return. */
   limit: number;
+  /**
+   * `substring` (default): name contains `q`. `fuzzy`: the path below `dir`
+   * fuzzy-matches `q` (`fuzzyScore` not null), best first.
+   */
+  mode?: FmSearchMode;
   signal?: AbortSignal;
 }
 
@@ -62,8 +67,8 @@ export interface FmDriver {
   copy: (from: string, to: string) => Promise<FmDriverEntry>;
   remove: (path: string) => Promise<void>;
   /**
-   * Entries below `dir` (any depth, `dir` itself excluded) whose name contains
-   * `q` case-insensitively, at most `limit`. `null` means the driver cannot
+   * Entries below `dir` (any depth, `dir` itself excluded) matching `q` per
+   * `opts.mode`, at most `limit`. `null` means the driver cannot
    * search here and the router should walk instead.
    */
   search?: (dir: string, q: string, opts: FmSearchOptions) => Promise<FmDriverEntry[] | null>;
