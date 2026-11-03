@@ -23,3 +23,4 @@ Adding sidebar drive visibility
 ## Notes
 
 - 2026-11-03: requirement plan [20261103-1005-sidebar-drives](../plan/20261103-1005-sidebar-drives.md) (campaign [20261103-1005-p1-campaign](../plan/20261103-1005-p1-campaign.md)).
+- 2026-11-03: implemented `sidebar={{ hidden, group }}`, the persisted "Manage drives" dialog (`${storageKey}:hidden`) and driver grouping in the tree and single-pane storage menu; pure helper `react/mount-visibility.ts` with unit tests, 3 new e2e flows (branch bkd/uloxm3iw).

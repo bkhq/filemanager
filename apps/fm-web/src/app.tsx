@@ -1,3 +1,4 @@
+import type { FmSidebarOptions } from "@/fm/react/file-manager";
 import { useState } from "react";
 import { sheetPlugin } from "@/fm/plugins/sheet";
 import { FileManager } from "@/fm/react/file-manager";
@@ -11,6 +12,14 @@ const labels = navigator.language.startsWith("zh")
   ? zhLabels
   : enLabels;
 
+const params = new URLSearchParams(location.search);
+const sidebar: FmSidebarOptions = {
+  group: params.get("group") === "driver"
+    ? "driver"
+    : "none",
+  hidden: params.get("hidden")?.split(",") ?? [],
+};
+
 export function App() {
   const [readOnly, setReadOnly] = useState(() => new URLSearchParams(location.search).has("view"));
   return (
@@ -22,7 +31,7 @@ export function App() {
           View only
         </label>
       </header>
-      <FileManager baseUrl="/api/fm" labels={labels} className="flex-1" readOnly={readOnly} plugins={plugins} />
+      <FileManager baseUrl="/api/fm" labels={labels} className="flex-1" readOnly={readOnly} plugins={plugins} sidebar={sidebar} />
     </main>
   );
 }

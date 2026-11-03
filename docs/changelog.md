@@ -91,3 +91,7 @@ Campaign report: requirement plans written for the nine P1 tasks in this reposit
 ## 2026-11-03 10:17 [progress]
 
 Change event hook delivered (20261103-1005-change-events): `onEvent` / `FmChangeEvent` on the router, fired per item for write, mkdir, delete (incl. trash), rename, move, copy, restore, purge; awaited, hook errors logged and ignored; documented in architecture §3.3 and README; verified by `bun run check`.
+
+## 2026-11-03 [progress]
+
+Sidebar drives (20261103-1005-sidebar-drives): `<FileManager sidebar={{ hidden, group }}>` (`FmSidebarOptions`) hides mounts from the tree and the single-pane storage menu (still reachable via `initialMount`; the current mount is never hidden) and groups them by driver kind (`group: "driver"`). A "Manage drives" dialog lets users hide more, persisted at `${storageKey}:hidden`; host-hidden mounts are not listed. Logic in `react/mount-visibility.ts` (`visibleMounts`, `groupMountsByDriver`). Demo reads `?group=driver` and `?hidden=a,b`. Verified: `bun run check`, 22 Playwright e2e.
