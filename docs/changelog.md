@@ -47,3 +47,7 @@ Previews: images get zoom in / out / fit, rotate and flip; videos get rotate and
 ## 2026-11-03 [pitfall]
 
 Upload conflict detection must not trust a listing that is still loading or refetching; it now falls back to `stat` per name. read-excel-file requires the `r` cell reference on every `<c>` element.
+
+## 2026-11-03 [progress]
+
+GitHub Actions CI (`.github/workflows/ci.yml`) on push to main and PRs: `bun run check` with the S3 contract against a RustFS service container (pinned by digest), Playwright e2e, and the registry install smoke test. First run green (98 unit tests incl. S3, 19 e2e).
