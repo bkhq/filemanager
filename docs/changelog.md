@@ -87,3 +87,7 @@ Plan 20261103-0948-rename-dev-apps delivered: the workspace apps are `apps/fm-ap
 ## 2026-11-03 18:05 [progress]
 
 Campaign report: requirement plans written for the nine P1 tasks in this repository (change-events, recursive-search, quick-open, pick-mode, sidebar-drives, publish-registry, cross-mount-copy, resumable-uploads, workers-r2); campaign plan `20261103-1005-p1-campaign` partitions them into BKD L2 workstreams. Wave 1: A server-events, B search, C embedding-ui, D registry-publish (merge order D, A, B, C). Wave 2 after wave 1 merges: E transfer, F workers. Out of scope: bkd-pilot (other repo) and all P2 / P3 tasks. Found during investigation: `registry/fm/server/router.ts:152` JSDoc still says `createFileManager`; assigned to workstream A. All plans are drafts awaiting the dispatch confirmation.
+
+## 2026-11-03 10:17 [progress]
+
+Change event hook delivered (20261103-1005-change-events): `onEvent` / `FmChangeEvent` on the router, fired per item for write, mkdir, delete (incl. trash), rename, move, copy, restore, purge; awaited, hook errors logged and ignored; documented in architecture §3.3 and README; verified by `bun run check`.
