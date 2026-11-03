@@ -115,3 +115,7 @@ Cross-mount copy and move delivered (20261103-1005-cross-mount-copy): `POST /m/:
 ## 2026-11-03 11:00 [progress]
 
 `POST /m/:mount/ops` rejects rename / move / copy items whose final target is a hidden path (e.g. `/.fm-trash`) with `INVALID` "Reserved name", before any write.
+
+## 2026-11-03 11:55 [progress]
+
+Resumable uploads delivered (20261103-1005-resumable-uploads): upload session routes under `/m/:mount/uploads` (create, status, part, complete, abort) with records in a hidden `/.fm-uploads` folder, `write` re-authorized on every call and one `write` change event on complete; optional `FmDriver.multipart` in the memory, local and S3 drivers (S3 presigned part URLs opt-in via `presignUploads`), and a streaming S3 PUT when the size is known. The client queue sends files of 16 MiB and more through sessions with per-part retry and resume via `localStorage`; `fm-api` reads `FM_UPLOAD_PART_SIZE`. Verified: `bun run check` (194 tests, 193 pass / 1 skip), the same against RustFS (234 pass), 32 Playwright e2e including an 18 MiB multi-part upload.
