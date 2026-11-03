@@ -30,6 +30,27 @@ async function expectCode(promise: Promise<unknown>, code: FmErrorCode): Promise
     : err).toBe(code);
 }
 
+async function putPart(d: FmDriver, path: string, id: string, n: number, bytes: Uint8Array<ArrayBuffer>): Promise<void> {
+  const mp = d.multipart!;
+  if (mp.uploadPart) {
+    await mp.uploadPart(path, id, n, bytes, bytes.byteLength);
+    return;
+  }
+  const url = await mp.presignPart!(path, id, n, 600);
+  const res = await fetch(url, { method: "PUT", body: bytes });
+  expect(res.ok).toBe(true);
+}
+
+function concat(...chunks: Uint8Array[]): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(chunks.reduce((sum, c) => sum + c.byteLength, 0));
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.byteLength;
+  }
+  return out;
+}
+
 const names = async (driver: FmDriver, path: string) => (await driver.list(path)).map(e => e.name).sort();
 
 /** Behavioural contract every driver must pass. Run it from a `*.test.ts` file. */
@@ -148,6 +169,90 @@ export function runDriverContract(label: string, make: () => Promise<FmDriverFix
     it("rejects reading a directory as a file", async () => {
       await d.mkdir("/dir");
       await expectCode(d.read("/dir"), "IS_A_DIR");
+    });
+
+    describe("multipart", () => {
+      const partSize = () => Math.max(d.multipart?.minPartSize ?? 1, 5);
+      const fill = (size: number, k: number) => new Uint8Array(size).fill(k);
+
+      it("assembles parts into the target, creating parents", async () => {
+        const mp = d.multipart;
+        if (!mp)
+          return;
+        const path = "/mp/deep/file.bin";
+        const size = partSize();
+        const chunks = [
+          fill(size, 1),
+          fill(size, 2),
+          fill(3, 3),
+        ];
+        const id = await mp.begin(path);
+        for (const [i, c] of chunks.entries())
+          await putPart(d, path, id, i + 1, c);
+        const parts = await mp.listParts(path, id);
+        expect(parts.map(p => [p.n, p.size])).toEqual([
+          [1, size],
+          [2, size],
+          [3, 3],
+        ]);
+        const e = await mp.complete(path, id, parts);
+        expect(e).toMatchObject({ path, kind: "file", size: size * 2 + 3 });
+        expect((await d.stat(path)).size).toBe(size * 2 + 3);
+        expect(await readAll((await d.read(path)).body)).toEqual(concat(...chunks));
+        await expectCode(mp.listParts(path, id), "NOT_FOUND");
+      });
+
+      it("replaces a re-uploaded part", async () => {
+        const mp = d.multipart;
+        if (!mp)
+          return;
+        const size = partSize();
+        const id = await mp.begin("/re.bin");
+        await putPart(d, "/re.bin", id, 1, fill(size, 1));
+        await putPart(d, "/re.bin", id, 1, fill(2, 9));
+        const parts = await mp.listParts("/re.bin", id);
+        expect(parts.map(p => [p.n, p.size])).toEqual([
+          [1, 2],
+        ]);
+        await mp.complete("/re.bin", id, parts);
+        expect(await readAll((await d.read("/re.bin")).body)).toEqual(fill(2, 9));
+      });
+
+      it("rejects completing with a gap", async () => {
+        const mp = d.multipart;
+        if (!mp)
+          return;
+        const size = partSize();
+        const id = await mp.begin("/gap.bin");
+        await putPart(d, "/gap.bin", id, 1, fill(size, 1));
+        await putPart(d, "/gap.bin", id, 3, fill(2, 3));
+        await expectCode(mp.complete("/gap.bin", id, await mp.listParts("/gap.bin", id)), "INVALID");
+        await mp.abort("/gap.bin", id);
+      });
+
+      it("aborts idempotently", async () => {
+        const mp = d.multipart;
+        if (!mp)
+          return;
+        const id = await mp.begin("/ab.bin");
+        await putPart(d, "/ab.bin", id, 1, fill(2, 1));
+        await mp.abort("/ab.bin", id);
+        await expectCode(mp.listParts("/ab.bin", id), "NOT_FOUND");
+        await mp.abort("/ab.bin", id);
+        await expectCode(d.stat("/ab.bin"), "NOT_FOUND");
+      });
+
+      it("honours exclusive on complete", async () => {
+        const mp = d.multipart;
+        if (!mp)
+          return;
+        await d.write("/ex.bin", enc.encode("keep"));
+        const id = await mp.begin("/ex.bin");
+        await putPart(d, "/ex.bin", id, 1, fill(2, 1));
+        await expectCode(mp.complete("/ex.bin", id, await mp.listParts("/ex.bin", id), { exclusive: true }), "EXISTS");
+        expect(await text(d, "/ex.bin")).toBe("keep");
+        await mp.abort("/ex.bin", id);
+      });
     });
   });
 }
