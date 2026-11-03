@@ -24,7 +24,7 @@ const NONE: FmCaps = {
   copy: false,
 };
 
-function setup(opts: { files?: Record<string, string>; mounts?: FmMount[]; authorize?: (path: string) => FmCaps; maxUploadBytes?: number; onEvent?: FmRouterOptions<Env>["onEvent"] } = {}) {
+function setup(opts: { files?: Record<string, string>; mounts?: FmMount[]; authorize?: (path: string) => FmCaps; maxUploadBytes?: number; onEvent?: FmRouterOptions<Env>["onEvent"]; limits?: FmRouterOptions<Env>["limits"] } = {}) {
   const driver = memoryDriver({ files: opts.files ?? {} });
   const mounts = opts.mounts ?? [
     { id: "m", label: "Main", driver },
@@ -40,7 +40,7 @@ function setup(opts: { files?: Record<string, string>; mounts?: FmMount[]; autho
     ...(opts.onEvent
       ? { onEvent: opts.onEvent }
       : {}),
-    limits: { maxUploadBytes: opts.maxUploadBytes ?? 1024, archiveMaxEntries: 10 },
+    limits: { maxUploadBytes: opts.maxUploadBytes ?? 1024, archiveMaxEntries: 10, ...opts.limits },
   }));
   app.onError((_e, c) => c.json({ host: true }, 500));
   const req = (path: string, init?: RequestInit) => app.request(`/fm${path}`, init);
@@ -1397,6 +1397,26 @@ describe("cross-mount ops", () => {
       });
     }
 
+    it("rejects a move onto the uploads folder", async () => {
+      const { drivers, ops } = await crossSetup({
+        files: { "/x/.fm-uploads/f.txt": "f" },
+      });
+      const res = await ops("mem", {
+        op: "move",
+        paths: ["/x/.fm-uploads"],
+        dest: "/",
+      });
+      expect(res.body.results).toEqual([
+        {
+          path: "/x/.fm-uploads",
+          ok: false,
+          error: { code: "INVALID", message: "Reserved name: /.fm-uploads" },
+        },
+      ]);
+      expect(await text(drivers.mem!, "/x/.fm-uploads/f.txt")).toBe("f");
+      expect(await has(drivers.mem!, "/.fm-uploads/f.txt")).toBe(false);
+    });
+
     it("rejects a rename to the trash folder name", async () => {
       const { drivers, events, ops } = await crossSetup({
         files: { "/a/f.txt": "f" },
@@ -1417,5 +1437,326 @@ describe("cross-mount ops", () => {
         }),
       ]);
     });
+  });
+});
+
+describe.each([
+  [
+    "driver multipart",
+    () => memoryDriver(),
+  ],
+  [
+    "fallback",
+    (): FmDriver => {
+      const driver: FmDriver = memoryDriver();
+      delete driver.multipart;
+      return driver;
+    },
+  ],
+])("upload sessions (%s)", (_name, makeDriver) => {
+  function uploadSetup(opts: { files?: Record<string, string>; ttl?: number; authorize?: (path: string) => FmCaps } = {}) {
+    const events: FmChangeEvent[] = [];
+    const driver = makeDriver();
+    const s = setup({
+      mounts: [
+        { id: "m", label: "Main", driver },
+      ],
+      onEvent: (_c, e) => {
+        events.push(e);
+      },
+      limits: {
+        uploadPartSize: 4,
+        maxSessionUploadBytes: 100,
+        ...(opts.ttl === undefined
+          ? {}
+          : { uploadSessionTtlMs: opts.ttl }),
+      },
+      ...(opts.authorize
+        ? { authorize: opts.authorize }
+        : {}),
+    });
+    return {
+      ...s,
+      driver,
+      events,
+      ready: (async () => {
+        for (const [path, content] of Object.entries(opts.files ?? {}))
+          await driver.write(path, new TextEncoder().encode(content));
+      })(),
+    };
+  }
+
+  const put = (req: ReturnType<typeof setup>["req"], id: string, n: number, body: string, length = body.length) =>
+    req(`/m/m/uploads/${id}/parts/${n}`, {
+      method: "PUT",
+      headers: {
+        "content-length": String(length),
+      },
+      body,
+    });
+
+  const text = async (driver: FmDriver, path: string) =>
+    new TextDecoder().decode(await new Response((await driver.read(path)).body).arrayBuffer());
+
+  it("uploads parts, reports progress and completes", async () => {
+    const { req, json, driver, events } = uploadSetup();
+    const res = await json("POST", "/m/m/uploads", { path: "/dir/a.txt", size: 10 });
+    expect(res.status).toBe(201);
+    const session = await res.json();
+    expect(session).toMatchObject({
+      mode: "chunked",
+      path: "/dir/a.txt",
+      size: 10,
+      partSize: 4,
+      parts: 3,
+      received: [],
+    });
+    expect(session.urls).toBeUndefined();
+    expect(await (await put(req, session.id, 1, "0123")).json()).toEqual({ n: 1, size: 4 });
+    expect((await put(req, session.id, 3, "89")).status).toBe(200);
+    expect((await (await req(`/m/m/uploads/${session.id}`)).json()).received).toEqual([1, 3]);
+    expect((await put(req, session.id, 2, "4567")).status).toBe(200);
+
+    const root = await (await req("/m/m/list?path=/")).json();
+    expect(root.items.map((e: { name: string }) => e.name)).toEqual([]);
+    const found = await (await req("/m/m/search?path=/&q=json")).json();
+    expect(found.items).toEqual([]);
+    expect(events).toEqual([]);
+
+    const done = await json("POST", `/m/m/uploads/${session.id}/complete`, {});
+    expect(done.status).toBe(200);
+    expect(await done.json()).toMatchObject({ path: "/dir/a.txt", size: 10 });
+    expect(await text(driver, "/dir/a.txt")).toBe("0123456789");
+    expect(events).toEqual([
+      {
+        op: "write",
+        mount: "m",
+        path: "/dir/a.txt",
+        ok: true,
+      },
+    ]);
+    expect((await req(`/m/m/uploads/${session.id}`)).status).toBe(404);
+    expect((await driver.list("/.fm-uploads")).filter(e => e.name.startsWith(session.id))).toEqual([]);
+  });
+
+  it("uploads an empty file as one empty part", async () => {
+    const { req, json, driver } = uploadSetup();
+    const session = await (await json("POST", "/m/m/uploads", { path: "/empty", size: 0 })).json();
+    expect(session.parts).toBe(1);
+    expect((await put(req, session.id, 1, "")).status).toBe(200);
+    expect((await json("POST", `/m/m/uploads/${session.id}/complete`, {})).status).toBe(200);
+    expect((await driver.stat("/empty")).size).toBe(0);
+  });
+
+  it("resumes after an interrupted part", async () => {
+    const { req, json, driver } = uploadSetup();
+    const session = await (await json("POST", "/m/m/uploads", { path: "/a.txt", size: 10 })).json();
+    expect((await put(req, session.id, 1, "0123")).status).toBe(200);
+    expect((await put(req, session.id, 2, "45")).status).toBe(400);
+    expect((await put(req, session.id, 2, "45", 4)).status).toBe(400);
+    expect((await (await req(`/m/m/uploads/${session.id}`)).json()).received).toEqual([1]);
+    expect((await put(req, session.id, 2, "4567")).status).toBe(200);
+    expect((await put(req, session.id, 3, "89")).status).toBe(200);
+    expect((await json("POST", `/m/m/uploads/${session.id}/complete`, {})).status).toBe(200);
+    expect(await text(driver, "/a.txt")).toBe("0123456789");
+  });
+
+  it("rejects completing with a missing part", async () => {
+    const { req, json, driver, events } = uploadSetup();
+    const session = await (await json("POST", "/m/m/uploads", { path: "/a.txt", size: 10 })).json();
+    await put(req, session.id, 1, "0123");
+    await put(req, session.id, 3, "89");
+    const res = await json("POST", `/m/m/uploads/${session.id}/complete`, {});
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toEqual({ code: "INVALID", message: "Missing part 2" });
+    await expect(driver.stat("/a.txt")).rejects.toThrow();
+    expect(events).toEqual([
+      expect.objectContaining({ op: "write", path: "/a.txt", ok: false }),
+    ]);
+    expect((await req(`/m/m/uploads/${session.id}`)).status).toBe(200);
+  });
+
+  it("handles conflicts at create and complete", async () => {
+    const { req, json, driver, events, ready } = uploadSetup({
+      files: { "/a.txt": "old" },
+    });
+    await ready;
+    expect((await json("POST", "/m/m/uploads", { path: "/a.txt", size: 2, conflict: "fail" })).status).toBe(409);
+
+    const renamed = await (await json("POST", "/m/m/uploads", { path: "/a.txt", size: 2 })).json();
+    expect(renamed.path).toBe("/a (1).txt");
+    await put(req, renamed.id, 1, "hi");
+    expect((await json("POST", `/m/m/uploads/${renamed.id}/complete`, {})).status).toBe(200);
+    expect(await text(driver, "/a (1).txt")).toBe("hi");
+    expect(await text(driver, "/a.txt")).toBe("old");
+
+    for (const conflict of ["fail", "rename"]) {
+      events.length = 0;
+      const session = await (await json("POST", "/m/m/uploads", { path: `/${conflict}.txt`, size: 2, conflict })).json();
+      await put(req, session.id, 1, "hi");
+      await driver.write(`/${conflict}.txt`, new TextEncoder().encode("raced"));
+      const res = await json("POST", `/m/m/uploads/${session.id}/complete`, {});
+      expect(res.status).toBe(409);
+      expect(await text(driver, `/${conflict}.txt`)).toBe("raced");
+      expect(events).toEqual([
+        {
+          op: "write",
+          mount: "m",
+          path: `/${conflict}.txt`,
+          ok: false,
+          error: expect.objectContaining({ code: "EXISTS" }),
+        },
+      ]);
+    }
+
+    const over = await (await json("POST", "/m/m/uploads", { path: "/a.txt", size: 2, conflict: "overwrite" })).json();
+    expect(over.path).toBe("/a.txt");
+    await put(req, over.id, 1, "hi");
+    expect((await json("POST", `/m/m/uploads/${over.id}/complete`, {})).status).toBe(200);
+    expect(await text(driver, "/a.txt")).toBe("hi");
+  });
+
+  it("enforces size limits and part numbers", async () => {
+    const { req, json } = uploadSetup();
+    const big = await json("POST", "/m/m/uploads", { path: "/a.txt", size: 101 });
+    expect(big.status).toBe(413);
+    expect((await big.json()).error.code).toBe("TOO_LARGE");
+    expect((await json("POST", "/m/m/uploads", { path: "//", size: 1 })).status).toBe(400);
+    const session = await (await json("POST", "/m/m/uploads", { path: "/a.txt", size: 6 })).json();
+    expect((await put(req, session.id, 1, "012")).status).toBe(400);
+    expect((await put(req, session.id, 1, "01234")).status).toBe(400);
+    expect((await put(req, session.id, 3, "01")).status).toBe(400);
+    expect((await put(req, session.id, 0, "")).status).toBe(400);
+    expect((await req(`/m/m/uploads/${session.id}/parts/2`, { method: "PUT", body: "45" })).status).toBe(400);
+  });
+
+  it("aborts sessions and cleans up expired ones", async () => {
+    const { req, json, driver } = uploadSetup();
+    const session = await (await json("POST", "/m/m/uploads", { path: "/a.txt", size: 2 })).json();
+    await put(req, session.id, 1, "hi");
+    const del = await req(`/m/m/uploads/${session.id}`, { method: "DELETE" });
+    expect(await del.json()).toEqual({ ok: true });
+    expect((await req(`/m/m/uploads/${session.id}`)).status).toBe(404);
+    expect((await req(`/m/m/uploads/${session.id}`, { method: "DELETE" })).status).toBe(404);
+    expect((await req("/m/m/uploads/nope")).status).toBe(404);
+    expect(await driver.list("/.fm-uploads")).toEqual([]);
+
+    const old = await (await json("POST", "/m/m/uploads", { path: "/b.txt", size: 2 })).json();
+    await put(req, old.id, 1, "hi");
+    const now = Date.now();
+    const clock = spyOn(Date, "now").mockReturnValue(now + 25 * 60 * 60 * 1000);
+    try {
+      expect((await req(`/m/m/uploads/${old.id}`)).status).toBe(404);
+      const fresh = await (await json("POST", "/m/m/uploads", { path: "/c.txt", size: 2 })).json();
+      expect((await driver.list("/.fm-uploads")).map(e => e.name)).toEqual([`${fresh.id}.json`]);
+    }
+    finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("is bound to its mount", async () => {
+    const driver = makeDriver();
+    const { req, json } = setup({
+      mounts: [
+        { id: "a", label: "A", driver },
+        { id: "b", label: "B", driver },
+      ],
+    });
+    const session = await (await json("POST", "/m/a/uploads", { path: "/x", size: 1 })).json();
+    expect((await req(`/m/b/uploads/${session.id}`)).status).toBe(404);
+    expect((await req(`/m/a/uploads/${session.id}`)).status).toBe(200);
+  });
+
+  it("re-authorizes every session request", async () => {
+    let allow = true;
+    const { req, json, driver } = uploadSetup({
+      authorize: () => (allow
+        ? ALL_CAPS
+        : READ_ONLY_CAPS),
+    });
+    const session = await (await json("POST", "/m/m/uploads", { path: "/a.txt", size: 6 })).json();
+    expect((await put(req, session.id, 1, "0123")).status).toBe(200);
+    allow = false;
+    expect((await put(req, session.id, 2, "45")).status).toBe(403);
+    expect((await json("POST", `/m/m/uploads/${session.id}/complete`, {})).status).toBe(403);
+    expect((await req(`/m/m/uploads/${session.id}`)).status).toBe(403);
+    expect((await req(`/m/m/uploads/${session.id}`, { method: "DELETE" })).status).toBe(403);
+    allow = true;
+    expect((await (await req(`/m/m/uploads/${session.id}`)).json()).received).toEqual([1]);
+    await expect(driver.stat("/a.txt")).rejects.toThrow();
+  });
+
+  it("keeps the uploads folder unreachable through regular routes", async () => {
+    const { req, json, driver } = uploadSetup();
+    const session = await (await json("POST", "/m/m/uploads", { path: "/a.txt", size: 2 })).json();
+    await put(req, session.id, 1, "hi");
+    await driver.write("/d/f.txt", new TextEncoder().encode("f"));
+    const record = q(`/.fm-uploads/${session.id}.json`);
+    expect((await req(`/m/m/read?path=${record}`)).status).toBe(404);
+    expect((await req(`/m/m/stat?path=${record}`)).status).toBe(404);
+    expect((await req(`/m/m/list?path=${q("/.fm-uploads")}`)).status).toBe(404);
+    expect((await req(`/m/m/write?path=${q("/.fm-uploads/x")}`, { method: "PUT", body: "x" })).status).toBe(404);
+    expect((await json("POST", "/m/m/mkdir", { path: "/.fm-uploads" })).status).toBe(404);
+    for (const op of ["move", "copy"]) {
+      const from = (await (await json("POST", "/m/m/ops", {
+        op,
+        paths: [`/.fm-uploads/${session.id}.json`],
+        dest: "/d",
+      })).json()).results;
+      expect(from[0]).toMatchObject({
+        ok: false,
+        error: { code: "NOT_FOUND" },
+      });
+      expect((await json("POST", "/m/m/ops", {
+        op,
+        paths: ["/d/f.txt"],
+        dest: "/.fm-uploads",
+      })).status).toBe(404);
+    }
+    const del = (await (await json("POST", "/m/m/ops", {
+      op: "delete",
+      paths: ["/.fm-uploads"],
+    })).json()).results;
+    expect(del[0]).toMatchObject({
+      ok: false,
+      error: { code: "NOT_FOUND" },
+    });
+    expect((await req(`/m/m/archive?path=${q("/.fm-uploads")}`)).status).toBe(404);
+    const usage = await (await req("/m/m/usage?path=/")).json();
+    expect(usage).toMatchObject({ files: 1, dirs: 1 });
+    const found = await (await req(`/m/m/search?path=/&q=${session.id.slice(0, 8)}`)).json();
+    expect(found.items).toEqual([]);
+    expect((await (await req(`/m/m/uploads/${session.id}`)).json()).received).toEqual([1]);
+  });
+});
+
+describe("upload sessions with presigned parts", () => {
+  it("returns part URLs and rejects parts sent to the router", async () => {
+    const base = memoryDriver();
+    const driver: FmDriver = {
+      ...base,
+      multipart: {
+        ...base.multipart!,
+        presignPart: async (_p, id, n) => `https://example.test/${id}/${n}`,
+      },
+    };
+    const { req, json } = setup({
+      mounts: [
+        { id: "m", label: "Main", driver },
+      ],
+      limits: { uploadPartSize: 4 },
+    });
+    const session = await (await json("POST", "/m/m/uploads", { path: "/a.txt", size: 10 })).json();
+    expect(session.mode).toBe("s3-multipart");
+    expect(session.urls).toHaveLength(session.parts);
+    expect(session.urls[2]).toMatch(/\/3$/);
+    expect((await (await req(`/m/m/uploads/${session.id}`)).json()).urls).toHaveLength(3);
+    const res = await req(`/m/m/uploads/${session.id}/parts/1`, {
+      method: "PUT",
+      headers: { "content-length": "4" },
+      body: "0123",
+    });
+    expect(res.status).toBe(400);
   });
 });

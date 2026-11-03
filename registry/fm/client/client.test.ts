@@ -27,7 +27,7 @@ function client() {
       return app.fetch(new Request(input, init));
     },
   });
-  return { c, seen };
+  return { c, seen, app };
 }
 
 describe("fm client against the router", () => {
@@ -55,6 +55,30 @@ describe("fm client against the router", () => {
     expect(err).toBeInstanceOf(FmApiError);
     expect(err).toMatchObject({ status: 404, code: "NOT_FOUND" });
     await expect(c.write("m", "/a.txt", "x", { ifMatch: "stale" })).rejects.toMatchObject({ status: 412 });
+  });
+
+  it("runs an upload session", async () => {
+    const { c, app } = client();
+    const session = await c.createUpload("m", { path: "/a.txt", size: 5 });
+    expect(session).toMatchObject({
+      mode: "chunked",
+      path: "/a (1).txt",
+      parts: 1,
+      received: [],
+    });
+    const put = await app.fetch(new Request(c.uploadPartUrl("m", session.id, 1), {
+      method: "PUT",
+      headers: { "content-length": "5" },
+      body: "12345",
+    }));
+    expect(put.status).toBe(200);
+    expect((await c.getUpload("m", session.id)).received).toEqual([1]);
+    expect(await c.completeUpload("m", session.id)).toMatchObject({ path: "/a (1).txt", size: 5 });
+    await expect(c.getUpload("m", session.id)).rejects.toMatchObject({ status: 404 });
+
+    const other = await c.createUpload("m", { path: "/b.txt", size: 1 });
+    await c.abortUpload("m", other.id);
+    await expect(c.getUpload("m", other.id)).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
   it("builds read and archive URLs", () => {

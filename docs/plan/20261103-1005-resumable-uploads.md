@@ -1,6 +1,6 @@
 # 20261103-1005-resumable-uploads Large and resumable uploads
 
-- **status**: implementing
+- **status**: completed
 - **createdAt**: 2026-11-03 10:05
 - **approvedAt**: 2026-11-03 11:26
 - **relatedTask**: 20261103-0508-resumable-uploads

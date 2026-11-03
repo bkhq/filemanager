@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isFmError } from "../core/errors";
@@ -98,6 +98,72 @@ describe("localDriver jail", () => {
     finally {
       await t.cleanup();
     }
+  });
+});
+
+describe("localDriver multipart", () => {
+  const fill = (size: number, k: number) => new Uint8Array(size).fill(k);
+
+  it("keeps parts across driver instances on the same root", async () => {
+    const t = await tempRoot();
+    try {
+      const a = localDriver({ root: t.root });
+      const id = await a.multipart!.begin("/big.bin");
+      await a.multipart!.uploadPart!("/big.bin", id, 1, fill(4, 1), 4);
+
+      const b = localDriver({ root: t.root });
+      expect((await b.multipart!.listParts("/big.bin", id)).map(p => [p.n, p.size])).toEqual([
+        [1, 4],
+      ]);
+      await b.multipart!.uploadPart!("/big.bin", id, 2, new Response(fill(2, 2)).body!, 2);
+      await b.multipart!.complete("/big.bin", id, await b.multipart!.listParts("/big.bin", id));
+      expect(new Uint8Array(await Bun.file(join(t.root, "big.bin")).arrayBuffer())).toEqual(new Uint8Array([1, 1, 1, 1, 2, 2]));
+      expect(await readdir(join(t.root, ".fm-uploads", "parts"))).toEqual([]);
+    }
+    finally {
+      await t.cleanup();
+    }
+  });
+
+  it("rejects malformed upload ids, foreign paths and short parts", async () => {
+    const t = await tempRoot();
+    try {
+      const mp = localDriver({ root: t.root }).multipart!;
+      expect(await code(mp.listParts("/x", "../x"))).toBe("NOT_FOUND");
+      expect(await code(mp.uploadPart!("/x", "../x", 1, fill(1, 1), 1))).toBe("NOT_FOUND");
+      expect(await code(mp.complete("/x", "../x", []))).toBe("NOT_FOUND");
+      expect(await code(mp.abort("/x", "../x"))).toBe("NOT_FOUND");
+      expect(await code(mp.listParts("/x", crypto.randomUUID()))).toBe("NOT_FOUND");
+      const id = await mp.begin("/x");
+      expect(await code(mp.listParts("/y", id))).toBe("NOT_FOUND");
+      expect(await code(mp.uploadPart!("/x", id, 0, fill(1, 1), 1))).toBe("INVALID");
+      expect(await code(mp.uploadPart!("/x", id, 1, fill(1, 1), 2))).toBe("INVALID");
+      expect(await mp.listParts("/x", id)).toEqual([]);
+    }
+    finally {
+      await t.cleanup();
+    }
+  });
+
+  it("uses a custom uploadDir outside the root and cleans it up", async () => {
+    const t = await tempRoot();
+    try {
+      const uploadDir = join(t.base, "uploads");
+      const mp = localDriver({ root: t.root, uploadDir }).multipart!;
+      const id = await mp.begin("/c.bin");
+      await mp.uploadPart!("/c.bin", id, 1, fill(3, 7), 3);
+      expect(await readdir(uploadDir)).toEqual([id]);
+      await mp.complete("/c.bin", id, await mp.listParts("/c.bin", id));
+      expect(await readdir(uploadDir)).toEqual([]);
+      expect(await readdir(t.root)).toEqual(["c.bin"]);
+    }
+    finally {
+      await t.cleanup();
+    }
+  });
+
+  it("has no multipart on read-only mounts", () => {
+    expect(localDriver({ root: "/tmp", readOnly: true }).multipart).toBeUndefined();
   });
 });
 

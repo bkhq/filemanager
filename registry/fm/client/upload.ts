@@ -1,4 +1,4 @@
-import type { FmConflict } from "../core/schema";
+import type { FmConflict, FmUploadSession } from "../core/schema";
 import type { FmClient } from "./client";
 import { createStore } from "zustand/vanilla";
 import { FmApiError } from "./client";
@@ -29,6 +29,9 @@ export interface FmUploadFile {
 
 export type FmTransport = (task: FmUploadTask, file: Blob, onProgress: (loaded: number) => void, signal: AbortSignal) => Promise<void>;
 
+/** PUTs one part of an upload session. */
+export type FmPartTransport = (url: string, body: Blob, headers: Record<string, string>, onProgress: (loaded: number) => void, signal: AbortSignal) => Promise<void>;
+
 export interface FmUploadState {
   tasks: FmUploadTask[];
   enqueue: (mount: string, dir: string, files: FmUploadFile[]) => void;
@@ -36,40 +39,106 @@ export interface FmUploadState {
   clearFinished: () => void;
 }
 
-/** PUT via XHR so byte progress is observable (fetch cannot report upload progress). */
-export function xhrTransport(client: FmClient): FmTransport {
-  return (task, file, onProgress, signal) => new Promise((resolve, reject) => {
+function xhrPut(url: string, body: Blob, headers: Record<string, string>, onProgress: (loaded: number) => void, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("PUT", client.writeUrl(task.mount, task.path, task.conflict));
-    for (const [k, v] of Object.entries(client.headers()))
+    xhr.open("PUT", url);
+    for (const [k, v] of Object.entries(headers))
       xhr.setRequestHeader(k, v);
     xhr.upload.onprogress = e => onProgress(e.loaded);
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300)
         return resolve();
-      let body: { error?: { code?: string; message?: string } } | undefined;
+      let res: { error?: { code?: string; message?: string } } | undefined;
       try {
-        body = JSON.parse(xhr.responseText);
+        res = JSON.parse(xhr.responseText);
       }
       catch {}
-      reject(new FmApiError(xhr.status, body?.error?.code ?? "HTTP_ERROR", body?.error?.message ?? xhr.statusText));
+      reject(new FmApiError(xhr.status, res?.error?.code ?? "HTTP_ERROR", res?.error?.message ?? xhr.statusText));
     };
     xhr.onerror = () => reject(new Error("Network error"));
     xhr.onabort = () => reject(new DOMException("Aborted", "AbortError"));
     signal.addEventListener("abort", () => xhr.abort());
-    xhr.send(file);
+    xhr.send(body);
   });
 }
+
+/** PUT via XHR so byte progress is observable (fetch cannot report upload progress). */
+export function xhrTransport(client: FmClient): FmTransport {
+  return (task, file, onProgress, signal) => xhrPut(client.writeUrl(task.mount, task.path, task.conflict), file, client.headers(), onProgress, signal);
+}
+
+export const xhrPartTransport: FmPartTransport = xhrPut;
 
 export interface FmUploadQueueOptions {
   transport: FmTransport;
   concurrency?: number;
   /** Called after each successful upload (e.g. to refresh listings). */
   onUploaded?: (task: FmUploadTask) => void;
+  /** Enables resumable upload sessions for large files. */
+  client?: FmClient;
+  /** Files of at least this size use a session when `client` is set. Default 16 MiB. */
+  sessionThreshold?: number;
+  partTransport?: FmPartTransport;
+  /** Retries per part. Default 3. */
+  retries?: number;
+  /** Base retry backoff, doubled per attempt. Default 500. */
+  retryDelayMs?: number;
+  /** Remembers session ids so re-adding a file resumes it. Defaults to `localStorage` when available. */
+  storage?: Pick<Storage, "getItem" | "setItem" | "removeItem">;
+}
+
+function defaultStorage(): FmUploadQueueOptions["storage"] {
+  try {
+    return globalThis.localStorage;
+  }
+  catch {
+    return undefined;
+  }
+}
+
+function wait(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    signal.throwIfAborted();
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    }, { once: true });
+  });
 }
 
 export function createUploadQueue(opts: FmUploadQueueOptions) {
   const concurrency = opts.concurrency ?? 3;
+  const threshold = opts.sessionThreshold ?? 16 * 1024 * 1024;
+  const partTransport = opts.partTransport ?? xhrPartTransport;
+  const retries = opts.retries ?? 3;
+  const retryDelayMs = opts.retryDelayMs ?? 500;
+  const storage = "storage" in opts
+    ? opts.storage
+    : defaultStorage();
+  const remembered = {
+    get: (key: string) => {
+      try {
+        return storage?.getItem(key) ?? null;
+      }
+      catch {
+        return null;
+      }
+    },
+    set: (key: string, id: string) => {
+      try {
+        storage?.setItem(key, id);
+      }
+      catch {}
+    },
+    remove: (key: string) => {
+      try {
+        storage?.removeItem(key);
+      }
+      catch {}
+    },
+  };
   const files = new Map<string, Blob>();
   const controllers = new Map<string, AbortController>();
   let seq = 0;
@@ -98,14 +167,95 @@ export function createUploadQueue(opts: FmUploadQueueOptions) {
       }
     }
 
+    async function runSession(client: FmClient, task: FmUploadTask, file: Blob, signal: AbortSignal) {
+      const lastModified = (file as Blob & { lastModified?: number }).lastModified ?? 0;
+      const key = `fm-upload:${task.mount}:${task.path}:${file.size}:${lastModified}:${task.name}`;
+      let id: string | undefined;
+      try {
+        let session: FmUploadSession | undefined;
+        const saved = remembered.get(key);
+        if (saved) {
+          session = await client.getUpload(task.mount, saved).catch(() => undefined);
+          if (!session)
+            remembered.remove(key);
+        }
+        if (!session) {
+          session = await client.createUpload(task.mount, {
+            path: task.path,
+            size: file.size,
+            conflict: task.conflict,
+          });
+          remembered.set(key, session.id);
+        }
+        id = session.id;
+        signal.throwIfAborted();
+        patch(task.id, { path: session.path });
+
+        const { partSize, parts } = session;
+        const range = (n: number) => [
+          (n - 1) * partSize,
+          Math.min(n * partSize, file.size),
+        ] as const;
+        const received = new Set(session.received);
+        let done = 0;
+        for (const n of received) {
+          const [start, end] = range(n);
+          done += end - start;
+        }
+        patch(task.id, { loaded: done });
+        for (let n = 1; n <= parts; n++) {
+          if (received.has(n))
+            continue;
+          const [start, end] = range(n);
+          const body = file.slice(start, end);
+          for (let attempt = 0; ; attempt++) {
+            const chunked = session.mode === "chunked";
+            const url = chunked
+              ? client.uploadPartUrl(task.mount, id, n)
+              : session.urls?.[n - 1] ?? "";
+            try {
+              await partTransport(url, body, chunked
+                ? client.headers()
+                : {}, loaded => patch(task.id, { loaded: done + loaded }), signal);
+              break;
+            }
+            catch (err) {
+              if (signal.aborted || attempt >= retries)
+                throw err;
+              // Presigned URLs may have expired; fetch fresh ones.
+              if (!chunked && err instanceof FmApiError && err.status === 403)
+                session = await client.getUpload(task.mount, id);
+              await wait(retryDelayMs * 2 ** attempt, signal);
+            }
+          }
+          done += end - start;
+          patch(task.id, { loaded: done });
+        }
+        await client.completeUpload(task.mount, id);
+        remembered.remove(key);
+      }
+      catch (err) {
+        if (signal.aborted) {
+          if (id)
+            void client.abortUpload(task.mount, id).catch(() => {});
+          remembered.remove(key);
+        }
+        throw err;
+      }
+    }
+
     async function run(task: FmUploadTask) {
       const controller = new AbortController();
       controllers.set(task.id, controller);
       patch(task.id, { status: "uploading" });
       try {
-        await opts.transport(task, files.get(task.id)!, loaded => patch(task.id, { loaded }), controller.signal);
+        const file = files.get(task.id)!;
+        if (opts.client && file.size >= threshold)
+          await runSession(opts.client, task, file, controller.signal);
+        else
+          await opts.transport(task, file, loaded => patch(task.id, { loaded }), controller.signal);
         patch(task.id, { status: "done", loaded: task.size });
-        opts.onUploaded?.(task);
+        opts.onUploaded?.(get().tasks.find(t => t.id === task.id) ?? task);
       }
       catch (err) {
         if (controller.signal.aborted) {

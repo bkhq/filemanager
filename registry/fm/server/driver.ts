@@ -30,6 +30,8 @@ export interface FmWriteOptions {
   ifMatch?: string;
   /** Fail with EXISTS when the target exists. */
   exclusive?: boolean;
+  /** Body length in bytes when known; lets streaming backends avoid buffering. */
+  size?: number;
 }
 
 export interface FmSearchOptions {
@@ -43,6 +45,44 @@ export interface FmSearchOptions {
   signal?: AbortSignal;
 }
 
+/** One stored part of a multipart upload. */
+export interface FmUploadPart {
+  /** Part number, starting at 1. */
+  n: number;
+  size: number;
+  etag: string;
+}
+
+/**
+ * Optional multipart upload capability. Every part except the last has the
+ * same size, at least `minPartSize`. Implement `uploadPart` (bytes pass
+ * through the server), `presignPart` (the client PUTs straight to storage),
+ * or both. `uploadId` is opaque and must survive a server restart for
+ * persistent backends.
+ */
+export interface FmMultipart {
+  /** Smallest allowed non-final part in bytes (default 1). */
+  readonly minPartSize?: number;
+  /** Max parts per upload (default 10000). */
+  readonly maxParts?: number;
+  /** Starts an upload of `path`; returns the upload id. */
+  begin: (path: string) => Promise<string>;
+  /** Stores part `n`, replacing an earlier upload of the same part. INVALID when the body length differs from `size`. */
+  uploadPart?: (path: string, uploadId: string, n: number, body: ReadableStream<Uint8Array> | Uint8Array, size: number) => Promise<FmUploadPart>;
+  /** URL the client may `PUT` part `n` to for `expiresIn` seconds. */
+  presignPart?: (path: string, uploadId: string, n: number, expiresIn: number) => Promise<string>;
+  /** Stored parts sorted by `n`; NOT_FOUND for an unknown, aborted or completed upload. */
+  listParts: (path: string, uploadId: string) => Promise<FmUploadPart[]>;
+  /**
+   * Assembles `parts` (from `listParts`, numbered 1..N without gaps) into
+   * `path` (the same path given to `begin`), creating parents; INVALID for gaps or unknown parts. Honours
+   * `exclusive` / `ifMatch` like `write`. The upload is gone afterwards.
+   */
+  complete: (path: string, uploadId: string, parts: FmUploadPart[], opts?: FmWriteOptions) => Promise<FmDriverEntry>;
+  /** Discards the upload and its parts. Idempotent. */
+  abort: (path: string, uploadId: string) => Promise<void>;
+}
+
 /**
  * A storage backend. Paths are normalized (`/a/b`) and mount-relative; the
  * router validates them before calling in. Errors are `FmError`s.
@@ -53,6 +93,7 @@ export interface FmSearchOptions {
  * - `remove` deletes directories recursively.
  * - `list` returns direct children in any order.
  * - `search` is optional; without it the router walks the tree with `list`.
+ * - `multipart` is optional; see `FmMultipart`.
  */
 export interface FmDriver {
   readonly name: string;
@@ -72,6 +113,8 @@ export interface FmDriver {
    * search here and the router should walk instead.
    */
   search?: (dir: string, q: string, opts: FmSearchOptions) => Promise<FmDriverEntry[] | null>;
+  /** Optional; without it the router stores parts as hidden files and assembles them itself. */
+  multipart?: FmMultipart;
 }
 
 export async function readAll(body: ReadableStream<Uint8Array> | Uint8Array): Promise<Uint8Array<ArrayBuffer>> {

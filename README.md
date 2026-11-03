@@ -112,6 +112,41 @@ Previewers get `actions` (an element in the preview header to portal buttons
 into) and `onDirtyChange` (to guard unsaved edits). Actions get `ctx` with the
 client, current mount / path, `refresh`, `preview` and `fail`.
 
+### Large uploads
+
+Files of 16 MiB and more (`sessionThreshold` of the client upload queue) go
+through resumable upload sessions: numbered parts, per-part retry, resume
+after a reload. Session records and server-side parts live in a hidden
+`/.fm-uploads` folder per mount. Tune them with router `limits`:
+
+```ts
+createFmRouter({
+  mounts,
+  limits: {
+    uploadPartSize: 8 * 1024 * 1024,                // default 8 MiB; drivers may require larger parts
+    maxSessionUploadBytes: 10 * 1024 * 1024 * 1024, // default 10 GiB per session
+    uploadSessionTtlMs: 24 * 60 * 60 * 1000,         // default 24 h, then the session is swept
+  },
+});
+```
+
+On S3 parts go through the server by default. `s3Driver({ ..., presignUploads: true })`
+is opt-in and lets browsers `PUT` parts straight to the bucket via presigned
+URLs. It requires both:
+
+- an S3 endpoint reachable from the browser (internal endpoints such as
+  `http://rustfs:9000` do not work);
+- bucket CORS allowing the upload and exposing the part ETag:
+
+  ```json
+  [{
+    "AllowedOrigins": ["https://app.example.com"],
+    "AllowedMethods": ["PUT"],
+    "AllowedHeaders": ["*"],
+    "ExposeHeaders": ["ETag"]
+  }]
+  ```
+
 ### Writing a driver
 
 Implement `FmDriver` from `src/fm/server/driver.ts` and run the contract suite:
