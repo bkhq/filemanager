@@ -123,3 +123,7 @@ Resumable uploads delivered (20261103-1005-resumable-uploads): upload session ro
 ## 2026-11-03 [progress]
 
 Cloudflare Workers delivered (20261103-1005-workers-r2): `r2Driver({ bucket, prefix?, readOnly?, maxObjects? })` over the R2 binding (registry item `fm-driver-r2`, structural `FmR2Bucket` type, native multipart with part records in a hidden `.fm-r2-parts` folder, no presign) and `apps/fm-worker` (wrangler, `/api/fm` with an R2 mount plus the `fm-web` assets; no auth, add Access / bearer token / `authorize` before deploying). The driver contract runs under `bun test` against miniflare 4.20260730.0; wrangler 4.157.0, `@cloudflare/workers-types` 5.20261103.1, compatibility date 2026-11-03. CI job `workers` runs the contract and `wrangler deploy --dry-run`.
+
+## 2026-11-03 13:50 [progress]
+
+P1 campaign `l1-d4j0p0gu-20261103101038` complete (plan 20261103-1005-p1-campaign): change events, recursive search + quick open (with git ls-files hardening), FilePicker + sidebar drives, registry publishing workflow, cross-mount copy / move (with a reserved-target guard), resumable uploads (sessions, multipart for memory / local / S3, opt-in presign), R2 driver + `apps/fm-worker`. Merged into local `main` only, not pushed. Final `bun run check`: 219 pass / 1 skip; 32 e2e; registry smoke OK. Deferred items are listed in the campaign plan Decisions.
