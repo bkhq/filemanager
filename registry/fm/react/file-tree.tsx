@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { DragEvent, ReactNode } from "react";
 import type { FmClient } from "../client/client";
 import type { FmMountInfo } from "../core/schema";
 import { cn } from "cn";
@@ -6,6 +6,7 @@ import { ChevronRightIcon, FolderIcon, HardDriveIcon, LockIcon, SettingsIcon, Tr
 import { useState } from "react";
 import { useListing } from "../client/hooks";
 import { basename, isWithin } from "../core/path";
+import { DRAG_TYPE } from "./file-list";
 import { groupMountsByDriver } from "./mount-visibility";
 
 interface TreeProps {
@@ -16,34 +17,56 @@ interface TreeProps {
   inTrash: boolean;
   onNavigate: (mount: string, path: string) => void;
   onOpenTrash: (mount: string) => void;
+  /** Entries of the current mount dropped onto `folder` of `mount`. */
+  onDropEntries?: ((paths: string[], mount: string, folder: string) => void) | undefined;
 }
 
 function Children({ t, mount, path, depth }: { t: TreeProps; mount: string; path: string; depth: number }) {
   const listing = useListing(t.client, mount, path, "name", "asc");
   const dirs = listing.data?.pages.flatMap(p => p.items).filter(e => e.kind === "dir") ?? [];
-  return dirs.map(d => <Node key={d.path} t={t} mount={mount} path={d.path} depth={depth} />);
+  return dirs.map(d => <Node key={d.path} t={t} mount={mount} path={d.path} depth={depth} writable={d.caps.write} />);
 }
 
-function Row({ active, depth, expanded, onToggle, onClick, icon, label, title }: {
+function Row({ active, depth, expanded, onToggle, onClick, onDrop, icon, label, title }: {
   active: boolean;
   depth: number;
   expanded: boolean;
   /** Leaf rows have no toggle. */
   onToggle?: (() => void) | undefined;
   onClick: () => void;
+  /** Makes the row a drop target for dragged entries. */
+  onDrop?: ((paths: string[]) => void) | undefined;
   icon: ReactNode;
   label: string;
   title?: string;
 }) {
+  const [over, setOver] = useState(false);
+  const accepts = (e: DragEvent) => !!onDrop && e.dataTransfer.types.includes(DRAG_TYPE);
   return (
     <div
       role="treeitem"
       aria-expanded={expanded}
       aria-selected={active}
       title={title}
-      className={cn("flex h-7 cursor-default items-center gap-1 rounded-md pr-2 text-sm select-none hover:bg-muted/60", active && "bg-accent text-accent-foreground")}
+      className={cn("flex h-7 cursor-default items-center gap-1 rounded-md pr-2 text-sm select-none hover:bg-muted/60", active && "bg-accent text-accent-foreground", over && "ring-2 ring-primary")}
       style={{ paddingLeft: depth * 12 + 4 }}
       onClick={onClick}
+      onDragOver={(e) => {
+        if (!accepts(e))
+          return;
+        e.preventDefault();
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        setOver(false);
+        if (!accepts(e))
+          return;
+        e.preventDefault();
+        const paths = JSON.parse(e.dataTransfer.getData(DRAG_TYPE)) as string[];
+        if (paths.length)
+          onDrop!(paths);
+      }}
     >
       {onToggle
         ? (
@@ -66,7 +89,21 @@ function Row({ active, depth, expanded, onToggle, onClick, icon, label, title }:
   );
 }
 
-function Node({ t, mount, path, depth }: { t: TreeProps; mount: string; path: string; depth: number }) {
+/** Drop handler for a writable folder, or undefined. */
+function dropOn(t: TreeProps, mount: string, folder: string, writable: boolean) {
+  if (!writable || !t.onDropEntries)
+    return undefined;
+  const drop = t.onDropEntries;
+  return (paths: string[]) => {
+    const rest = t.mount === mount
+      ? paths.filter(p => p !== folder)
+      : paths;
+    if (rest.length)
+      drop(rest, mount, folder);
+  };
+}
+
+function Node({ t, mount, path, depth, writable }: { t: TreeProps; mount: string; path: string; depth: number; writable: boolean }) {
   const onPath = t.mount === mount && !t.inTrash && isWithin(t.path, path) && t.path !== path;
   const [open, setOpen] = useState(onPath);
   const expanded = open || onPath;
@@ -78,6 +115,7 @@ function Node({ t, mount, path, depth }: { t: TreeProps; mount: string; path: st
         expanded={expanded}
         onToggle={() => setOpen(!expanded)}
         onClick={() => t.onNavigate(mount, path)}
+        onDrop={dropOn(t, mount, path, writable)}
         icon={<FolderIcon className="size-4 shrink-0 text-sky-500" />}
         label={basename(path)}
       />
@@ -100,6 +138,7 @@ function MountNode({ t, info, depth, readOnlyLabel, trashLabel }: { t: TreeProps
           setOpen(true);
           t.onNavigate(info.id, "/");
         }}
+        onDrop={dropOn(t, info.id, "/", !readOnly)}
         icon={readOnly
           ? <LockIcon className="size-4 shrink-0 text-muted-foreground" />
           : <HardDriveIcon className="size-4 shrink-0 text-muted-foreground" />}
