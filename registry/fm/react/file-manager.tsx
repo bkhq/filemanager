@@ -13,6 +13,7 @@ import {
   ArrowUpDownIcon,
   ArrowUpIcon,
   ChevronDownIcon,
+  ClipboardCopyIcon,
   ClipboardPasteIcon,
   CopyIcon,
   CopyPlusIcon,
@@ -79,7 +80,7 @@ import { enLabels } from "./labels";
 import { groupMountsByDriver, parseHidden, visibleMounts } from "./mount-visibility";
 import { PreviewDialog } from "./preview-dialog";
 import { QuickOpen } from "./quick-open";
-import { EMPTY_SELECTION, formatSize, prune, select, step } from "./state";
+import { EMPTY_SELECTION, formatSize, kindOf, prune, select, step } from "./state";
 import { TrashView } from "./trash-view";
 import { undoFor } from "./undo";
 import { UploadPanel } from "./upload-panel";
@@ -344,12 +345,17 @@ export function FileManager(props: FileManagerProps) {
     }
   };
 
-  const runOps = (req: FmOpsRequest, after?: () => void) => {
-    const m = mount;
-    mutations.ops.mutate(req, {
+  /** `from`: source mount when it is not the current one. */
+  const runOps = (req: FmOpsRequest, after?: () => void, from?: string) => {
+    const m = from ?? mount;
+    // No undo across mounts: it would have to run on both.
+    const crossMount = (!!from && from !== mount) || ("destMount" in req && !!req.destMount && req.destMount !== m);
+    mutations.ops.mutate(from
+      ? { mount: from, req }
+      : req, {
       onSuccess: (res) => {
         setError(failedMessage(res.results));
-        const undo = m && undoFor(req, res.results);
+        const undo = m && !crossMount && undoFor(req, res.results);
         setNotice(undo
           ? {
               message: doneMessage(req, res.results.filter(r => r.ok).length),
@@ -421,7 +427,7 @@ export function FileManager(props: FileManagerProps) {
     }
   };
 
-  const canPaste = !!clipboard && clipboard.mount === mount && canWrite;
+  const canPaste = !!clipboard && !!mount && canWrite;
   const paste = () => {
     if (!clipboard || !canPaste)
       return;
@@ -431,11 +437,49 @@ export function FileManager(props: FileManagerProps) {
         : "copy",
       paths: clipboard.paths,
       dest: path,
+      ...(clipboard.mount !== mount
+        ? { destMount: mount }
+        : {}),
       conflict: "rename",
     }, () => {
       if (clipboard.mode === "cut")
         setClipboard(undefined);
+    }, clipboard.mount);
+  };
+
+  /** Tree drop: move within the mount, copy to another one. */
+  const dropEntries = (paths: string[], to: string, folder: string) => {
+    if (!mount)
+      return;
+    const cross = to !== mount;
+    if ((cross && !features.copy) || (!cross && !features.move))
+      return;
+    runOps({
+      op: cross
+        ? "copy"
+        : "move",
+      paths,
+      dest: folder,
+      ...(cross
+        ? { destMount: to }
+        : {}),
+      conflict: "rename",
     });
+  };
+
+  const copyContents = async (entry: FmEntry) => {
+    if (!mount)
+      return;
+    try {
+      const { text } = await client.readText(mount, entry.path);
+      await navigator.clipboard.writeText(text);
+      setNotice({ message: labels.contentsCopied });
+    }
+    catch (e) {
+      setError(e instanceof Error
+        ? e.message
+        : String(e));
+    }
   };
 
   const upload = async (files: FmUploadFile[]) => {
@@ -613,6 +657,9 @@ export function FileManager(props: FileManagerProps) {
         dest: path,
         conflict: "rename",
       }), { show: canWrite && targets.every(t => t.caps.copy) }),
+      one && menuItem("copyContents", labels.copyContents, <ClipboardCopyIcon />, () => void copyContents(one), {
+        show: features.download && !inTrash && one.kind === "file" && kindOf(one) === "text" && one.size <= 1024 * 1024,
+      }),
       one && menuItem("details", labels.details, <InfoIcon />, () => setDetailsOpen(true), { show: features.details }),
       custom.length > 0 && <ContextMenuSeparator key="s2" />,
       ...custom.map(a => menuItem(`x-${a.id}`, a.label, a.icon, () => runAction(a, targets))),
@@ -654,6 +701,7 @@ export function FileManager(props: FileManagerProps) {
               inTrash={inTrash}
               onNavigate={navigate}
               onOpenTrash={m => go(m, "/", true)}
+              onDropEntries={dropEntries}
               readOnlyLabel={labels.readOnly}
               trashLabel={labels.trash}
               group={props.sidebar?.group}
