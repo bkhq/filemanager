@@ -44,6 +44,11 @@ export function createApp(config: Config) {
   const app = new Hono();
   app.route("/fm", createFmRouter({
     mounts: () => mounts,
+    ...(config.uploadPartSize
+      ? {
+          limits: { uploadPartSize: config.uploadPartSize },
+        }
+      : {}),
   }));
   app.get("/openapi.json", openAPIRouteHandler(app, {
     documentation: {

@@ -23,3 +23,4 @@ Adding resumable uploads
 ## Notes
 
 - 2026-11-03: requirement plan [20261103-1005-resumable-uploads](../plan/20261103-1005-resumable-uploads.md) (campaign [20261103-1005-p1-campaign](../plan/20261103-1005-p1-campaign.md)).
+- 2026-11-03: implemented on bkd/wmhautbl: upload session routes (create / status / part / complete / abort, hidden `/.fm-uploads`, router-stored parts for drivers without multipart), `FmDriver.multipart` (memory, local, S3 with opt-in presigned parts), streaming S3 PUT when the size is known, client session queue with per-part retry and resume via `localStorage`; e2e multi-part upload. sha256 dedupe not implemented.

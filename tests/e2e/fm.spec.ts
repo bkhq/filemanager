@@ -558,3 +558,48 @@ test.describe("file picker", () => {
     await expect(output(page)).toHaveText("cancelled");
   });
 });
+
+test("uploads a large file in parts", async ({ page }) => {
+  const size = 18 * 1024 * 1024;
+  const requests: { method: string; path: string }[] = [];
+  page.on("request", (r) => {
+    const u = new URL(r.url());
+    if (u.pathname.startsWith("/api/fm/m/local/")) {
+      requests.push({
+        method: r.method(),
+        path: `${u.pathname}?${u.searchParams.get("path") ?? ""}`,
+      });
+    }
+  });
+
+  await openMount(page, "Local disk");
+  await page.getByRole("button", { name: "New folder" }).click();
+  await page.getByRole("dialog").getByRole("textbox").fill("big");
+  await page.getByRole("button", { name: "Create" }).click();
+  await row(page, "/big").dblclick();
+  await expect(page.getByText("This folder is empty")).toBeVisible();
+
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
+    name: "large.bin",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.alloc(size, 7),
+  });
+  await expect(row(page, "/big/large.bin")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status").locator("[data-status=done]")).toHaveCount(1);
+
+  const count = (method: string, re: RegExp) => requests.filter(r => r.method === method && re.test(r.path)).length;
+  expect(count("POST", /\/uploads\?$/)).toBe(1);
+  expect(count("PUT", /\/uploads\/[^/]+\/parts\/\d+\?$/)).toBeGreaterThanOrEqual(5);
+  expect(count("POST", /\/uploads\/[^/]+\/complete\?$/)).toBe(1);
+  expect(count("PUT", /\/write\?\/big\/large\.bin$/)).toBe(0);
+
+  const stat = await page.request.get("/api/fm/m/local/stat?path=/big/large.bin");
+  expect((await stat.json()).size).toBe(size);
+
+  const list = await page.request.get("/api/fm/m/local/list?path=/");
+  const names = (await list.json()).items.map((e: { name: string }) => e.name);
+  expect(names).not.toContain(".fm-uploads");
+  await page.getByRole("navigation").getByText("Local disk").click();
+  await expect(row(page, "/big")).toBeVisible();
+  await expect(row(page, "/.fm-uploads")).toHaveCount(0);
+});

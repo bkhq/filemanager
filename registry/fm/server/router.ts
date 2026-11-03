@@ -299,6 +299,10 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
   const hasTrash = (m: FmMount) => !!m.trash && mountCaps(m).delete;
   /** Paths inside the trash or uploads folder are never exposed by regular routes (also on read-only views of the same storage). */
   const hidden = (m: FmMount, path: string) => isWithin(path, UPLOADS_DIR) || (!!m.trash && isWithin(path, TRASH_DIR));
+  const assertVisible = (m: FmMount, path: string) => {
+    if (hidden(m, path))
+      throw new FmError("INVALID", `Reserved name: ${path}`);
+  };
 
   const findMount = async (c: unknown, mountId: string): Promise<FmMount> => {
     const mount = (await options.mounts(host(c))).find(m => m.id === mountId);
@@ -421,6 +425,7 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
       maxBytes: limits.archiveMaxBytes,
     }, p => hidden(src.mount, p));
     const to = await destination(into, dest.path, basename(src.path), conflict);
+    assertVisible(dest.mount, to);
     if (conflict !== "rename" && await exists(into, to)) {
       if (conflict === "fail")
         throw new FmError("EXISTS", `Already exists: ${to}`);
@@ -727,7 +732,9 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
         if (t.path === "/")
           throw new FmError("INVALID", "Cannot rename the root");
         assertName(req.name);
-        const to = await resolve(c, mountId, joinPath(dirname(t.path), req.name), "write");
+        const target = joinPath(dirname(t.path), req.name);
+        assertVisible(t.mount, target);
+        const to = await resolve(c, mountId, target, "write");
         const entry = toEntry(t, await t.mount.driver.move(t.path, to.path));
         event.to = to.path;
         return { entry };
@@ -763,6 +770,7 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
             }
             to = await destination(d, dest.path, basename(src.path), "rename");
           }
+          assertVisible(dest.mount, to);
           if (req.conflict === "overwrite" && await exists(d, to)) {
             await resolve(c, mountId, to, "delete");
             await d.remove(to);

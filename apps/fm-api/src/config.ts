@@ -12,6 +12,7 @@ const schema = z.object({
   FM_S3_ACCESS_KEY_ID: optional,
   FM_S3_SECRET_ACCESS_KEY: optional,
   FM_S3_REGION: z.string().default("us-east-1"),
+  FM_UPLOAD_PART_SIZE: optional.pipe(z.coerce.number<string | undefined>().int().positive().optional()),
 });
 
 export type Config = ReturnType<typeof loadConfig>;
@@ -31,6 +32,8 @@ export function loadConfig(env: Record<string, string | undefined>) {
     port: c.PORT,
     root: resolve(c.FM_ROOT ?? resolve(import.meta.dirname, "../../../.tmp/fm-root")),
     s3,
+    /** Upload session part size in bytes (router default when unset). */
+    uploadPartSize: c.FM_UPLOAD_PART_SIZE,
     /** Built SPA to serve next to `/api` (single-origin mode for e2e and previews). */
     staticDir: c.FM_STATIC
       ? resolve(c.FM_STATIC)
