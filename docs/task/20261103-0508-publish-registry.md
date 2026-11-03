@@ -7,7 +7,7 @@
 
 ## Description
 
-Deploy `public/r` (GitHub Pages, tagged versions) so hosts can `shadcn add @fm/...`; smoke-test the deployed URL.
+Deploy `public/r` (GitHub Pages, tagged versions) so hosts can `shadcn add @bkhq/...`; smoke-test the deployed URL.
 
 Design sketch and verification: [backlog proposals](../plan/20261103-0508-backlog-proposals.md). Write and get approval for a dedicated plan before implementing.
 

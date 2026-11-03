@@ -59,3 +59,7 @@ Backlog written for hand-over: `docs/plan/20261103-0508-backlog-proposals.md` (d
 ## 2026-11-03 15:30 [decision]
 
 Gap review against bithk and bkd added to the backlog proposals (plan 20261103-0508). bkd pilot raised from P3 to P1 as the first adopter (gitignore, binary sniff, drafts, drawer). New tasks: 20261103-1530-change-events (P1), 20261103-1530-pick-mode (P1), 20261103-1530-quick-open (P1, blocked by recursive-search), 20261103-1530-list-filters (P2). Trash retention gains "Empty trash"; plugin follow-ups gain a PDF viewer and new-file templates / CSV import; UI polish gains pinch zoom.
+
+## 2026-11-03 16:00 [decision]
+
+Registry namespace renamed from `@fm` to `@bkhq` (hosts add `"registries": { "@bkhq": "<url>/r/{name}.json" }` and install `@bkhq/fm-react` etc.); item names keep the `fm-` prefix so they stay unique inside the `@bkhq` namespace. Workspace packages use the `@bkhq/` scope (`@bkhq/filemanager`, `@bkhq/demo-api`, `@bkhq/demo-web`). Registry `homepage` points to `github.com/bkhq/filemanager`. Runtime identifiers (`.fm-trash`, `application/x-fm-paths`, query / storage key `fm`, `FM_*` env vars) and the `src/fm/` install path are unchanged. Earlier entries and completed plans still say `@fm`.

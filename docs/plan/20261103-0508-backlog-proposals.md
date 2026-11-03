@@ -61,7 +61,7 @@ Hosts with many mounts (per project, per bucket) need to hide or group them.
 
 ### 3. Publish the registry (P1) — task `20261103-0508-publish-registry`
 
-Hosts cannot `shadcn add @fm/...` until `public/r` is served.
+Hosts cannot `shadcn add @bkhq/...` until `public/r` is served.
 
 - GitHub Pages workflow: on tag `v*` (and on main to a `next/` path) run `bun run registry:build` and deploy `public/r`.
 - README: real registry URL in the `components.json` snippet; versioning note (tags pin the copied source).

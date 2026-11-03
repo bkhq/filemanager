@@ -14,14 +14,14 @@ See [`docs/architecture.md`](docs/architecture.md) for the design.
 Register the namespace in the host's `components.json`:
 
 ```json
-{ "registries": { "@fm": "https://<registry-host>/r/{name}.json" } }
+{ "registries": { "@bkhq": "https://<registry-host>/r/{name}.json" } }
 ```
 
 Then add what you need (dependencies are pulled in automatically):
 
 ```bash
-bunx shadcn add @fm/fm-server @fm/fm-driver-local   # API side
-bunx shadcn add @fm/fm-react                        # UI + client
+bunx shadcn add @bkhq/fm-server @bkhq/fm-driver-local   # API side
+bunx shadcn add @bkhq/fm-react                        # UI + client
 ```
 
 | Item | Contents |
@@ -75,7 +75,7 @@ Optional file-type support is shipped as plugins: extra previewers and
 context-menu actions.
 
 ```tsx
-import { sheetPlugin } from "@/fm/plugins/sheet";   // bunx shadcn add @fm/fm-plugin-sheet
+import { sheetPlugin } from "@/fm/plugins/sheet";   // bunx shadcn add @bkhq/fm-plugin-sheet
 
 <FileManager baseUrl="/api/fm" plugins={[sheetPlugin()]} />;
 ```

@@ -29,7 +29,7 @@ export interface FileAction {
 
 /**
  * Optional extension: previewers for more file types and context-menu
- * actions. Install one from the registry (e.g. `@fm/fm-plugin-sheet`) and
+ * actions. Install one from the registry (e.g. `@bkhq/fm-plugin-sheet`) and
  * pass it with `<FileManager plugins={[sheetPlugin()]} />`.
  */
 export interface FmPlugin {

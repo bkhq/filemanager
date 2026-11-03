@@ -8,7 +8,7 @@ of each app growing its own file browser.
 
 | Topic | Decision |
 | --- | --- |
-| Distribution | shadcn-style copy: sources are published as a shadcn registry under the `@fm` namespace (hosts add `"registries": { "@fm": "<url>/r/{name}.json" }` to `components.json`, then `bunx shadcn add @fm/fm-react`) and own the copied code. No npm packages. |
+| Distribution | shadcn-style copy: sources are published as a shadcn registry under the `@bkhq` namespace (hosts add `"registries": { "@bkhq": "<url>/r/{name}.json" }` to `components.json`, then `bunx shadcn add @bkhq/fm-react`) and own the copied code. No npm packages. |
 | Managed storage | Generic `managed` store with its own tables, so any app can adopt it; bithk migrates onto it later. |
 | Standalone app | Not a target. A demo app exists for development and e2e only. |
 | Runtime | Server code runs on **Bun** and **Cloudflare Workers**. Core and router use Web-standard APIs only; runtime-specific drivers live in separate files. |
@@ -76,7 +76,7 @@ registry/
   fm/react/       UI on shadcn/ui (base-nova) + Tailwind
 registry.json     shadcn registry manifest. Shipped: fm-core, fm-server, fm-driver-contract, fm-driver-memory,
                   fm-driver-local, fm-driver-s3, fm-client, fm-react. Planned: fm-driver-r2, fm-managed.
-                  Items depend on each other via `@fm/<item>` registryDependencies.
+                  Items depend on each other via `@bkhq/<item>` registryDependencies.
 apps/
   demo-api/       Bun + Hono host consuming registry/ via path aliases (dev + e2e)
   demo-web/       React + Vite host consuming registry/ via path aliases

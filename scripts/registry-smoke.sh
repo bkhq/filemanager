@@ -33,7 +33,7 @@ cat > components.json <<JSON
     "lib": "@/shared/lib",
     "hooks": "@/shared/hooks"
   },
-  "registries": { "@fm": "http://localhost:$PORT/r/{name}.json" }
+  "registries": { "@bkhq": "http://localhost:$PORT/r/{name}.json" }
 }
 JSON
 cat > tsconfig.json <<'JSON'
@@ -75,7 +75,7 @@ echo '@import "tailwindcss";' > src/index.css
 
 bun add react react-dom >/dev/null
 bun add -d vite @vitejs/plugin-react tailwindcss @tailwindcss/vite @types/react @types/react-dom @types/bun "typescript@npm:typescript@7" >/dev/null
-bunx shadcn add -y @fm/fm-react @fm/fm-plugin-sheet @fm/fm-server @fm/fm-driver-memory @fm/fm-driver-local @fm/fm-driver-s3 @fm/fm-driver-contract
+bunx shadcn add -y @bkhq/fm-react @bkhq/fm-plugin-sheet @bkhq/fm-server @bkhq/fm-driver-memory @bkhq/fm-driver-local @bkhq/fm-driver-s3 @bkhq/fm-driver-contract
 
 cat > src/main.tsx <<'TSX'
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

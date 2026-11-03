@@ -1,5 +1,5 @@
 {
-  "name": "filemanager",
+  "name": "@bkhq/filemanager",
   "type": "module",
   "private": true,
   "workspaces": [

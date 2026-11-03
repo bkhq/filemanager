@@ -1,5 +1,5 @@
 {
-  "name": "demo-api",
+  "name": "@bkhq/demo-api",
   "type": "module",
   "version": "0.0.0",
   "private": true,

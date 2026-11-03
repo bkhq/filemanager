@@ -1,5 +1,5 @@
 {
-  "name": "demo-web",
+  "name": "@bkhq/demo-web",
   "type": "module",
   "version": "0.0.0",
   "private": true,

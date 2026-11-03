@@ -1,7 +1,7 @@
 {
   "$schema": "https://ui.shadcn.com/schema/registry.json",
-  "name": "fm",
-  "homepage": "https://github.com/zzci/filemanager",
+  "name": "bkhq",
+  "homepage": "https://github.com/bkhq/filemanager",
   "items": [
     {
       "name": "fm-core",
@@ -40,7 +40,7 @@
         "fflate"
       ],
       "registryDependencies": [
-        "@fm/fm-core"
+        "@bkhq/fm-core"
       ],
       "files": [
         {
@@ -76,7 +76,7 @@
       "title": "Driver contract suite",
       "description": "bun:test suite every driver must pass; use it when writing a new driver.",
       "registryDependencies": [
-        "@fm/fm-server"
+        "@bkhq/fm-server"
       ],
       "files": [
         {
@@ -92,7 +92,7 @@
       "title": "Memory driver",
       "description": "In-memory driver for tests and demos.",
       "registryDependencies": [
-        "@fm/fm-server"
+        "@bkhq/fm-server"
       ],
       "files": [
         {
@@ -108,7 +108,7 @@
       "title": "Local driver (Bun)",
       "description": "Local filesystem driver jailed to a root directory.",
       "registryDependencies": [
-        "@fm/fm-server"
+        "@bkhq/fm-server"
       ],
       "files": [
         {
@@ -127,7 +127,7 @@
         "aws4fetch"
       ],
       "registryDependencies": [
-        "@fm/fm-server"
+        "@bkhq/fm-server"
       ],
       "files": [
         {
@@ -147,7 +147,7 @@
         "zustand"
       ],
       "registryDependencies": [
-        "@fm/fm-core"
+        "@bkhq/fm-core"
       ],
       "files": [
         {
@@ -191,7 +191,7 @@
         "breadcrumb",
         "progress",
         "tooltip",
-        "@fm/fm-client"
+        "@bkhq/fm-client"
       ],
       "files": [
         {
@@ -306,7 +306,7 @@
         "read-excel-file@9.3.14"
       ],
       "registryDependencies": [
-        "@fm/fm-react"
+        "@bkhq/fm-react"
       ],
       "files": [
         {
