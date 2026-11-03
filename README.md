@@ -31,7 +31,8 @@ bunx shadcn add @fm/fm-react                        # UI + client
 | `fm-driver-memory` / `-local` / `-s3` | storage drivers (`local` is Bun-only) |
 | `fm-driver-contract` | `bun:test` suite a new driver must pass |
 | `fm-client` | typed fetch client, TanStack Query hooks, upload queue |
-| `fm-react` | `<FileManager />`: tree, list/grid, previews, uploads |
+| `fm-react` | `<FileManager />`: tree, list/grid, previews (image / video rotate, flip, zoom), uploads, trash, undo |
+| `fm-plugin-sheet` | optional plugin: CSV / TSV / XLSX table preview |
 
 Files land under `src/fm/`. Mount the router in the host API:
 
@@ -68,6 +69,44 @@ import { FileManager } from "@/fm/react/file-manager";
 `readOnly` / `features` only hide UI actions. Enforce access on the server with
 `readOnly` mounts or `authorize`.
 
+### Plugins
+
+Optional file-type support is shipped as plugins: extra previewers and
+context-menu actions.
+
+```tsx
+import { sheetPlugin } from "@/fm/plugins/sheet";   // bunx shadcn add @fm/fm-plugin-sheet
+
+<FileManager baseUrl="/api/fm" plugins={[sheetPlugin()]} />;
+```
+
+A plugin is a plain object (`FmPlugin` in `src/fm/react/plugins.ts`):
+
+```tsx
+const markdownPlugin: FmPlugin = {
+  id: "markdown",
+  previewers: [{
+    id: "markdown",
+    match: e => e.name.endsWith(".md"),
+    component: lazy(() => import("./markdown-view")),   // receives PreviewProps
+    priority: 10,                                        // beats the built-in text editor
+  }],
+  actions: [{
+    id: "word-count",
+    label: "Count words",
+    when: entries => entries.length === 1 && entries[0]!.kind === "file",
+    run: async ([entry], ctx) => {
+      const { text } = await ctx.client.readText(entry!.mount, entry!.path);
+      alert(text.split(/\s+/).length);
+    },
+  }],
+};
+```
+
+Previewers get `actions` (an element in the preview header to portal buttons
+into) and `onDirtyChange` (to guard unsaved edits). Actions get `ctx` with the
+client, current mount / path, `refresh`, `preview` and `fail`.
+
 ### Writing a driver
 
 Implement `Driver` from `src/fm/server/driver.ts` and run the contract suite:
@@ -87,6 +126,16 @@ bun run test:e2e         # Playwright against the demo (builds demo-web, serves 
 bun run registry:smoke   # shadcn add every item into a scratch app, typecheck + build (needs network)
 FM_TEST_S3_ENDPOINT=http://localhost:9000 bun test registry   # include the S3 driver contract
 ```
+
+Repository map for maintainers:
+
+| Path | What lives there |
+| --- | --- |
+| `registry/fm/*` | everything shipped to hosts; `core` / `server` / `client` / `drivers` (except `local`) must stay Web-API only (lint-enforced) so they run on Bun and Workers |
+| `registry.json` | registry items; add every new shipped file here or `shadcn add` will miss it (`registry:smoke` catches this) |
+| `apps/demo-api`, `apps/demo-web` | demo host; `seed.ts` fills `.tmp/demo-root` once when empty |
+| `tests/e2e` | Playwright flows against the built demo |
+| `docs/architecture.md` | design and API surface; `docs/changelog.md` records decisions and pitfalls |
 
 Demo (two processes, routed by nsl at `fm.localhost:3355`):
 

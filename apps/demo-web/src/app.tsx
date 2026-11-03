@@ -1,6 +1,11 @@
 import { useState } from "react";
+import { sheetPlugin } from "@/fm/plugins/sheet";
 import { FileManager } from "@/fm/react/file-manager";
 import { enLabels, zhLabels } from "@/fm/react/labels";
+
+const plugins = [
+  sheetPlugin(),
+];
 
 const labels = navigator.language.startsWith("zh")
   ? zhLabels
@@ -17,7 +22,7 @@ export function App() {
           View only
         </label>
       </header>
-      <FileManager baseUrl="/api/fm" labels={labels} className="flex-1" readOnly={readOnly} />
+      <FileManager baseUrl="/api/fm" labels={labels} className="flex-1" readOnly={readOnly} plugins={plugins} />
     </main>
   );
 }

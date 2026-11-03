@@ -4,6 +4,7 @@ import type { UploadFile } from "../client/upload";
 import type { Entry, OpsRequest, SortKey } from "../core/schema";
 import type { Features } from "./features";
 import type { Labels } from "./labels";
+import type { ActionContext, FileAction, FmPlugin } from "./plugins";
 import type { Clipboard, Selection, SelectMode } from "./state";
 import type { Undo } from "./undo";
 import { useQueryClient } from "@tanstack/react-query";
@@ -76,14 +77,7 @@ import { TrashView } from "./trash-view";
 import { undoFor } from "./undo";
 import { UploadPanel } from "./upload-panel";
 
-export interface FileAction {
-  id: string;
-  label: string;
-  icon?: ReactNode;
-  /** Shown only when this returns true for the targeted entries. */
-  when?: (entries: Entry[]) => boolean;
-  run: (entries: Entry[]) => void;
-}
+export type { ActionContext, FileAction, FmPlugin } from "./plugins";
 
 export interface FileManagerProps {
   /** Router base URL (e.g. `/api/fm`); ignored when `client` is given. */
@@ -94,6 +88,8 @@ export interface FileManagerProps {
   initialPath?: string;
   /** Extra actions for the entry context menu (share, attach …). */
   actions?: FileAction[];
+  /** Optional extensions: previewers for more file types and their actions. */
+  plugins?: FmPlugin[];
   className?: string;
   /** localStorage key prefix for the view / layout preferences. */
   storageKey?: string;
@@ -166,6 +162,7 @@ export function FileManager(props: FileManagerProps) {
   const [client] = useState(() => props.client ?? createFmClient({ baseUrl: props.baseUrl ?? "/api/fm" }));
   const qc = useQueryClient();
   const mounts = useMounts(client);
+  const pluginPreviewers = useMemo(() => (props.plugins ?? []).flatMap(p => p.previewers ?? []), [props.plugins]);
   const features = useMemo(() => resolveFeatures(props.readOnly, props.features), [props.readOnly, props.features]);
   const [location, setLocation] = useState({ mount: props.initialMount, path: props.initialPath ?? "/", trash: false });
   const mount = location.mount ?? mounts.data?.[0]?.id;
@@ -339,8 +336,9 @@ export function FileManager(props: FileManagerProps) {
     const names = [
       ...new Set(files.map(topName)),
     ];
-    // The loaded listing is complete unless it is filtered or paged; otherwise ask the server.
-    const existing = !query.trim() && !listing.hasNextPage
+    // Trust the loaded listing only when it is current, unfiltered and complete; otherwise ask the server.
+    const complete = listing.isSuccess && !listing.isFetching && !query.trim() && !listing.hasNextPage;
+    const existing = complete
       ? new Set(entries.map(e => e.name))
       : new Set(await Promise.all(names.map(n => client.stat(mount, joinPath(path, n)).then(() => n, () => ""))));
     const clashes = new Set(files.filter(f => !(f.relativePath ?? "").includes("/")).map(topName).filter(n => existing.has(n)));
@@ -447,11 +445,35 @@ export function FileManager(props: FileManagerProps) {
           </ContextMenuItem>
         );
 
+  const runAction = (action: FileAction, targets: Entry[]) => {
+    if (!mount)
+      return;
+    const ctx: ActionContext = {
+      client,
+      mount,
+      path,
+      refresh: async () => {
+        await qc.invalidateQueries({
+          queryKey: fmKeys.all(client),
+        });
+      },
+      preview: setPreview,
+      fail: setError,
+    };
+    void Promise.resolve(action.run(targets, ctx)).catch((e: unknown) => setError(e instanceof Error
+      ? e.message
+      : String(e)));
+  };
+
   const entryMenu = (targets: Entry[]) => {
     const one = targets.length === 1
       ? targets[0]
       : undefined;
-    const custom = (props.actions ?? []).filter(a => !a.when || a.when(targets));
+    const custom = [
+      ...(props.actions ?? []),
+      ...(props.plugins ?? []).flatMap(p => p.actions ?? []),
+    ]
+      .filter(a => !a.when || a.when(targets));
     return [
       one && menuItem("open", labels.open, null, () => open(one)),
       menuItem("download", labels.download, <DownloadIcon />, () => download(targets), { show: features.download }),
@@ -471,7 +493,7 @@ export function FileManager(props: FileManagerProps) {
       }), { show: canWrite && targets.every(t => t.caps.copy) }),
       one && menuItem("details", labels.details, <InfoIcon />, () => setDetailsOpen(true), { show: features.details }),
       custom.length > 0 && <ContextMenuSeparator key="s2" />,
-      ...custom.map(a => menuItem(`x-${a.id}`, a.label, a.icon, () => a.run(targets))),
+      ...custom.map(a => menuItem(`x-${a.id}`, a.label, a.icon, () => runAction(a, targets))),
       <ContextMenuSeparator key="s3" />,
       menuItem("delete", labels.delete, <Trash2Icon />, () => requestDelete(targets.map(t => t.path)), {
         show: targets.every(t => t.caps.delete),
@@ -834,6 +856,7 @@ export function FileManager(props: FileManagerProps) {
           client={client}
           labels={labels}
           editable={features.edit}
+          previewers={pluginPreviewers}
           onNavigate={setPreview}
           {...(features.download
             ? {

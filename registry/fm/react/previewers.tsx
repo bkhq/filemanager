@@ -1,10 +1,10 @@
 import type { FmClient } from "../client/client";
 import type { Entry } from "../core/schema";
 import type { Labels } from "./labels";
-import { cn } from "cn";
 import { DownloadIcon } from "lucide-react";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense } from "react";
 import { Button } from "@/components/ui/button";
+import { MediaStage } from "./media-stage";
 import { kindOf } from "./state";
 
 export interface PreviewProps {
@@ -21,30 +21,18 @@ const MAX_TEXT_BYTES = 2 * 1024 * 1024;
 
 const TextPreview = lazy(() => import("./text-preview").then(m => ({ default: m.TextPreview })));
 
-/** Fits the image; a click toggles actual size (scrollable). */
-export function ImagePreview({ entry, client }: PreviewProps) {
-  const [zoomed, setZoomed] = useState(false);
-  return (
-    <div className="flex h-full overflow-auto bg-muted/30 p-4">
-      <img
-        src={client.readUrl(entry.mount, entry.path, { version: entry.etag })}
-        alt={entry.name}
-        className={cn("m-auto", zoomed
-          ? "max-w-none cursor-zoom-out"
-          : "max-h-full max-w-full cursor-zoom-in object-contain")}
-        onClick={() => setZoomed(!zoomed)}
-      />
-    </div>
-  );
+/** Fits the image; zoom, rotate and flip from the header, a click toggles actual size. */
+export function ImagePreview({ entry, client, labels, actions }: PreviewProps) {
+  return <MediaStage kind="image" src={client.readUrl(entry.mount, entry.path, { version: entry.etag })} alt={entry.name} labels={labels} actions={actions} />;
 }
 
-export function MediaPreview({ entry, client }: PreviewProps) {
+export function MediaPreview({ entry, client, labels, actions }: PreviewProps) {
   const src = client.readUrl(entry.mount, entry.path, { version: entry.etag });
+  if (kindOf(entry) === "video")
+    return <MediaStage kind="video" src={src} alt={entry.name} labels={labels} actions={actions} />;
   return (
     <div className="flex h-full items-center justify-center bg-black/90 p-4">
-      {kindOf(entry) === "video"
-        ? <video src={src} controls className="max-h-full max-w-full" />
-        : <audio src={src} controls className="w-full max-w-lg" />}
+      <audio src={src} controls className="w-full max-w-lg" />
     </div>
   );
 }

@@ -39,3 +39,11 @@ Layouts: `layout="split" | "single"` initial value with a persisted sidebar togg
 ## 2026-11-03 [pitfall]
 
 Base UI menu radio items keep the menu open on click; navigation menus need `closeOnClick`.
+
+## 2026-11-03 [progress]
+
+Previews: images get zoom in / out / fit, rotate and flip; videos get rotate and flip (view only, files are not modified). Plugins: `FmPlugin { previewers, actions }` via `<FileManager plugins>`, actions receive an `ActionContext`. New optional registry item `fm-plugin-sheet` (CSV / TSV via papaparse, XLSX via read-excel-file; `xlsx` on npm is stale at 0.18.5 with known advisories). Repository made public.
+
+## 2026-11-03 [pitfall]
+
+Upload conflict detection must not trust a listing that is still loading or refetching; it now falls back to `stat` per name. read-excel-file requires the `r` cell reference on every `<c>` element.

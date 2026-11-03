@@ -89,6 +89,13 @@ export const enLabels = {
   storage: "Storage",
   showSidebar: "Show sidebar",
   hideSidebar: "Hide sidebar",
+  rotateLeft: "Rotate left",
+  rotateRight: "Rotate right",
+  flip: "Flip horizontally",
+  zoomIn: "Zoom in",
+  zoomOut: "Zoom out",
+  fitToScreen: "Fit to screen",
+  sheetTruncated: (shown: number, total: number) => `Showing the first ${shown} of ${total} rows`,
 };
 
 export type Labels = typeof enLabels;
@@ -178,4 +185,11 @@ export const zhLabels: Labels = {
   storage: "存储位置",
   showSidebar: "显示侧栏",
   hideSidebar: "隐藏侧栏",
+  rotateLeft: "向左旋转",
+  rotateRight: "向右旋转",
+  flip: "水平翻转",
+  zoomIn: "放大",
+  zoomOut: "缩小",
+  fitToScreen: "适应窗口",
+  sheetTruncated: (shown, total) => `仅显示前 ${shown} 行，共 ${total} 行`,
 };

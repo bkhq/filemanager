@@ -43,8 +43,12 @@ export function registerPreviewer(p: Previewer): void {
   previewers.push(p);
 }
 
-export function findPreviewer(entry: Entry): ComponentType<PreviewProps> {
-  const match = previewers
+/** Best previewer for `entry`; `extra` (from plugins) competes with the registered ones. */
+export function findPreviewer(entry: Entry, extra: readonly Previewer[] = []): ComponentType<PreviewProps> {
+  const match = [
+    ...previewers,
+    ...extra,
+  ]
     .filter(p => p.match(entry))
     .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))[0];
   return match?.component ?? FallbackPreview;

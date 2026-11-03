@@ -93,6 +93,36 @@ test("previews images and pdfs", async ({ page }) => {
   await expect(page.getByRole("dialog").locator("iframe[title='sample.pdf']")).toBeVisible();
 });
 
+test("rotates, flips and zooms an image without changing it", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await row(page, "/images").dblclick();
+  await row(page, "/images/dot.png").dblclick();
+  const dialog = page.getByRole("dialog");
+  const img = dialog.locator("img[alt='dot.png']");
+  await expect(dialog.getByRole("button", { name: "100%" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Rotate right" }).click();
+  await dialog.getByRole("button", { name: "Flip horizontally" }).click();
+  await expect(img).toHaveAttribute("style", /rotate\(90deg\) scaleX\(-1\)/);
+  await dialog.getByRole("button", { name: "Rotate left" }).click();
+  await expect(img).toHaveAttribute("style", /rotate\(0deg\)/);
+  await dialog.getByRole("button", { name: "Zoom in" }).click();
+  await expect(dialog.getByRole("button", { name: "125%" })).toBeVisible();
+  await dialog.getByRole("button", { name: "125%" }).click();
+  await expect(dialog.getByRole("button", { name: "100%" })).toBeVisible();
+});
+
+test("previews spreadsheets with the sheet plugin", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await row(page, "/sheets").dblclick();
+  await row(page, "/sheets/ports.csv").dblclick();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("table")).toContainText("Valletta, Grand Harbour");
+  await dialog.getByRole("button", { name: "Previous" }).click();
+  await expect(dialog.getByRole("table", { name: "Fleet" })).toContainText("Thalassa");
+  await dialog.getByRole("button", { name: "Crew" }).click();
+  await expect(dialog.getByRole("table", { name: "Crew" })).toContainText("Captain");
+});
+
 test("moves with cut and paste", async ({ page }) => {
   await openMount(page, "Local disk");
   await contextAction(page, "/README.md", "Cut");

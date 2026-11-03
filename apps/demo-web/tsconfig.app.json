@@ -21,6 +21,6 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true
   },
-  "include": ["src", "../../registry/fm/core", "../../registry/fm/client", "../../registry/fm/react"],
+  "include": ["src", "../../registry/fm/core", "../../registry/fm/client", "../../registry/fm/react", "../../registry/fm/plugins"],
   "exclude": ["../../registry/**/*.test.ts"]
 }

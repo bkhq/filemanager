@@ -240,6 +240,16 @@
           "target": "~/src/fm/react/labels.ts"
         },
         {
+          "path": "registry/fm/react/media-stage.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/media-stage.tsx"
+        },
+        {
+          "path": "registry/fm/react/plugins.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/plugins.ts"
+        },
+        {
           "path": "registry/fm/react/preview-dialog.tsx",
           "type": "registry:file",
           "target": "~/src/fm/react/preview-dialog.tsx"
@@ -265,6 +275,11 @@
           "target": "~/src/fm/react/text-preview.tsx"
         },
         {
+          "path": "registry/fm/react/transform.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/transform.ts"
+        },
+        {
           "path": "registry/fm/react/trash-view.tsx",
           "type": "registry:file",
           "target": "~/src/fm/react/trash-view.tsx"
@@ -279,6 +294,39 @@
           "type": "registry:file",
           "target": "~/src/fm/react/upload-panel.tsx"
         }
+      ]
+    },
+    {
+      "name": "fm-plugin-sheet",
+      "type": "registry:block",
+      "title": "File manager: spreadsheet preview",
+      "description": "Optional plugin: table preview for CSV, TSV and XLSX (all sheets). Pass sheetPlugin() to <FileManager plugins>.",
+      "dependencies": [
+        "papaparse@5.7.0",
+        "read-excel-file@9.3.14"
+      ],
+      "registryDependencies": [
+        "@fm/fm-react"
+      ],
+      "files": [
+        {
+          "path": "registry/fm/plugins/sheet.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/plugins/sheet.ts"
+        },
+        {
+          "path": "registry/fm/plugins/sheet-view.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/plugins/sheet-view.tsx"
+        },
+        {
+          "path": "registry/fm/plugins/parse.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/plugins/parse.ts"
+        }
+      ],
+      "devDependencies": [
+        "@types/papaparse@5.5.2"
       ]
     }
   ]

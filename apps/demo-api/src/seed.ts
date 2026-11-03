@@ -1,5 +1,6 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { makeXlsx } from "./sample-xlsx";
 
 // 2x2 PNG
 const PNG = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP4z8DwnwEIGBgYGBgYAAA19gP9KmBDtQAAAABJRU5ErkJggg=="), c => c.charCodeAt(0));
@@ -22,6 +23,18 @@ export const SEED: Record<string, string | Uint8Array> = {
   "notes/config.json": "{\n  \"region\": \"aegean\",\n  \"ports\": [\"Piraeus\", \"Mykonos\", \"Naxos\"]\n}\n",
   "images/dot.png": PNG,
   "docs/sample.pdf": PDF,
+  "sheets/ports.csv": "port,country,berths\nPiraeus,Greece,670\nSplit,Croatia,350\n\"Valletta, Grand Harbour\",Malta,120\n",
+  "sheets/fleet.xlsx": makeXlsx({
+    Fleet: [
+      ["Yacht", "Length (m)", "Home port"],
+      ["Thalassa", 24, "Mykonos"],
+      ["Adriana", 31, "Split"],
+    ],
+    Crew: [
+      ["Name", "Role"],
+      ["Nikos", "Captain"],
+    ],
+  }),
 };
 
 /** Fills an empty directory with sample files. */

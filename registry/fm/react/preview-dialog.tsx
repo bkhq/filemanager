@@ -2,8 +2,9 @@ import type { KeyboardEvent } from "react";
 import type { FmClient } from "../client/client";
 import type { Entry } from "../core/schema";
 import type { Labels } from "./labels";
+import type { Previewer } from "./preview-registry";
 import { ChevronLeftIcon, ChevronRightIcon, DownloadIcon } from "lucide-react";
-import { createElement, useState } from "react";
+import { createElement, Suspense, useState } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,13 +19,15 @@ import { IconButton } from "./icon-button";
 import { findPreviewer } from "./preview-registry";
 
 /** Preview of `entry` with previous / next over `siblings` and a guard against losing unsaved edits. */
-export function PreviewDialog({ entry, siblings, client, labels, editable, onNavigate, onDownload, onClose }: {
+export function PreviewDialog({ entry, siblings, client, labels, editable, previewers, onNavigate, onDownload, onClose }: {
   entry: Entry;
   /** Files in display order. */
   siblings: Entry[];
   client: FmClient;
   labels: Labels;
   editable: boolean;
+  /** Plugin previewers, considered next to the registered ones. */
+  previewers?: readonly Previewer[];
   onNavigate: (entry: Entry) => void;
   /** Omit to hide the download button. */
   onDownload?: (entry: Entry) => void;
@@ -78,14 +81,16 @@ export function PreviewDialog({ entry, siblings, client, labels, editable, onNav
             )}
           </DialogHeader>
           <div className="min-h-0 flex-1">
-            {createElement(findPreviewer(entry), {
-              key: entry.path,
-              entry: shown,
-              client,
-              labels,
-              actions,
-              onDirtyChange: setDirty,
-            })}
+            <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">{labels.loading}</div>}>
+              {createElement(findPreviewer(entry, previewers), {
+                key: entry.path,
+                entry: shown,
+                client,
+                labels,
+                actions,
+                onDirtyChange: setDirty,
+              })}
+            </Suspense>
           </div>
         </DialogContent>
       </Dialog>
