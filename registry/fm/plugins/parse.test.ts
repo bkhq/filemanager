@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { makeXlsx } from "../../../apps/demo-api/src/sample-xlsx";
+import { makeXlsx } from "../../../apps/fm-api/src/sample-xlsx";
 import { columnName, parseSheet } from "./parse";
 
 const buf = (u: Uint8Array) => u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength) as ArrayBuffer;

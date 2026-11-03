@@ -1,10 +1,10 @@
-import type { OpResult, OpsRequest } from "../core/schema";
+import type { FmOpResult, FmOpsRequest } from "../core/schema";
 import { basename, dirname } from "../core/path";
 
 /** How to revert a finished batch: restore from the trash, or run inverse ops in order. */
-export type Undo = { restore: string[] } | { ops: OpsRequest[] };
+export type FmUndo = { restore: string[] } | { ops: FmOpsRequest[] };
 
-export function undoFor(req: OpsRequest, results: OpResult[]): Undo | undefined {
+export function undoFor(req: FmOpsRequest, results: FmOpResult[]): FmUndo | undefined {
   const done = results.filter(r => r.ok);
   if (req.op === "delete") {
     const ids = done.flatMap(r => r.trashId ?? []);

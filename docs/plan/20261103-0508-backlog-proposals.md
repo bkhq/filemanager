@@ -45,7 +45,7 @@ Today paste and drag only work inside one mount; `ops` takes a single `:mount`.
 
 - API: `POST /m/:mount/ops` move / copy gain `destMount?: string`. Same mount → unchanged. Different mount → the router copies content: walk the source (reuse the archive walker with `archiveMaxEntries` / `archiveMaxBytes`), `mkdir` folders, stream each file `read → write` (no buffering beyond the driver), then for `move` delete the source (to trash when enabled). Authorize `read` + `copy|move` on the source and `write` on the destination mount.
 - Partial failure: per-item results as today; a failed move leaves the source in place.
-- Optional driver fast path later: `Driver.copyFrom?(other, from, to)` for same-backend copies (S3 → S3 CopyObject across buckets).
+- Optional driver fast path later: `FmDriver.copyFrom?(other, from, to)` for same-backend copies (S3 → S3 CopyObject across buckets).
 - UI: clipboard already stores `mount`; allow paste into another mount; allow dropping onto a mount / folder in the tree.
 - Related small item: "Copy contents" context action for text files (clipboard API, size-capped), useful for config files.
 - Verify: router tests memory → local and local → memory (files, folders, conflicts, auth on both sides); e2e paste across mounts.
@@ -80,8 +80,8 @@ Hosts cannot `shadcn add @bkhq/...` until `public/r` is served.
 
 Workers compatibility is only lint-enforced.
 
-- `r2` driver over the Workers binding (list with delimiter, multipart for big writes); `apps/demo-worker` with wrangler config; run the driver contract under `wrangler dev` / miniflare in CI.
-- Verify: contract suite green on R2 (miniflare); demo-worker serves the same UI.
+- `r2` driver over the Workers binding (list with delimiter, multipart for big writes); `apps/fm-worker` with wrangler config; run the driver contract under `wrangler dev` / miniflare in CI.
+- Verify: contract suite green on R2 (miniflare); fm-worker serves the same UI.
 
 ### 6. Thumbnails and saving image edits (P2) — task `20261103-0508-thumbnails`
 
@@ -91,7 +91,7 @@ Workers compatibility is only lint-enforced.
 
 ### 7. Trash retention and bulk actions (P2) — task `20261103-0508-trash-retention`
 
-- `Mount.trash?: boolean | { retentionDays: number }`; purge expired items lazily on trash listing and via an exported `purgeExpired(mount)` for host cron.
+- `FmMount.trash?: boolean | { retentionDays: number }`; purge expired items lazily on trash listing and via an exported `purgeExpired(mount)` for host cron.
 - Trash view: multi-select, restore / delete selected, sort by deleted date, "Empty trash" (bithk parity).
 - Verify: router tests with a fixed clock; e2e bulk restore.
 
@@ -106,12 +106,12 @@ Workers compatibility is only lint-enforced.
 - Sheet plugin: virtualized rows (drop the 1 000-row cap), right-aligned numbers, optional CSV editing (write back with `If-Match`), XLSX dates as dates.
 - New optional plugins: Markdown render (with "edit source" fallback), archive listing (zip entries without extracting), Office preview via a host-provided converter URL, PDF viewer (zoom, page thumbnails; pdf.js) replacing the browser viewer.
 - "New file" templates contributed by plugins (Markdown, CSV sheet); CSV / Excel import into an editable sheet (bithk parity).
-- Verify: unit tests per parser; e2e per plugin in the demo.
+- Verify: unit tests per parser; e2e per plugin in fm-web.
 
 ### 10. UI polish (P2) — task `20261103-0508-ui-polish`
 
 - Marquee (rubber-band) selection; pinch zoom in the image preview on touch; virtualized tree for large folders; drag files out to the desktop (`DownloadURL`); paste images / files from the OS clipboard to upload; keyboard shortcuts in the image preview (+ / − / 0 / R).
-- Bundle: split the demo bundle (Vite warns at 500 kB; CodeMirror language data is the bulk) — lazy-load language data per file.
+- Bundle: split the fm-web bundle (Vite warns at 500 kB; CodeMirror language data is the bulk) — lazy-load language data per file.
 - CI: pin `runs-on` to `ubuntu-24.04` before the `ubuntu-latest` → 26 migration if it causes trouble.
 
 ### 11. bkd pilot adoption (P1, raised from P3) — task `20261103-0508-bkd-pilot`
@@ -126,7 +126,7 @@ Workers compatibility is only lint-enforced.
 
 ### 13. Change event hook (P1) — task `20261103-1530-change-events`
 
-- `createFileRouter({ onEvent?: (c, event) => void | Promise<void> })`, `event = { op: "write" | "mkdir" | "delete" | "move" | "copy" | "rename" | "restore" | "purge", mount, path, to?, ok, error? }`, fired once per item after the driver call (successes and failures). Errors thrown by the hook are logged, never fail the request.
+- `createFmRouter({ onEvent?: (c, event) => void | Promise<void> })`, `event = { op: "write" | "mkdir" | "delete" | "move" | "copy" | "rename" | "restore" | "purge", mount, path, to?, ok, error? }`, fired once per item after the driver call (successes and failures). Errors thrown by the hook are logged, never fail the request.
 - Uses: bithk audit actor (the host reads the user from `c`), bkd refreshing git status / session context, cache invalidation in hosts.
 - Verify: router tests asserting the event sequence for each op, incl. partial failures and trash moves.
 

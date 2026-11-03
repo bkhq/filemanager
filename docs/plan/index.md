@@ -34,3 +34,6 @@ Each plan is a single line linking to its detail file. All detailed information 
 - [x] [**20261102-1157-p0-foundation P0 foundation**](20261102-1157-p0-foundation.md) `2026-11-02`
 - [x] [**20261102-1908-drive-parity Drive-parity batch**](20261102-1908-drive-parity.md) `2026-11-02`
 - [ ] [**20261103-0508-backlog-proposals Open work after the Drive-parity batch**](20261103-0508-backlog-proposals.md) `2026-11-03`
+- [x] [**20261103-0846-naming-conventions Naming conventions for shipped code**](20261103-0846-naming-conventions.md) `2026-11-03`
+- [x] [**20261103-0939-no-deprecated-apis Remove deprecated API usage and lint against it**](20261103-0939-no-deprecated-apis.md) `2026-11-03`
+- [x] [**20261103-0948-rename-dev-apps Rename demo apps to fm-api / fm-web**](20261103-0948-rename-dev-apps.md) `2026-11-03`

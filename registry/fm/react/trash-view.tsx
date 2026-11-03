@@ -1,6 +1,6 @@
 import type { FmClient } from "../client/client";
-import type { OpsResult, TrashItem } from "../core/schema";
-import type { Labels } from "./labels";
+import type { FmOpsResult, FmTrashItem } from "../core/schema";
+import type { FmLabels } from "./labels";
 import { ArchiveRestoreIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import { useFmMutations, useTrash } from "../client/hooks";
@@ -15,7 +15,7 @@ export function TrashView({ mount, mountLabel, client, labels, onError, onRestor
   mount: string;
   mountLabel: string;
   client: FmClient;
-  labels: Labels;
+  labels: FmLabels;
   onError: (message: string | undefined) => void;
   onRestored: (count: number) => void;
 }) {
@@ -24,14 +24,14 @@ export function TrashView({ mount, mountLabel, client, labels, onError, onRestor
   const [confirm, setConfirm] = useState<string[]>();
   const items = trash.data ?? [];
 
-  const report = (res: OpsResult) => {
+  const report = (res: FmOpsResult) => {
     const failed = res.results.filter(r => !r.ok);
     onError(failed.length
       ? `${labels.failed(failed.length)}: ${failed[0]!.error?.message ?? ""}`
       : undefined);
     return res.results.length - failed.length;
   };
-  const onRestore = (item: TrashItem) => restore.mutate([item.id], {
+  const onRestore = (item: FmTrashItem) => restore.mutate([item.id], {
     onSuccess: res => onRestored(report(res)),
     onError: e => onError(e.message),
   });

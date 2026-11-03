@@ -1,8 +1,8 @@
 import type { KeyboardEvent } from "react";
 import type { FmClient } from "../client/client";
-import type { Entry } from "../core/schema";
-import type { Labels } from "./labels";
-import type { Previewer } from "./preview-registry";
+import type { FmEntry } from "../core/schema";
+import type { FmLabels } from "./labels";
+import type { FmPreviewer } from "./preview-registry";
 import { ChevronLeftIcon, ChevronRightIcon, DownloadIcon } from "lucide-react";
 import { createElement, Suspense, useState } from "react";
 import {
@@ -20,17 +20,17 @@ import { findPreviewer } from "./preview-registry";
 
 /** Preview of `entry` with previous / next over `siblings` and a guard against losing unsaved edits. */
 export function PreviewDialog({ entry, siblings, client, labels, editable, previewers, onNavigate, onDownload, onClose }: {
-  entry: Entry;
+  entry: FmEntry;
   /** Files in display order. */
-  siblings: Entry[];
+  siblings: FmEntry[];
   client: FmClient;
-  labels: Labels;
+  labels: FmLabels;
   editable: boolean;
   /** Plugin previewers, considered next to the registered ones. */
-  previewers?: readonly Previewer[];
-  onNavigate: (entry: Entry) => void;
+  previewers?: readonly FmPreviewer[];
+  onNavigate: (entry: FmEntry) => void;
   /** Omit to hide the download button. */
-  onDownload?: (entry: Entry) => void;
+  onDownload?: (entry: FmEntry) => void;
   onClose: () => void;
 }) {
   const [actions, setActions] = useState<HTMLElement | null>(null);
@@ -47,7 +47,7 @@ export function PreviewDialog({ entry, siblings, client, labels, editable, previ
   const next = index >= 0
     ? siblings[index + 1]
     : undefined;
-  const go = (target: Entry | undefined) => target && guard(() => onNavigate(target));
+  const go = (target: FmEntry | undefined) => target && guard(() => onNavigate(target));
 
   const onKeyDown = (e: KeyboardEvent) => {
     if ((e.target as HTMLElement).closest("input, textarea, [contenteditable]"))

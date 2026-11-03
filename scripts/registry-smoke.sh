@@ -95,9 +95,9 @@ import { Hono } from "hono";
 import { localDriver } from "@/fm/drivers/local";
 import { memoryDriver } from "@/fm/drivers/memory";
 import { s3Driver } from "@/fm/drivers/s3";
-import { createFileManager } from "@/fm/server/router";
+import { createFmRouter } from "@/fm/server/router";
 
-export const app = new Hono().route("/api/fm", createFileManager({
+export const app = new Hono().route("/api/fm", createFmRouter({
   mounts: () => [
     { id: "mem", label: "Memory", driver: memoryDriver() },
     { id: "disk", label: "Disk", driver: localDriver({ root: "/tmp" }) },

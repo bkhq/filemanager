@@ -10,7 +10,7 @@ of each app growing its own file browser.
 | --- | --- |
 | Distribution | shadcn-style copy: sources are published as a shadcn registry under the `@bkhq` namespace (hosts add `"registries": { "@bkhq": "<url>/r/{name}.json" }` to `components.json`, then `bunx shadcn add @bkhq/fm-react`) and own the copied code. No npm packages. |
 | Managed storage | Generic `managed` store with its own tables, so any app can adopt it; bithk migrates onto it later. |
-| Standalone app | Not a target. A demo app exists for development and e2e only. |
+| Standalone app | Not a target. The `fm-api` / `fm-web` apps exist for development and e2e only. |
 | Runtime | Server code runs on **Bun** and **Cloudflare Workers**. Core and router use Web-standard APIs only; runtime-specific drivers live in separate files. |
 
 ## 1. Prior art
@@ -68,8 +68,8 @@ copied files compile unchanged in the host.
 
 ```text
 registry/
-  fm/core/        zod schemas, Entry / Caps / Error types, path utils (pure TS, no IO)
-  fm/server/      Hono router factory, Driver interface, contract suite    (Web APIs only)
+  fm/core/        zod schemas, FmEntry / FmCaps / FmError types, path utils (pure TS, no IO)
+  fm/server/      Hono router factory, FmDriver interface, contract suite    (Web APIs only)
   fm/drivers/     memory.ts, local.ts (Bun: node:fs), s3.ts (fetch + SigV4, Bun + Workers), r2.ts (Workers binding)
   fm/managed/     managed driver: Drizzle schema (SQLite / D1), service, GC
   fm/client/      typed fetch client, TanStack Query hooks, upload engine
@@ -78,9 +78,9 @@ registry.json     shadcn registry manifest. Shipped: fm-core, fm-server, fm-driv
                   fm-driver-local, fm-driver-s3, fm-client, fm-react. Planned: fm-driver-r2, fm-managed.
                   Items depend on each other via `@bkhq/<item>` registryDependencies.
 apps/
-  demo-api/       Bun + Hono host consuming registry/ via path aliases (dev + e2e)
-  demo-web/       React + Vite host consuming registry/ via path aliases
-  demo-worker/    Cloudflare Workers host (wrangler) running the same router with r2 / s3
+  fm-api/         Bun + Hono host consuming registry/ via path aliases (dev + e2e)
+  fm-web/         React + Vite host consuming registry/ via path aliases
+  fm-worker/      Cloudflare Workers host (wrangler) running the same router with r2 / s3
 public/r/         `shadcn build` output served as the registry
 ```
 
@@ -96,7 +96,7 @@ Dependency direction: `core` ← `server` ← `drivers` / `managed`; `core` ← 
 - `core`, `server`, `client`, `managed` service: Web-standard APIs only
   (`Request` / `Response` / `ReadableStream` / `crypto.subtle` / `fetch`), no
   `Bun.*`, no `node:*`. Checked by a lint rule (`no-restricted-imports` /
-  globals) plus a Workers build of `demo-worker` in CI.
+  globals) plus a Workers build of `fm-worker` in CI.
 - `drivers/local.ts` is Bun-only (`node:fs`). `drivers/s3.ts` signs with
   SigV4 over `fetch` so it runs on both. `drivers/r2.ts` uses the Workers R2
   binding.
@@ -109,6 +109,22 @@ Dependency direction: `core` ← `server` ← `drivers` / `managed`; `core` ← 
   per request; the client drives multi-request work (cross-mount copy, large
   deletes) and shows progress itself.
 
+### 3.0.2 Naming
+
+Copied files share the host's namespace, so shipped names avoid generic words.
+
+| Kind | Rule | Examples |
+| --- | --- | --- |
+| Registry namespace / items | `@bkhq/fm-<area>[-<name>]` | `@bkhq/fm-react`, `@bkhq/fm-driver-s3` |
+| Exported types and interfaces under `registry/fm` | `Fm` prefix; React `*Props` exempt (lint-enforced) | `FmEntry`, `FmDriver`, `FileManagerProps` |
+| Server factory | `createFmRouter`, options `FmRouterOptions` | |
+| Client | `createFmClient`, hooks `useXxx` | `useListing`, `useFmMutations` |
+| Drivers / plugins | `<name>Driver()`, `<name>Plugin()` | `localDriver`, `sheetPlugin` |
+| React components | descriptive, no prefix | `FileManager`, `FilePicker`, `FileDrawer` |
+| Values, functions, zod schemas | camelCase / UPPER_CASE, no prefix | `entrySchema`, `READ_ONLY_CAPS` |
+| Runtime identifiers | `fm` / `fm-` / `FM_` | `.fm-trash`, `application/x-fm-paths`, `FM_ROOT` |
+| Terms | driver, mount, entry (not provider) | |
+
 ### 3.1 Addressing
 
 Every entry is addressed by `(mount, path)`. Paths are POSIX, normalised,
@@ -116,7 +132,7 @@ always relative to the mount root (`/` = root). Managed mounts additionally
 expose a stable `id` so renames don't break references.
 
 ```ts
-interface Entry {
+interface FmEntry {
   mount: string;
   path: string;              // "/docs/a.md"
   id?: string;               // stable id (managed driver only)
@@ -134,21 +150,21 @@ interface Entry {
 `etag` unifies bkd's `baseModifiedAt` and bithk's `version`: writes, renames
 and deletes accept `If-Match`, conflicts return `412 ETAG_MISMATCH`.
 
-### 3.2 Driver interface (server)
+### 3.2 `FmDriver` interface (server)
 
 ```ts
-interface Driver {
+interface FmDriver {
   readonly kind: string;                       // "local" | "s3" | "managed" | …
   readonly caps: DriverCaps;                 // static: rename, move, copy, trash, versions, search, presign, watch, multipart
-  stat(path): Promise<Entry>;
-  list(path, opts: { cursor?, limit, sort, showHidden }): Promise<{ items: Entry[]; cursor?: string }>;
-  read(path, range?): Promise<ReadResult>;     // stream + size + mime; supports Range
-  write(path, body: ReadableStream, opts: { ifMatch?, overwrite }): Promise<Entry>;
-  mkdir(path): Promise<Entry>;
-  move(from, to, opts): Promise<Entry>;        // same-mount; cross-mount is a job (copy + delete)
-  copy?(from, to, opts): Promise<Entry>;
+  stat(path): Promise<FmEntry>;
+  list(path, opts: { cursor?, limit, sort, showHidden }): Promise<{ items: FmEntry[]; cursor?: string }>;
+  read(path, range?): Promise<FmReadResult>;     // stream + size + mime; supports Range
+  write(path, body: ReadableStream, opts: { ifMatch?, overwrite }): Promise<FmEntry>;
+  mkdir(path): Promise<FmEntry>;
+  move(from, to, opts): Promise<FmEntry>;        // same-mount; cross-mount is a job (copy + delete)
+  copy?(from, to, opts): Promise<FmEntry>;
   remove(path, opts: { permanent }): Promise<void>; // trash when caps.trash
-  search?(q, opts): Promise<Entry[]>;
+  search?(q, opts): Promise<FmEntry[]>;
   presignRead?(path, opts): Promise<string>;
   upload?: UploadSessionApi;                   // multipart / resumable sessions
   trash?: TrashApi;                            // list / restore / purge
@@ -175,19 +191,19 @@ Built-in drivers:
 ### 3.3 Mounts and host hooks
 
 ```ts
-createFileManager({
+createFmRouter({
   mounts: async (ctx) => [                      // resolved per request → per-user / per-project mounts
     { id: "ws", label: "Workspace", driver: local({ root: "/work/foo" }) },
     { id: "drive", label: "My files", driver: managed({ db, owner: ctx.user.id, blobs: s3(...) }) },
   ],
-  authorize: async (ctx, action, target) => boolean | Caps, // host policy (Zanzibar, project roles…)
+  authorize: async (ctx, action, target) => boolean | FmCaps, // host policy (Zanzibar, project roles…)
   audit?: (ctx, event) => void,
   limits: { maxUploadBytes, maxEditBytes, archiveMaxBytes, archiveMaxEntries },
 });
 // → Hono sub-app, host mounts it: app.route("/api/fm", fm.routes)
 ```
 
-- Effective caps = `driver.caps ∩ authorize(...)`; returned on every `Entry`.
+- Effective caps = `driver.caps ∩ authorize(...)`; returned on every `FmEntry`.
 - Fail-closed: unknown mount or denied read → `404` (bithk ADR-003 behaviour).
 - Unknown/unsafe MIME for inline (`html`, `svg`, `js`) → served as attachment / octet-stream (bithk rule).
 
@@ -244,7 +260,7 @@ Extension points:
   Built-ins: image (thumb + full), pdf, video/audio, text/code (CodeMirror, from bkd),
   markdown, unknown → download. Hosts add e.g. Univer spreadsheet.
 - **Editor registry**: text/code editor with draft persistence and `etag` conflict handling.
-- **Actions**: `getActions(entries) => Action[]` merged into toolbar / context menu
+- **Actions**: `getActions(entries) => FmFileAction[]` merged into toolbar / context menu
   (bithk's `getCustomActions`, generalised to multi-select); host adds Share, Attach to issue…
 - **Slots**: sidebar footer (quota), header extras, empty state, row badges.
 - **i18n**: `enLabels` / `zhLabels` objects passed as the `labels` prop; no i18n library dependency.
@@ -256,15 +272,15 @@ bithk's per-consumer `capabilities` duplication.
 
 | App | Path |
 | --- | --- |
-| bkd | Replace `routes/files.ts` + `filesystem.ts` with `createFileManager` + `local` driver per project/worktree mount; swap `components/files/*` for `<FileDrawer />` + code previewer. Keep git-ignore as driver option. |
+| bkd | Replace `routes/files.ts` + `filesystem.ts` with `createFmRouter` + `local` driver per project/worktree mount; swap `components/files/*` for `<FileDrawer />` + code previewer. Keep git-ignore as driver option. |
 | bithk | Phase 1: write a `bithkDrive` driver adapter over the existing `drive_entries` / `file` service (no schema change), render with `fm/react`. Phase 2: move to `fm/managed` tables with a data migration. Share/team/project remain bithk features via hooks + actions. |
 | zzci/drive | Unchanged; stays a reference. |
 
 ## 6. Delivery phases
 
-1. **P0 foundation** — workspace + registry scaffold, `core`, `server`, drivers `memory` + `local` + `s3`, list/stat/read/write/mkdir/ops/archive, `client`, `react` list/tree/breadcrumb/preview (image, text, pdf)/single-PUT upload, `demo-api` + `demo-web`, `shadcn build` registry output.
-   Verify: driver contract suite against memory + local + s3 (MinIO); `shadcn add` from the built registry into a scratch app compiles; e2e in the demo (browse, upload, rename, move, delete).
-2. **P1 object storage + Workers** — `r2` driver, chunked + multipart upload sessions, presign, thumbnail hook, local trash, `demo-worker`.
+1. **P0 foundation** — workspace + registry scaffold, `core`, `server`, drivers `memory` + `local` + `s3`, list/stat/read/write/mkdir/ops/archive, `client`, `react` list/tree/breadcrumb/preview (image, text, pdf)/single-PUT upload, `fm-api` + `fm-web`, `shadcn build` registry output.
+   Verify: driver contract suite against memory + local + s3 (MinIO); `shadcn add` from the built registry into a scratch app compiles; e2e in `fm-web` (browse, upload, rename, move, delete).
+2. **P1 object storage + Workers** — `r2` driver, chunked + multipart upload sessions, presign, thumbnail hook, local trash, `fm-worker`.
    Verify: contract suite against MinIO container and `wrangler dev` (miniflare R2); resume-after-abort upload test.
 3. **P2 managed** — `fm/managed` (dedupe, versions, trash, favorites, search) on SQLite / D1.
    Verify: contract suite + managed-specific tests on both `bun:sqlite` and D1 (miniflare).

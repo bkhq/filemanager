@@ -27,7 +27,7 @@ bunx shadcn add @bkhq/fm-react                        # UI + client
 | Item | Contents |
 | --- | --- |
 | `fm-core` | zod schemas, errors, path helpers |
-| `fm-server` | Hono router (`createFileManager`), `Driver` interface, zip streaming |
+| `fm-server` | Hono router (`createFmRouter`), `FmDriver` interface, zip streaming |
 | `fm-driver-memory` / `-local` / `-s3` | storage drivers (`local` is Bun-only) |
 | `fm-driver-contract` | `bun:test` suite a new driver must pass |
 | `fm-client` | typed fetch client, TanStack Query hooks, upload queue |
@@ -39,9 +39,9 @@ Files land under `src/fm/`. Mount the router in the host API:
 ```ts
 import { READ_ONLY_CAPS } from "@/fm/core/schema";
 import { localDriver } from "@/fm/drivers/local";
-import { createFileManager } from "@/fm/server/router";
+import { createFmRouter } from "@/fm/server/router";
 
-app.route("/api/fm", createFileManager({
+app.route("/api/fm", createFmRouter({
   // Resolved per request: scope mounts to the current user / project here.
   mounts: () => [{ id: "files", label: "Files", driver: localDriver({ root: "/data/files" }) }],
   // Optional host policy for a path and everything below it; no `read` answers 404.
@@ -109,7 +109,7 @@ client, current mount / path, `refresh`, `preview` and `fail`.
 
 ### Writing a driver
 
-Implement `Driver` from `src/fm/server/driver.ts` and run the contract suite:
+Implement `FmDriver` from `src/fm/server/driver.ts` and run the contract suite:
 
 ```ts
 import { runDriverContract } from "@/fm/server/contract";
@@ -122,7 +122,7 @@ runDriverContract("my-driver", async () => ({ driver: myDriver(), cleanup: async
 ```bash
 bun install
 bun run check            # lint + typecheck + tests + registry build + app builds
-bun run test:e2e         # Playwright against the demo (builds demo-web, serves it from demo-api)
+bun run test:e2e         # Playwright against the built app (builds fm-web, serves it from fm-api)
 bun run registry:smoke   # shadcn add every item into a scratch app, typecheck + build (needs network)
 FM_TEST_S3_ENDPOINT=http://localhost:9000 bun test registry   # include the S3 driver contract
 ```
@@ -133,13 +133,13 @@ Repository map for maintainers:
 | --- | --- |
 | `registry/fm/*` | everything shipped to hosts; `core` / `server` / `client` / `drivers` (except `local`) must stay Web-API only (lint-enforced) so they run on Bun and Workers |
 | `registry.json` | registry items; add every new shipped file here or `shadcn add` will miss it (`registry:smoke` catches this) |
-| `apps/demo-api`, `apps/demo-web` | demo host; `seed.ts` fills `.tmp/demo-root` once when empty |
-| `tests/e2e` | Playwright flows against the built demo |
+| `apps/fm-api`, `apps/fm-web` | dev / e2e host; `seed.ts` fills `.tmp/fm-root` once when empty |
+| `tests/e2e` | Playwright flows against the built app |
 | `docs/architecture.md` | design and API surface; `docs/changelog.md` records decisions and pitfalls |
 
-Demo (two processes, routed by nsl at `fm.localhost:3355`):
+Dev apps (two processes, routed by nsl at `fm.localhost:3355`):
 
 ```bash
-cd apps/demo-api && bun run dev
-cd apps/demo-web && bun run dev
+cd apps/fm-api && bun run dev
+cd apps/fm-web && bun run dev
 ```

@@ -1,12 +1,12 @@
 import type { ChangeEvent, DragEvent, KeyboardEvent, ReactNode } from "react";
 import type { FmClient } from "../client/client";
-import type { UploadFile } from "../client/upload";
-import type { Entry, OpsRequest, SortKey } from "../core/schema";
-import type { Features } from "./features";
-import type { Labels } from "./labels";
-import type { ActionContext, FileAction, FmPlugin } from "./plugins";
-import type { Clipboard, Selection, SelectMode } from "./state";
-import type { Undo } from "./undo";
+import type { FmUploadFile } from "../client/upload";
+import type { FmEntry, FmOpsRequest, FmSortKey } from "../core/schema";
+import type { FmFeatures } from "./features";
+import type { FmLabels } from "./labels";
+import type { FmActionContext, FmFileAction, FmPlugin } from "./plugins";
+import type { FmClipboard, FmSelection, FmSelectMode } from "./state";
+import type { FmUndo } from "./undo";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "cn";
 import {
@@ -77,17 +77,17 @@ import { TrashView } from "./trash-view";
 import { undoFor } from "./undo";
 import { UploadPanel } from "./upload-panel";
 
-export type { ActionContext, FileAction, FmPlugin } from "./plugins";
+export type { FmActionContext, FmFileAction, FmPlugin } from "./plugins";
 
 export interface FileManagerProps {
   /** Router base URL (e.g. `/api/fm`); ignored when `client` is given. */
   baseUrl?: string;
   client?: FmClient;
-  labels?: Labels;
+  labels?: FmLabels;
   initialMount?: string;
   initialPath?: string;
   /** Extra actions for the entry context menu (share, attach …). */
-  actions?: FileAction[];
+  actions?: FmFileAction[];
   /** Optional extensions: previewers for more file types and their actions. */
   plugins?: FmPlugin[];
   className?: string;
@@ -101,20 +101,20 @@ export interface FileManagerProps {
   /** View-only preset: browse, preview, search and download. */
   readOnly?: boolean;
   /** Per-feature switches applied on top of `readOnly`, e.g. `{ delete: false }`. */
-  features?: Partial<Features>;
+  features?: Partial<FmFeatures>;
 }
 
 type DialogState
   = | { kind: "mkdir" }
-    | { kind: "rename"; entry: Entry }
+    | { kind: "rename"; entry: FmEntry }
     | { kind: "delete"; paths: string[] }
     | { kind: "newFile" }
     | { kind: "emptyTrash" }
-    | { kind: "uploadConflict"; files: UploadFile[]; clashes: Set<string> }
+    | { kind: "uploadConflict"; files: FmUploadFile[]; clashes: Set<string> }
     | undefined;
 
 /** First path segment of an upload below the target folder. */
-const topName = (f: UploadFile) => (f.relativePath || f.file.name).replace(/^\/+/, "").split("/")[0]!;
+const topName = (f: FmUploadFile) => (f.relativePath || f.file.name).replace(/^\/+/, "").split("/")[0]!;
 
 function triggerDownload(url: string) {
   const a = document.createElement("a");
@@ -174,10 +174,10 @@ export function FileManager(props: FileManagerProps) {
   const [rootRef, width] = useWidth();
   const narrow = width > 0 && width < NARROW;
   const split = layout === "split" && !narrow;
-  const [sort, setSort] = useState<{ key: SortKey; order: "asc" | "desc" }>({ key: "name", order: "asc" });
-  const [rawSelection, setRawSelection] = useState<Selection>(EMPTY_SELECTION);
-  const [clipboard, setClipboard] = useState<Clipboard>();
-  const [preview, setPreview] = useState<Entry>();
+  const [sort, setSort] = useState<{ key: FmSortKey; order: "asc" | "desc" }>({ key: "name", order: "asc" });
+  const [rawSelection, setRawSelection] = useState<FmSelection>(EMPTY_SELECTION);
+  const [clipboard, setClipboard] = useState<FmClipboard>();
+  const [preview, setPreview] = useState<FmEntry>();
   const [dialog, setDialog] = useState<DialogState>();
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<{ message: string; undo?: () => void }>();
@@ -193,7 +193,7 @@ export function FileManager(props: FileManagerProps) {
   const order = useMemo(() => entries.map(e => e.path), [entries]);
   const selection = useMemo(() => prune(rawSelection, order), [rawSelection, order]);
   const byPath = useMemo(() => new Map(entries.map(e => [e.path, e])), [entries]);
-  const selected = useMemo(() => [...selection.paths].map(p => byPath.get(p)).filter((e): e is Entry => !!e), [selection, byPath]);
+  const selected = useMemo(() => [...selection.paths].map(p => byPath.get(p)).filter((e): e is FmEntry => !!e), [selection, byPath]);
   const mutations = useFmMutations(client, mount ?? "");
   const canWrite = !!dir?.caps.write;
   const canUpload = canWrite && features.upload;
@@ -233,7 +233,7 @@ export function FileManager(props: FileManagerProps) {
       : undefined;
   };
 
-  const runUndo = async (m: string, undo: Undo) => {
+  const runUndo = async (m: string, undo: FmUndo) => {
     setNotice(undefined);
     try {
       const results = "restore" in undo
@@ -255,7 +255,7 @@ export function FileManager(props: FileManagerProps) {
     });
   };
 
-  const doneMessage = (req: OpsRequest, n: number) => {
+  const doneMessage = (req: FmOpsRequest, n: number) => {
     switch (req.op) {
       case "delete": return labels.movedToTrash(n);
       case "rename": return labels.renamed;
@@ -264,7 +264,7 @@ export function FileManager(props: FileManagerProps) {
     }
   };
 
-  const runOps = (req: OpsRequest, after?: () => void) => {
+  const runOps = (req: FmOpsRequest, after?: () => void) => {
     const m = mount;
     mutations.ops.mutate(req, {
       onSuccess: (res) => {
@@ -290,11 +290,11 @@ export function FileManager(props: FileManagerProps) {
       setDialog({ kind: "delete", paths });
   };
 
-  const open = (e: Entry) => (e.kind === "dir"
+  const open = (e: FmEntry) => (e.kind === "dir"
     ? navigate(e.mount, e.path)
     : setPreview(e));
 
-  const download = (targets: Entry[]) => {
+  const download = (targets: FmEntry[]) => {
     if (!mount || targets.length === 0)
       return;
     const only = targets[0]!;
@@ -303,7 +303,7 @@ export function FileManager(props: FileManagerProps) {
       : client.archiveUrl(mount, targets.map(t => t.path)));
   };
 
-  const copyToClipboard = (mode: Clipboard["mode"], targets: Entry[]) => {
+  const copyToClipboard = (mode: FmClipboard["mode"], targets: FmEntry[]) => {
     if (mount && targets.length) {
       setClipboard({
         mode,
@@ -330,7 +330,7 @@ export function FileManager(props: FileManagerProps) {
     });
   };
 
-  const upload = async (files: UploadFile[]) => {
+  const upload = async (files: FmUploadFile[]) => {
     if (!mount || files.length === 0)
       return;
     const names = [
@@ -353,7 +353,7 @@ export function FileManager(props: FileManagerProps) {
     e.target.value = "";
   };
 
-  const onSelect = (p: string, mode: SelectMode) => setRawSelection(s => select(s, p, mode, order));
+  const onSelect = (p: string, mode: FmSelectMode) => setRawSelection(s => select(s, p, mode, order));
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (inTrash || dialog || preview || (e.target as HTMLElement).closest("input, textarea, [contenteditable]"))
@@ -445,10 +445,10 @@ export function FileManager(props: FileManagerProps) {
           </ContextMenuItem>
         );
 
-  const runAction = (action: FileAction, targets: Entry[]) => {
+  const runAction = (action: FmFileAction, targets: FmEntry[]) => {
     if (!mount)
       return;
-    const ctx: ActionContext = {
+    const ctx: FmActionContext = {
       client,
       mount,
       path,
@@ -465,7 +465,7 @@ export function FileManager(props: FileManagerProps) {
       : String(e)));
   };
 
-  const entryMenu = (targets: Entry[]) => {
+  const entryMenu = (targets: FmEntry[]) => {
     const one = targets.length === 1
       ? targets[0]
       : undefined;
@@ -685,7 +685,7 @@ export function FileManager(props: FileManagerProps) {
                         ? <DropdownMenuTrigger render={<IconButton label={labels.sortBy} />}><ArrowUpDownIcon /></DropdownMenuTrigger>
                         : <DropdownMenuTrigger render={<Button size="sm" variant="ghost" />}>{labels.sortBy}</DropdownMenuTrigger>}
                       <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuRadioGroup value={sort.key} onValueChange={v => setSort(s => ({ ...s, key: v as SortKey }))}>
+                        <DropdownMenuRadioGroup value={sort.key} onValueChange={v => setSort(s => ({ ...s, key: v as FmSortKey }))}>
                           <DropdownMenuRadioItem value="name">{labels.name}</DropdownMenuRadioItem>
                           <DropdownMenuRadioItem value="mtime">{labels.modified}</DropdownMenuRadioItem>
                           <DropdownMenuRadioItem value="size">{labels.size}</DropdownMenuRadioItem>
@@ -860,7 +860,7 @@ export function FileManager(props: FileManagerProps) {
           onNavigate={setPreview}
           {...(features.download
             ? {
-                onDownload: (e: Entry) => download([e]),
+                onDownload: (e: FmEntry) => download([e]),
               }
             : {})}
           onClose={() => setPreview(undefined)}
@@ -946,7 +946,7 @@ export function FileManager(props: FileManagerProps) {
           onChoose={(choice) => {
             const { files, clashes } = dialog;
             setDialog(undefined);
-            const clash = (f: UploadFile) => clashes.has(topName(f)) && !(f.relativePath ?? "").includes("/");
+            const clash = (f: FmUploadFile) => clashes.has(topName(f)) && !(f.relativePath ?? "").includes("/");
             queue.getState().enqueue(mount, path, choice === "skip"
               ? files.filter(f => !clash(f))
               : files.map(f => (clash(f)

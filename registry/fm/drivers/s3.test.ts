@@ -1,4 +1,4 @@
-import type { S3DriverOptions } from "./s3";
+import type { FmS3DriverOptions } from "./s3";
 import { beforeAll, describe, expect, it } from "bun:test";
 import { AwsClient } from "aws4fetch";
 import { runDriverContract } from "../server/contract";
@@ -31,7 +31,7 @@ if (!endpoint) {
   it.skip("s3 driver contract (set FM_TEST_S3_ENDPOINT to run)", () => {});
 }
 else {
-  const base: S3DriverOptions = {
+  const base: FmS3DriverOptions = {
     endpoint,
     bucket: process.env.FM_TEST_S3_BUCKET ?? "fm-test",
     accessKeyId: process.env.FM_TEST_S3_ACCESS_KEY_ID ?? "fmtest",

@@ -1,14 +1,14 @@
-import type { Caps } from "../core/schema";
-import type { Driver } from "./driver";
-import type { Mount } from "./router";
+import type { FmCaps } from "../core/schema";
+import type { FmDriver } from "./driver";
+import type { FmMount } from "./router";
 import { describe, expect, it } from "bun:test";
 import { unzipSync } from "fflate";
 import { Hono } from "hono";
 import { READ_ONLY_CAPS } from "../core/schema";
 import { memoryDriver } from "../drivers/memory";
-import { createFileManager } from "./router";
+import { createFmRouter } from "./router";
 
-const NONE: Caps = {
+const NONE: FmCaps = {
   read: false,
   write: false,
   delete: false,
@@ -17,13 +17,13 @@ const NONE: Caps = {
   copy: false,
 };
 
-function setup(opts: { files?: Record<string, string>; mounts?: Mount[]; authorize?: (path: string) => Caps; maxUploadBytes?: number } = {}) {
+function setup(opts: { files?: Record<string, string>; mounts?: FmMount[]; authorize?: (path: string) => FmCaps; maxUploadBytes?: number } = {}) {
   const driver = memoryDriver({ files: opts.files ?? {} });
   const mounts = opts.mounts ?? [
     { id: "m", label: "Main", driver },
   ];
   const app = new Hono();
-  app.route("/fm", createFileManager({
+  app.route("/fm", createFmRouter({
     mounts: () => mounts,
     ...(opts.authorize
       ? {
@@ -93,7 +93,7 @@ describe("mounts and access", () => {
   });
 
   it("lets non-file-manager errors reach the host", async () => {
-    const broken: Driver = {
+    const broken: FmDriver = {
       ...memoryDriver(),
       stat: async () => {
         throw new Error("boom");
@@ -367,7 +367,7 @@ describe("usage", () => {
 });
 
 describe("trash", () => {
-  function trashSetup(authorize?: (path: string) => Caps) {
+  function trashSetup(authorize?: (path: string) => FmCaps) {
     const driver = memoryDriver({
       files: { "/a.txt": "a", "/d/b.txt": "b", "/locked/c.txt": "c" },
     });

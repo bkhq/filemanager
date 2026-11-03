@@ -63,3 +63,23 @@ Gap review against bithk and bkd added to the backlog proposals (plan 20261103-0
 ## 2026-11-03 16:00 [decision]
 
 Registry namespace renamed from `@fm` to `@bkhq` (hosts add `"registries": { "@bkhq": "<url>/r/{name}.json" }` and install `@bkhq/fm-react` etc.); item names keep the `fm-` prefix so they stay unique inside the `@bkhq` namespace. Workspace packages use the `@bkhq/` scope (`@bkhq/filemanager`, `@bkhq/demo-api`, `@bkhq/demo-web`). Registry `homepage` points to `github.com/bkhq/filemanager`. Runtime identifiers (`.fm-trash`, `application/x-fm-paths`, query / storage key `fm`, `FM_*` env vars) and the `src/fm/` install path are unchanged. Earlier entries and completed plans still say `@fm`.
+
+## 2026-11-03 17:00 [decision]
+
+Plan 20261103-0846-naming-conventions approved and delivered. Exported types under `registry/fm` carry the `Fm` prefix (React `*Props` exempt), enforced by `ts/naming-convention`; `createFileManager` / `FileManagerOptions` renamed to `createFmRouter` / `FmRouterOptions`. Full rule table in `docs/architecture.md` §3.0.2. Renames were applied with the TypeScript language service, so comments and strings were untouched; open docs use the new names, completed plans keep the old ones. Verified: `bun run check` (82 tests), 19 Playwright e2e, registry smoke.
+
+## 2026-11-03 17:00 [decision]
+
+Tracking: recursive-search raised to P1 (it blocks quick-open); publish-registry is blocked by naming-conventions; bkd-pilot is blocked by publish-registry, pick-mode, quick-open and change-events. Correction to the 2026-11-02 entry: `github.com/bkhq/filemanager` is public, not private.
+
+## 2026-11-03 17:00 [pitfall]
+
+Shells started by bkd put bkd's bundled bun 1.4.0 first on `PATH`; with it the local driver byte-range contract test fails and `bun install` strips `libc` fields from `bun.lock`. Use the version in `.bun-version` (1.4.4). Playwright browsers for 1.64.1 may be missing locally; `mcr.microsoft.com/playwright:v1.64.1-noble` with bun mounted runs `bun run test:e2e`.
+
+## 2026-11-03 17:45 [decision]
+
+Plan 20261103-0939-no-deprecated-apis delivered: no deprecated APIs remain (TypeScript 6385 / 6387 scan over all tsconfigs, tests and config files). `serveStatic` now comes from `@hono/bun` 1.0.1 (`hono/bun` is removed in Hono v5); the name dialog uses `SubmitEvent<HTMLFormElement>` instead of `FormEvent`, so hosts need `@types/react` >= 19.2.10. `ts/no-deprecated` runs with type information on registry, app sources and scripts (lint ~5 s -> ~11 s). Verified: `bun run check` (82 tests), 19 Playwright e2e, registry smoke.
+
+## 2026-11-03 18:00 [decision]
+
+Plan 20261103-0948-rename-dev-apps delivered: the workspace apps are `apps/fm-api` / `apps/fm-web` (`@bkhq/fm-api` / `@bkhq/fm-web`), the planned Workers app is `apps/fm-worker`, env vars are `FM_ROOT`, `FM_STATIC`, `FM_S3_*` (were `FM_DEMO_*`; rename keys in any local `.env`), the local data dir is `.tmp/fm-root`, and the page title is "File manager". Completed plans, old changelog entries and decision 001 keep the old names. Verified: `bun run check` (82 tests), 19 Playwright e2e, registry smoke, dev servers via nsl.

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { FmClient } from "../client/client";
-import type { MountInfo } from "../core/schema";
+import type { FmMountInfo } from "../core/schema";
 import { cn } from "cn";
 import { ChevronRightIcon, FolderIcon, HardDriveIcon, LockIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
@@ -85,7 +85,7 @@ function Node({ t, mount, path, depth }: { t: TreeProps; mount: string; path: st
   );
 }
 
-function MountNode({ t, info, readOnlyLabel, trashLabel }: { t: TreeProps; info: MountInfo; readOnlyLabel: string; trashLabel: string }) {
+function MountNode({ t, info, readOnlyLabel, trashLabel }: { t: TreeProps; info: FmMountInfo; readOnlyLabel: string; trashLabel: string }) {
   const [open, setOpen] = useState(t.mount === info.id);
   const readOnly = !info.caps.write;
   return (
@@ -123,7 +123,7 @@ function MountNode({ t, info, readOnlyLabel, trashLabel }: { t: TreeProps; info:
 }
 
 /** Sidebar tree: mounts at the top level, folders loaded lazily on expand. */
-export function FileTree(props: TreeProps & { mounts: MountInfo[]; readOnlyLabel: string; trashLabel: string }) {
+export function FileTree(props: TreeProps & { mounts: FmMountInfo[]; readOnlyLabel: string; trashLabel: string }) {
   return (
     <div role="tree" className="flex flex-col gap-px p-2">
       {props.mounts.map(m => <MountNode key={m.id} t={props} info={m} readOnlyLabel={props.readOnlyLabel} trashLabel={props.trashLabel} />)}

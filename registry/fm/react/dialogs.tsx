@@ -1,5 +1,5 @@
-import type { FormEvent } from "react";
-import type { Labels } from "./labels";
+import type { SubmitEvent } from "react";
+import type { FmLabels } from "./labels";
 import { useState } from "react";
 import {
   AlertDialog,
@@ -19,13 +19,13 @@ export function NameDialog({ title, initial, submitLabel, labels, onSubmit, onCl
   title: string;
   initial: string;
   submitLabel: string;
-  labels: Labels;
+  labels: FmLabels;
   onSubmit: (name: string) => void;
   onClose: () => void;
 }) {
   const [name, setName] = useState(initial);
   const valid = name.trim() !== "" && !/[/\\]/.test(name) && name !== "." && name !== "..";
-  const submit = (e: FormEvent) => {
+  const submit = (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (valid)
       onSubmit(name.trim());
@@ -62,7 +62,7 @@ export function NameDialog({ title, initial, submitLabel, labels, onSubmit, onCl
 export function ConfirmDeleteDialog({ count, title, labels, onConfirm, onClose }: {
   count: number;
   title?: string;
-  labels: Labels;
+  labels: FmLabels;
   onConfirm: () => void;
   onClose: () => void;
 }) {
@@ -82,13 +82,13 @@ export function ConfirmDeleteDialog({ count, title, labels, onConfirm, onClose }
   );
 }
 
-export type UploadChoice = "overwrite" | "rename" | "skip";
+export type FmUploadChoice = "overwrite" | "rename" | "skip";
 
 /** Asked once per batch when uploads clash with existing names. */
 export function UploadConflictDialog({ count, labels, onChoose, onClose }: {
   count: number;
-  labels: Labels;
-  onChoose: (choice: UploadChoice) => void;
+  labels: FmLabels;
+  onChoose: (choice: FmUploadChoice) => void;
   onClose: () => void;
 }) {
   return (

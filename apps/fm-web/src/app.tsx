@@ -16,7 +16,7 @@ export function App() {
   return (
     <main className="flex h-svh flex-col gap-3 p-4">
       <header className="flex items-center gap-4">
-        <h1 className="text-lg font-medium">File manager demo</h1>
+        <h1 className="text-lg font-medium">File manager</h1>
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
           <input type="checkbox" checked={readOnly} onChange={e => setReadOnly(e.target.checked)} />
           View only

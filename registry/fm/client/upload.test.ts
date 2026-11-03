@@ -1,10 +1,10 @@
-import type { Transport, UploadTask } from "./upload";
+import type { FmTransport, FmUploadTask } from "./upload";
 import { describe, expect, it } from "bun:test";
 import { createUploadQueue } from "./upload";
 
 function deferredTransport() {
   const pending = new Map<string, { resolve: () => void; reject: (e: Error) => void; progress: (n: number) => void }>();
-  const transport: Transport = (task, _file, onProgress, signal) => new Promise((resolve, reject) => {
+  const transport: FmTransport = (task, _file, onProgress, signal) => new Promise((resolve, reject) => {
     pending.set(task.id, { resolve, reject, progress: onProgress });
     signal.addEventListener("abort", () => reject(new Error("aborted")));
   });
@@ -21,7 +21,7 @@ const flush = () => new Promise(r => setTimeout(r, 0));
 describe("upload queue", () => {
   it("runs with bounded concurrency and builds target paths", async () => {
     const { transport, pending } = deferredTransport();
-    const uploaded: UploadTask[] = [];
+    const uploaded: FmUploadTask[] = [];
     const q = createUploadQueue({
       transport,
       concurrency: 2,

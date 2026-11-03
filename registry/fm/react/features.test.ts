@@ -1,8 +1,8 @@
-import type { Entry } from "../core/schema";
+import type { FmEntry } from "../core/schema";
 import { describe, expect, it } from "bun:test";
 import { ALL_FEATURES, maskEntry, resolveFeatures, VIEW_ONLY_FEATURES } from "./features";
 
-const entry: Entry = {
+const entry: FmEntry = {
   mount: "m",
   path: "/a.txt",
   name: "a.txt",

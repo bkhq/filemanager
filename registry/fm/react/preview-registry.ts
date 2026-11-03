@@ -1,18 +1,18 @@
 import type { ComponentType } from "react";
-import type { Entry } from "../core/schema";
+import type { FmEntry } from "../core/schema";
 import type { PreviewProps } from "./previewers";
 import { FallbackPreview, ImagePreview, LazyTextPreview, MediaPreview, PdfPreview } from "./previewers";
 import { kindOf } from "./state";
 
-export interface Previewer {
+export interface FmPreviewer {
   id: string;
-  match: (entry: Entry) => boolean;
+  match: (entry: FmEntry) => boolean;
   component: ComponentType<PreviewProps>;
   /** Higher wins; built-ins use 0. */
   priority?: number;
 }
 
-const previewers: Previewer[] = [
+const previewers: FmPreviewer[] = [
   {
     id: "image",
     match: e => kindOf(e) === "image",
@@ -36,7 +36,7 @@ const previewers: Previewer[] = [
 ];
 
 /** Adds or replaces (by id) a previewer, e.g. a spreadsheet viewer. */
-export function registerPreviewer(p: Previewer): void {
+export function registerPreviewer(p: FmPreviewer): void {
   const i = previewers.findIndex(x => x.id === p.id);
   if (i >= 0)
     previewers.splice(i, 1);
@@ -44,7 +44,7 @@ export function registerPreviewer(p: Previewer): void {
 }
 
 /** Best previewer for `entry`; `extra` (from plugins) competes with the registered ones. */
-export function findPreviewer(entry: Entry, extra: readonly Previewer[] = []): ComponentType<PreviewProps> {
+export function findPreviewer(entry: FmEntry, extra: readonly FmPreviewer[] = []): ComponentType<PreviewProps> {
   const match = [
     ...previewers,
     ...extra,

@@ -10,7 +10,7 @@ function sheetXml(rows: (string | number)[][]): string {
   return `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`;
 }
 
-/** Minimal XLSX (inline strings, no styles) for demo data and tests. */
+/** Minimal XLSX (inline strings, no styles) for seed data and tests. */
 export function makeXlsx(sheets: Record<string, (string | number)[][]>): Uint8Array {
   const names = Object.keys(sheets);
   const files: Record<string, Uint8Array> = {

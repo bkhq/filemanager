@@ -1,7 +1,7 @@
 import Papa from "papaparse";
 import readXlsxFile from "read-excel-file/browser";
 
-export interface SheetTable {
+export interface FmSheetTable {
   name: string;
   rows: string[][];
 }
@@ -15,7 +15,7 @@ function cell(value: unknown): string {
 }
 
 /** Parses a CSV / TSV / XLSX file into string tables (one per sheet). */
-export async function parseSheet(name: string, bytes: ArrayBuffer): Promise<SheetTable[]> {
+export async function parseSheet(name: string, bytes: ArrayBuffer): Promise<FmSheetTable[]> {
   if (/\.xlsx$/i.test(name)) {
     const sheets = await readXlsxFile(bytes);
     return sheets.map(s => ({

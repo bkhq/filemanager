@@ -17,8 +17,8 @@ Publishing the registry
 
 ## Dependencies
 
-- **blocked by**: (none)
-- **blocks**: (none)
+- **blocked by**: 20261103-0846-naming-conventions
+- **blocks**: 20261103-0508-bkd-pilot
 
 ## Notes
 

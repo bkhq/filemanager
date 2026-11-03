@@ -1,7 +1,7 @@
 import type { Context, Env } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import type { Action, Caps, Conflict, Entry, MountInfo, OpResult, TrashItem, Usage } from "../core/schema";
-import type { Driver, DriverEntry } from "./driver";
+import type { FmAction, FmCaps, FmConflict, FmEntry, FmMountInfo, FmOpResult, FmTrashItem, FmUsage } from "../core/schema";
+import type { FmDriver, FmDriverEntry } from "./driver";
 import { Hono } from "hono";
 import { describeRoute, resolver, validator } from "hono-openapi";
 import { z } from "zod";
@@ -27,10 +27,10 @@ import { zipStream } from "./archive";
 import { inlineType, mimeOf } from "./mime";
 import { dropTrashItem, getTrashItem, listTrash, moveToTrash, TRASH_DIR, trashedPath } from "./trash";
 
-export interface Mount {
+export interface FmMount {
   id: string;
   label: string;
-  driver: Driver;
+  driver: FmDriver;
   readOnly?: boolean;
   /**
    * Deletes move into a hidden `/.fm-trash` folder on the same driver. On a
@@ -39,7 +39,7 @@ export interface Mount {
   trash?: boolean;
 }
 
-export interface Limits {
+export interface FmLimits {
   /** Max bytes per write / upload. */
   maxUploadBytes: number;
   /** Max entries a directory listing may hold. */
@@ -48,30 +48,30 @@ export interface Limits {
   archiveMaxBytes: number;
 }
 
-export const DEFAULT_LIMITS: Limits = {
+export const DEFAULT_LIMITS: FmLimits = {
   maxUploadBytes: 100 * 1024 * 1024,
   maxListEntries: 10_000,
   archiveMaxEntries: 5000,
   archiveMaxBytes: 2 * 1024 * 1024 * 1024,
 };
 
-export interface FileManagerOptions<E extends Env> {
+export interface FmRouterOptions<E extends Env> {
   /** Mounts visible to the current request (resolve per user / project here). */
-  mounts: (c: Context<E>) => Mount[] | Promise<Mount[]>;
+  mounts: (c: Context<E>) => FmMount[] | Promise<FmMount[]>;
   /**
    * Allowed actions for `path` and everything below it. Listings apply a
    * directory's caps to its children. Missing `read` answers 404.
    */
-  authorize?: (c: Context<E>, target: { mount: Mount; path: string }) => Caps | Promise<Caps>;
-  limits?: Partial<Limits>;
+  authorize?: (c: Context<E>, target: { mount: FmMount; path: string }) => FmCaps | Promise<FmCaps>;
+  limits?: Partial<FmLimits>;
 }
 
-type ItemOutcome = Pick<OpResult, "entry" | "trashId">;
+type ItemOutcome = Pick<FmOpResult, "entry" | "trashId">;
 
 interface Target {
-  mount: Mount;
+  mount: FmMount;
   path: string;
-  caps: Caps;
+  caps: FmCaps;
 }
 
 const TAG = "Files";
@@ -150,30 +150,30 @@ function contentDisposition(type: "inline" | "attachment", name: string) {
 }
 
 /** Builds the file manager API. Mount it with `app.route("/api/fm", createFileManager(...))`. */
-export function createFileManager<E extends Env = Env>(options: FileManagerOptions<E>): Hono<E> {
-  const limits: Limits = {
+export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>): Hono<E> {
+  const limits: FmLimits = {
     ...DEFAULT_LIMITS,
     ...options.limits,
   };
   const app = new Hono<E>();
 
-  const mountCaps = (m: Mount) => intersectCaps(m.driver.caps, m.readOnly ? READ_ONLY_CAPS : ALL_CAPS);
+  const mountCaps = (m: FmMount) => intersectCaps(m.driver.caps, m.readOnly ? READ_ONLY_CAPS : ALL_CAPS);
 
   // Route handlers see a narrowed env type; the host hooks get the declared one.
   const host = (c: unknown) => c as Context<E>;
 
-  const hasTrash = (m: Mount) => !!m.trash && mountCaps(m).delete;
+  const hasTrash = (m: FmMount) => !!m.trash && mountCaps(m).delete;
   /** Paths inside the trash folder are never exposed by regular routes (also on read-only views of the same storage). */
-  const hidden = (m: Mount, path: string) => !!m.trash && isWithin(path, TRASH_DIR);
+  const hidden = (m: FmMount, path: string) => !!m.trash && isWithin(path, TRASH_DIR);
 
-  const findMount = async (c: unknown, mountId: string): Promise<Mount> => {
+  const findMount = async (c: unknown, mountId: string): Promise<FmMount> => {
     const mount = (await options.mounts(host(c))).find(m => m.id === mountId);
     if (!mount)
       throw new FmError("NOT_FOUND", "Mount not found");
     return mount;
   };
 
-  const resolve = async (c: unknown, mountId: string, rawPath: string, action?: Action): Promise<Target> => {
+  const resolve = async (c: unknown, mountId: string, rawPath: string, action?: FmAction): Promise<Target> => {
     const mount = await findMount(c, mountId);
     const path = normalizePath(rawPath);
     if (hidden(mount, path))
@@ -189,7 +189,7 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
     return { mount, path, caps };
   };
 
-  const toEntry = (t: Target, e: DriverEntry): Entry => {
+  const toEntry = (t: Target, e: FmDriverEntry): FmEntry => {
     const mime = e.kind === "file"
       ? (e.mime ?? mimeOf(e.name))
       : undefined;
@@ -209,7 +209,7 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
   };
 
   /** Runs one item of a batch; file-manager errors become a failed result, others reach the host. */
-  const settle = async (results: OpResult[], path: string, fn: () => Promise<ItemOutcome>) => {
+  const settle = async (results: FmOpResult[], path: string, fn: () => Promise<ItemOutcome>) => {
     try {
       results.push({
         path,
@@ -228,10 +228,10 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
     }
   };
 
-  const exists = (d: Driver, path: string) => d.stat(path).then(() => true, () => false);
+  const exists = (d: FmDriver, path: string) => d.stat(path).then(() => true, () => false);
 
   /** Destination path for `name` in `dir` according to the conflict mode. */
-  const destination = async (d: Driver, dir: string, name: string, conflict: Conflict): Promise<string> => {
+  const destination = async (d: FmDriver, dir: string, name: string, conflict: FmConflict): Promise<string> => {
     const target = joinPath(dir, name);
     if (conflict !== "rename" || !await exists(d, target))
       return target;
@@ -262,7 +262,7 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
       }), "Mounts"),
     },
   }), async (c) => {
-    const out: MountInfo[] = [];
+    const out: FmMountInfo[] = [];
     for (const mount of await options.mounts(host(c))) {
       const granted = options.authorize
         ? await options.authorize(host(c), { mount, path: "/" })
@@ -459,7 +459,7 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
   }), v("json", opsRequestSchema), async (c) => {
     const req = c.req.valid("json");
     const mountId = c.req.param("mount");
-    const results: OpResult[] = [];
+    const results: FmOpResult[] = [];
     const run = (path: string, fn: () => Promise<ItemOutcome>) => settle(results, path, fn);
 
     if (req.op === "delete") {
@@ -569,7 +569,7 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
   }), v("query", pathQuery), async (c) => {
     const t = await resolve(c, c.req.param("mount"), c.req.valid("query").path);
     const d = t.mount.driver;
-    const usage: Usage = {
+    const usage: FmUsage = {
       bytes: 0,
       files: 0,
       dirs: 0,
@@ -621,7 +621,7 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
     },
   }), async (c) => {
     const mount = await trashMount(c, c.req.param("mount"));
-    const items: TrashItem[] = [];
+    const items: FmTrashItem[] = [];
     for (const item of await listTrash(mount.driver)) {
       if (await resolve(c, mount.id, item.path).then(() => true, () => false))
         items.push(item);
@@ -641,7 +641,7 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
   }), v("json", trashIdsSchema), async (c) => {
     const mount = await trashMount(c, c.req.param("mount"));
     const d = mount.driver;
-    const results: OpResult[] = [];
+    const results: FmOpResult[] = [];
     for (const id of c.req.valid("json").ids) {
       await settle(results, id, async () => {
         const item = await getTrashItem(d, id);
@@ -668,7 +668,7 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
     const mount = await trashMount(c, c.req.param("mount"));
     const d = mount.driver;
     const ids = c.req.valid("json").ids ?? (await listTrash(d)).map(i => i.id);
-    const results: OpResult[] = [];
+    const results: FmOpResult[] = [];
     for (const id of ids) {
       await settle(results, id, async () => {
         const item = await getTrashItem(d, id);

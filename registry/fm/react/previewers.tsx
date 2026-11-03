@@ -1,6 +1,6 @@
 import type { FmClient } from "../client/client";
-import type { Entry } from "../core/schema";
-import type { Labels } from "./labels";
+import type { FmEntry } from "../core/schema";
+import type { FmLabels } from "./labels";
 import { DownloadIcon } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { Button } from "@/components/ui/button";
@@ -8,9 +8,9 @@ import { MediaStage } from "./media-stage";
 import { kindOf } from "./state";
 
 export interface PreviewProps {
-  entry: Entry;
+  entry: FmEntry;
   client: FmClient;
-  labels: Labels;
+  labels: FmLabels;
   /** Slot in the preview header; portal toolbar actions into it. */
   actions?: HTMLElement | null;
   /** Editors report unsaved changes so closing or navigating can ask first. */

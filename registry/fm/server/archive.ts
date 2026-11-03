@@ -1,9 +1,9 @@
-import type { Driver } from "./driver";
+import type { FmDriver } from "./driver";
 import { Zip, ZipPassThrough } from "fflate";
 import { FmError } from "../core/errors";
 import { basename } from "../core/path";
 
-export interface ArchiveLimits {
+export interface FmArchiveLimits {
   maxEntries: number;
   maxBytes: number;
 }
@@ -17,7 +17,7 @@ interface Item {
 }
 
 /** Walks `paths` and fails before any byte is sent when the archive would exceed the limits. */
-async function collect(driver: Driver, paths: string[], limits: ArchiveLimits, skip: (path: string) => boolean): Promise<Item[]> {
+async function collect(driver: FmDriver, paths: string[], limits: FmArchiveLimits, skip: (path: string) => boolean): Promise<Item[]> {
   const items: Item[] = [];
   let bytes = 0;
   const visit = async (path: string, name: string): Promise<void> => {
@@ -53,7 +53,7 @@ async function collect(driver: Driver, paths: string[], limits: ArchiveLimits, s
 }
 
 /** Streams an uncompressed zip of `paths`; reads one file at a time with backpressure. */
-export async function zipStream(driver: Driver, paths: string[], limits: ArchiveLimits, skip: (path: string) => boolean = () => false): Promise<ReadableStream<Uint8Array>> {
+export async function zipStream(driver: FmDriver, paths: string[], limits: FmArchiveLimits, skip: (path: string) => boolean = () => false): Promise<ReadableStream<Uint8Array>> {
   const items = await collect(driver, paths, limits, skip);
   let index = 0;
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;

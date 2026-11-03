@@ -1,7 +1,7 @@
 # 20261103-0508-recursive-search Recursive search
 
 - **status**: pending
-- **priority**: P2
+- **priority**: P1
 - **owner**: (unassigned)
 - **createdAt**: 2026-11-03 05:08
 
@@ -22,3 +22,4 @@ Adding recursive search
 
 ## Notes
 
+- 2026-11-03: priority raised from P2 to P1 because it blocks quick-open (P1); the index line keeps its original priority per the index rules.

@@ -1,4 +1,4 @@
-import type { Driver, DriverEntry } from "../server/driver";
+import type { FmDriver, FmDriverEntry } from "../server/driver";
 import { FmError } from "../core/errors";
 import { basename, dirname, isWithin } from "../core/path";
 import { ALL_CAPS } from "../core/schema";
@@ -11,13 +11,13 @@ interface Node {
   version: number;
 }
 
-export interface MemoryDriverOptions {
+export interface FmMemoryDriverOptions {
   /** Initial files: path -> content. Parent directories are created. */
   files?: Record<string, string | Uint8Array>;
 }
 
 /** In-memory driver for tests and demos. */
-export function memoryDriver(opts: MemoryDriverOptions = {}): Driver {
+export function memoryDriver(opts: FmMemoryDriverOptions = {}): FmDriver {
   const nodes = new Map<string, Node>([
     [
       "/",
@@ -31,7 +31,7 @@ export function memoryDriver(opts: MemoryDriverOptions = {}): Driver {
   ]);
   let clock = 0;
 
-  const toEntry = (path: string, node: Node): DriverEntry => ({
+  const toEntry = (path: string, node: Node): FmDriverEntry => ({
     path,
     name: path === "/"
       ? ""
@@ -78,7 +78,7 @@ export function memoryDriver(opts: MemoryDriverOptions = {}): Driver {
       throw new FmError("EXISTS", `Already exists: ${path}`);
   };
 
-  const transfer = (from: string, to: string, keepSource: boolean): DriverEntry => {
+  const transfer = (from: string, to: string, keepSource: boolean): FmDriverEntry => {
     get(from);
     assertFree(to);
     if (isWithin(to, from))
@@ -95,7 +95,7 @@ export function memoryDriver(opts: MemoryDriverOptions = {}): Driver {
     return toEntry(to, get(to));
   };
 
-  const driver: Driver = {
+  const driver: FmDriver = {
     name: "memory",
     caps: ALL_CAPS,
     async stat(path) {

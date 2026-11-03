@@ -98,9 +98,9 @@ export const enLabels = {
   sheetTruncated: (shown: number, total: number) => `Showing the first ${shown} of ${total} rows`,
 };
 
-export type Labels = typeof enLabels;
+export type FmLabels = typeof enLabels;
 
-export const zhLabels: Labels = {
+export const zhLabels: FmLabels = {
   name: "名称",
   size: "大小",
   modified: "修改时间",

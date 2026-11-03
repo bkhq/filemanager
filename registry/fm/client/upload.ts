@@ -1,43 +1,43 @@
-import type { Conflict } from "../core/schema";
+import type { FmConflict } from "../core/schema";
 import type { FmClient } from "./client";
 import { createStore } from "zustand/vanilla";
 import { FmApiError } from "./client";
 
-export type UploadStatus = "queued" | "uploading" | "done" | "error" | "canceled";
+export type FmUploadStatus = "queued" | "uploading" | "done" | "error" | "canceled";
 
-export interface UploadTask {
+export interface FmUploadTask {
   id: string;
   mount: string;
   /** Requested target path; the server may pick a free name. */
   path: string;
   name: string;
   /** What the server does when `path` exists. */
-  conflict: Conflict;
+  conflict: FmConflict;
   size: number;
   loaded: number;
-  status: UploadStatus;
+  status: FmUploadStatus;
   error?: string;
 }
 
-export interface UploadFile {
+export interface FmUploadFile {
   file: Blob & { name: string };
   /** Path below the target directory, e.g. `photos/a.jpg` for folder uploads. */
   relativePath?: string;
   /** Defaults to `rename` (keep both). */
-  conflict?: Conflict;
+  conflict?: FmConflict;
 }
 
-export type Transport = (task: UploadTask, file: Blob, onProgress: (loaded: number) => void, signal: AbortSignal) => Promise<void>;
+export type FmTransport = (task: FmUploadTask, file: Blob, onProgress: (loaded: number) => void, signal: AbortSignal) => Promise<void>;
 
-export interface UploadState {
-  tasks: UploadTask[];
-  enqueue: (mount: string, dir: string, files: UploadFile[]) => void;
+export interface FmUploadState {
+  tasks: FmUploadTask[];
+  enqueue: (mount: string, dir: string, files: FmUploadFile[]) => void;
   cancel: (id: string) => void;
   clearFinished: () => void;
 }
 
 /** PUT via XHR so byte progress is observable (fetch cannot report upload progress). */
-export function xhrTransport(client: FmClient): Transport {
+export function xhrTransport(client: FmClient): FmTransport {
   return (task, file, onProgress, signal) => new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", client.writeUrl(task.mount, task.path, task.conflict));
@@ -61,21 +61,21 @@ export function xhrTransport(client: FmClient): Transport {
   });
 }
 
-export interface UploadQueueOptions {
-  transport: Transport;
+export interface FmUploadQueueOptions {
+  transport: FmTransport;
   concurrency?: number;
   /** Called after each successful upload (e.g. to refresh listings). */
-  onUploaded?: (task: UploadTask) => void;
+  onUploaded?: (task: FmUploadTask) => void;
 }
 
-export function createUploadQueue(opts: UploadQueueOptions) {
+export function createUploadQueue(opts: FmUploadQueueOptions) {
   const concurrency = opts.concurrency ?? 3;
   const files = new Map<string, Blob>();
   const controllers = new Map<string, AbortController>();
   let seq = 0;
 
-  const store = createStore<UploadState>()((set, get) => {
-    const patch = (id: string, p: Partial<UploadTask>) =>
+  const store = createStore<FmUploadState>()((set, get) => {
+    const patch = (id: string, p: Partial<FmUploadTask>) =>
       set(s => ({
         tasks: s.tasks.map(t => (t.id === id
           ? {
@@ -98,7 +98,7 @@ export function createUploadQueue(opts: UploadQueueOptions) {
       }
     }
 
-    async function run(task: UploadTask) {
+    async function run(task: FmUploadTask) {
       const controller = new AbortController();
       controllers.set(task.id, controller);
       patch(task.id, { status: "uploading" });
@@ -130,7 +130,7 @@ export function createUploadQueue(opts: UploadQueueOptions) {
     return {
       tasks: [],
       enqueue: (mount, dir, list) => {
-        const added = list.map(({ file, relativePath, conflict }): UploadTask => {
+        const added = list.map(({ file, relativePath, conflict }): FmUploadTask => {
           const id = `u${++seq}`;
           files.set(id, file);
           const rel = (relativePath || file.name).replace(/^\/+/, "");
@@ -171,4 +171,4 @@ export function createUploadQueue(opts: UploadQueueOptions) {
   return store;
 }
 
-export type UploadQueue = ReturnType<typeof createUploadQueue>;
+export type FmUploadQueue = ReturnType<typeof createUploadQueue>;

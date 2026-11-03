@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { FmClient } from "../client/client";
-import type { Entry } from "../core/schema";
-import type { Labels } from "./labels";
+import type { FmEntry } from "../core/schema";
+import type { FmLabels } from "./labels";
 import { cn } from "cn";
 import { CopyIcon, XIcon } from "lucide-react";
 import { useState } from "react";
@@ -23,10 +23,10 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 /** Side panel with the properties of one entry; folders show their total size. */
 export function DetailsPanel({ entry, mountLabel, client, labels, overlay, onClose }: {
-  entry: Entry;
+  entry: FmEntry;
   mountLabel: string;
   client: FmClient;
-  labels: Labels;
+  labels: FmLabels;
   /** Float above the list (narrow layouts) instead of taking a column. */
   overlay?: boolean;
   onClose: () => void;

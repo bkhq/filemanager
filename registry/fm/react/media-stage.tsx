@@ -1,5 +1,5 @@
-import type { Labels } from "./labels";
-import type { MediaView, Size } from "./transform";
+import type { FmLabels } from "./labels";
+import type { FmMediaView, FmSize } from "./transform";
 import { cn } from "cn";
 import { FlipHorizontal2Icon, RotateCcwIcon, RotateCwIcon, ZoomInIcon, ZoomOutIcon } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -13,7 +13,7 @@ const PAD = 16;
 /** Inner size of an element (minus the stage padding), tracked with ResizeObserver. */
 function useStageSize() {
   const [el, setEl] = useState<HTMLElement | null>(null);
-  const [size, setSize] = useState<Size>();
+  const [size, setSize] = useState<FmSize>();
   useEffect(() => {
     if (!el)
       return;
@@ -32,11 +32,11 @@ export function MediaStage({ kind, src, alt, labels, actions }: {
   kind: "image" | "video";
   src: string;
   alt: string;
-  labels: Labels;
+  labels: FmLabels;
   actions?: HTMLElement | null | undefined;
 }) {
-  const [view, setView] = useState<MediaView>(INITIAL_VIEW);
-  const [natural, setNatural] = useState<Size>();
+  const [view, setView] = useState<FmMediaView>(INITIAL_VIEW);
+  const [natural, setNatural] = useState<FmSize>();
   const [stageRef, stage] = useStageSize();
   const layout = natural && stage && layoutOf(natural, stage, view);
   const isImage = kind === "image";

@@ -1,11 +1,11 @@
-import type { Driver, DriverEntry } from "../server/driver";
+import type { FmDriver, FmDriverEntry } from "../server/driver";
 import { AwsClient } from "aws4fetch";
 import { FmError } from "../core/errors";
 import { basename, isWithin } from "../core/path";
 import { ALL_CAPS, READ_ONLY_CAPS } from "../core/schema";
 import { readAll } from "../server/driver";
 
-export interface S3DriverOptions {
+export interface FmS3DriverOptions {
   /** e.g. `https://s3.eu-central-1.amazonaws.com`, `https://<account>.r2.cloudflarestorage.com`, `http://minio:9000`. */
   endpoint: string;
   bucket: string;
@@ -91,7 +91,7 @@ export function parseList(xml: string): ListPage {
 const encodeKey = (key: string) => key.split("/").map(encodeURIComponent).join("/");
 
 /** S3-compatible object storage driver (AWS S3, R2, MinIO …). Runs on Bun and Workers. */
-export function s3Driver(opts: S3DriverOptions): Driver {
+export function s3Driver(opts: FmS3DriverOptions): FmDriver {
   const client = new AwsClient({
     accessKeyId: opts.accessKeyId,
     secretAccessKey: opts.secretAccessKey,
@@ -181,7 +181,7 @@ export function s3Driver(opts: S3DriverOptions): Driver {
     }
   };
 
-  const fileEntry = (path: string, o: ListedObject): DriverEntry =>
+  const fileEntry = (path: string, o: ListedObject): FmDriverEntry =>
     ({
       path,
       name: basename(path),
@@ -190,7 +190,7 @@ export function s3Driver(opts: S3DriverOptions): Driver {
       mtime: o.mtime,
       etag: o.etag,
     });
-  const dirEntry = (path: string, mtime = 0): DriverEntry =>
+  const dirEntry = (path: string, mtime = 0): FmDriverEntry =>
     ({
       path,
       name: path === "/"
@@ -205,7 +205,7 @@ export function s3Driver(opts: S3DriverOptions): Driver {
   const isDir = async (path: string) =>
     path === "/" || (await listPage(dirKey(path), false, undefined, 1)).objects.length > 0;
 
-  const stat = async (path: string): Promise<DriverEntry> => {
+  const stat = async (path: string): Promise<FmDriverEntry> => {
     if (path !== "/") {
       const o = await head(fileKey(path));
       if (o)
@@ -260,7 +260,7 @@ export function s3Driver(opts: S3DriverOptions): Driver {
     stat,
     async list(path) {
       const keyPrefix = dirKey(path);
-      const out: DriverEntry[] = [];
+      const out: FmDriverEntry[] = [];
       let token: string | undefined;
       do {
         const page = await listPage(keyPrefix, true, token);

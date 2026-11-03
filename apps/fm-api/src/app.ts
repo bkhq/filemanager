@@ -1,15 +1,15 @@
 import type { Config } from "./config";
-import type { Mount } from "@/fm/server/router";
+import type { FmMount } from "@/fm/server/router";
 import { Hono } from "hono";
 import { openAPIRouteHandler } from "hono-openapi";
 import { localDriver } from "@/fm/drivers/local";
 import { memoryDriver } from "@/fm/drivers/memory";
 import { s3Driver } from "@/fm/drivers/s3";
-import { createFileManager } from "@/fm/server/router";
+import { createFmRouter } from "@/fm/server/router";
 import { SEED } from "./seed";
 
 export function createApp(config: Config) {
-  const mounts: Mount[] = [
+  const mounts: FmMount[] = [
     {
       id: "local",
       label: "Local disk",
@@ -42,13 +42,13 @@ export function createApp(config: Config) {
   }
 
   const app = new Hono();
-  app.route("/fm", createFileManager({
+  app.route("/fm", createFmRouter({
     mounts: () => mounts,
   }));
   app.get("/openapi.json", openAPIRouteHandler(app, {
     documentation: {
       openapi: "3.1.0",
-      info: { title: "File manager demo API", version: "0.0.0" },
+      info: { title: "File manager API", version: "0.0.0" },
       servers: [
         { url: "/api" },
       ],

@@ -1,4 +1,4 @@
-import type { Conflict, Entry, ListResult, MountInfo, OpsRequest, OpsResult, SortKey, TrashItem, Usage } from "../core/schema";
+import type { FmConflict, FmEntry, FmListResult, FmMountInfo, FmOpsRequest, FmOpsResult, FmSortKey, FmTrashItem, FmUsage } from "../core/schema";
 
 export class FmApiError extends Error {
   readonly status: number;
@@ -20,17 +20,17 @@ export interface FmClientOptions {
   headers?: () => Record<string, string>;
 }
 
-export interface ListParams {
+export interface FmListParams {
   cursor?: string | undefined;
   limit?: number;
-  sort?: SortKey;
+  sort?: FmSortKey;
   order?: "asc" | "desc";
   /** Case-insensitive name filter. */
   q?: string | undefined;
 }
 
-export interface WriteParams {
-  conflict?: Conflict;
+export interface FmWriteParams {
+  conflict?: FmConflict;
   ifMatch?: string;
 }
 
@@ -81,9 +81,9 @@ export function createFmClient(opts: FmClientOptions) {
   return {
     baseUrl: base,
     headers: () => opts.headers?.() ?? {},
-    mounts: () => json<{ mounts: MountInfo[] }>(url("/mounts")).then(r => r.mounts),
-    stat: (mount: string, path: string) => json<Entry>(url(`${m(mount)}/stat`, { path })),
-    list: (mount: string, path: string, p: ListParams = {}) => json<ListResult>(url(`${m(mount)}/list`, {
+    mounts: () => json<{ mounts: FmMountInfo[] }>(url("/mounts")).then(r => r.mounts),
+    stat: (mount: string, path: string) => json<FmEntry>(url(`${m(mount)}/stat`, { path })),
+    list: (mount: string, path: string, p: FmListParams = {}) => json<FmListResult>(url(`${m(mount)}/list`, {
       path,
       cursor: p.cursor,
       limit: p.limit?.toString(),
@@ -99,7 +99,7 @@ export function createFmClient(opts: FmClientOptions) {
         v: o.version,
       }),
     archiveUrl: (mount: string, paths: string[]) => url(`${m(mount)}/archive`, { path: paths }),
-    writeUrl: (mount: string, path: string, conflict: Conflict = "overwrite") => url(`${m(mount)}/write`, { path, conflict }),
+    writeUrl: (mount: string, path: string, conflict: FmConflict = "overwrite") => url(`${m(mount)}/write`, { path, conflict }),
     readText: async (mount: string, path: string) => {
       const res = await request(url(`${m(mount)}/read`, { path }));
       return {
@@ -107,7 +107,7 @@ export function createFmClient(opts: FmClientOptions) {
         etag: (res.headers.get("etag") ?? "").replace(/"/g, ""),
       };
     },
-    write: (mount: string, path: string, body: BodyInit, p: WriteParams = {}) => json<Entry>(url(`${m(mount)}/write`, { path, conflict: p.conflict }), {
+    write: (mount: string, path: string, body: BodyInit, p: FmWriteParams = {}) => json<FmEntry>(url(`${m(mount)}/write`, { path, conflict: p.conflict }), {
       method: "PUT",
       body,
       ...(p.ifMatch
@@ -116,13 +116,13 @@ export function createFmClient(opts: FmClientOptions) {
           }
         : {}),
     }),
-    mkdir: (mount: string, path: string) => post<Entry>(url(`${m(mount)}/mkdir`), { path }),
-    ops: (mount: string, req: OpsRequest) => post<OpsResult>(url(`${m(mount)}/ops`), req),
-    usage: (mount: string, path: string) => json<Usage>(url(`${m(mount)}/usage`, { path })),
-    trash: (mount: string) => json<{ items: TrashItem[] }>(url(`${m(mount)}/trash`)).then(r => r.items),
-    restore: (mount: string, ids: string[]) => post<OpsResult>(url(`${m(mount)}/trash/restore`), { ids }),
+    mkdir: (mount: string, path: string) => post<FmEntry>(url(`${m(mount)}/mkdir`), { path }),
+    ops: (mount: string, req: FmOpsRequest) => post<FmOpsResult>(url(`${m(mount)}/ops`), req),
+    usage: (mount: string, path: string) => json<FmUsage>(url(`${m(mount)}/usage`, { path })),
+    trash: (mount: string) => json<{ items: FmTrashItem[] }>(url(`${m(mount)}/trash`)).then(r => r.items),
+    restore: (mount: string, ids: string[]) => post<FmOpsResult>(url(`${m(mount)}/trash/restore`), { ids }),
     /** Without `ids`, empties the trash. */
-    purge: (mount: string, ids?: string[]) => post<OpsResult>(url(`${m(mount)}/trash/purge`), ids
+    purge: (mount: string, ids?: string[]) => post<FmOpsResult>(url(`${m(mount)}/trash/purge`), ids
       ? { ids }
       : {}),
   };

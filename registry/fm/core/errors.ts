@@ -12,22 +12,22 @@ export const ERROR_STATUS = {
   RANGE: 416,
 } as const;
 
-export type ErrorCode = keyof typeof ERROR_STATUS;
+export type FmErrorCode = keyof typeof ERROR_STATUS;
 
 export class FmError extends Error {
-  readonly code: ErrorCode;
+  readonly code: FmErrorCode;
 
-  constructor(code: ErrorCode, message: string) {
+  constructor(code: FmErrorCode, message: string) {
     super(message);
     this.name = "FmError";
     this.code = code;
   }
 
-  get status(): (typeof ERROR_STATUS)[ErrorCode] {
+  get status(): (typeof ERROR_STATUS)[FmErrorCode] {
     return ERROR_STATUS[this.code];
   }
 }
 
-export function isFmError(err: unknown, code?: ErrorCode): err is FmError {
+export function isFmError(err: unknown, code?: FmErrorCode): err is FmError {
   return err instanceof FmError && (code === undefined || err.code === code);
 }

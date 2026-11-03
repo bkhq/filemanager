@@ -1,4 +1,4 @@
-import type { OpResult } from "../core/schema";
+import type { FmOpResult } from "../core/schema";
 import { describe, expect, it } from "bun:test";
 import { undoFor } from "./undo";
 
@@ -21,7 +21,7 @@ function entry(path: string) {
     },
   };
 }
-function ok(path: string, to?: string, trashId?: string): OpResult {
+function ok(path: string, to?: string, trashId?: string): FmOpResult {
   return {
     path,
     ok: true,

@@ -1,5 +1,5 @@
-import type { TrashItem } from "../core/schema";
-import type { Driver } from "./driver";
+import type { FmTrashItem } from "../core/schema";
+import type { FmDriver } from "./driver";
 import { FmError, isFmError } from "../core/errors";
 import { assertName } from "../core/path";
 import { readAll } from "./driver";
@@ -7,7 +7,7 @@ import { readAll } from "./driver";
 /** Hidden per-mount folder: `<id>/<name>` holds the entry, `<id>.json` its metadata. */
 export const TRASH_DIR = "/.fm-trash";
 
-type Meta = Omit<TrashItem, "id">;
+type Meta = Omit<FmTrashItem, "id">;
 
 const metaPath = (id: string) => `${TRASH_DIR}/${id}.json`;
 
@@ -18,12 +18,12 @@ function checkId(id: string) {
 }
 
 /** Path of the trashed entry itself. */
-export function trashedPath(item: TrashItem): string {
+export function trashedPath(item: FmTrashItem): string {
   return `${TRASH_DIR}/${item.id}/${item.name}`;
 }
 
 /** Moves `path` into the trash and returns the trash id. */
-export async function moveToTrash(d: Driver, path: string): Promise<string> {
+export async function moveToTrash(d: FmDriver, path: string): Promise<string> {
   const e = await d.stat(path);
   const id = `${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
   await d.move(path, `${TRASH_DIR}/${id}/${e.name}`);
@@ -40,7 +40,7 @@ export async function moveToTrash(d: Driver, path: string): Promise<string> {
   return id;
 }
 
-export async function getTrashItem(d: Driver, id: string): Promise<TrashItem> {
+export async function getTrashItem(d: FmDriver, id: string): Promise<FmTrashItem> {
   checkId(id);
   try {
     const { body } = await d.read(metaPath(id));
@@ -57,13 +57,13 @@ export async function getTrashItem(d: Driver, id: string): Promise<TrashItem> {
 }
 
 /** Newest first; entries without readable metadata are skipped. */
-export async function listTrash(d: Driver): Promise<TrashItem[]> {
+export async function listTrash(d: FmDriver): Promise<FmTrashItem[]> {
   const children = await d.list(TRASH_DIR).catch((e: unknown) => {
     if (isFmError(e) && e.code === "NOT_FOUND")
       return [];
     throw e;
   });
-  const items: TrashItem[] = [];
+  const items: FmTrashItem[] = [];
   for (const c of children) {
     if (c.kind !== "file" || !c.name.endsWith(".json"))
       continue;
@@ -75,7 +75,7 @@ export async function listTrash(d: Driver): Promise<TrashItem[]> {
 }
 
 /** Removes the item folder (empty after a restore) and its metadata. */
-export async function dropTrashItem(d: Driver, id: string): Promise<void> {
+export async function dropTrashItem(d: FmDriver, id: string): Promise<void> {
   await d.remove(`${TRASH_DIR}/${id}`).catch(() => {});
   await d.remove(metaPath(id));
 }

@@ -1,12 +1,12 @@
 import type { Stats } from "node:fs";
-import type { Driver, DriverEntry } from "../server/driver";
+import type { FmDriver, FmDriverEntry } from "../server/driver";
 import { cp, link, lstat, mkdir, readdir, realpath, rename, rm, stat, unlink } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { FmError } from "../core/errors";
 import { basename, dirname, isWithin } from "../core/path";
 import { ALL_CAPS, READ_ONLY_CAPS } from "../core/schema";
 
-export interface LocalDriverOptions {
+export interface FmLocalDriverOptions {
   /** Absolute directory served as the mount root. */
   root: string;
   readOnly?: boolean;
@@ -42,7 +42,7 @@ async function exists(abs: string): Promise<boolean> {
 }
 
 /** Local filesystem driver (Bun only). Every access is jailed to `root`, symlinks included. */
-export function localDriver(opts: LocalDriverOptions): Driver {
+export function localDriver(opts: FmLocalDriverOptions): FmDriver {
   const root = resolve(opts.root);
   let realRoot: Promise<string> | undefined;
   const getRealRoot = () => (realRoot ??= realpath(root));
@@ -73,7 +73,7 @@ export function localDriver(opts: LocalDriverOptions): Driver {
     }
   };
 
-  const toEntry = (path: string, st: Stats & { mtimeNs?: bigint }): DriverEntry => ({
+  const toEntry = (path: string, st: Stats & { mtimeNs?: bigint }): FmDriverEntry => ({
     path,
     name: path === "/"
       ? ""
@@ -130,7 +130,7 @@ export function localDriver(opts: LocalDriverOptions): Driver {
       catch (err) {
         return mapError(err, path);
       }
-      const out: DriverEntry[] = [];
+      const out: FmDriverEntry[] = [];
       for (const d of dirents) {
         if (opts.showHidden === false && d.name.startsWith("."))
           continue;

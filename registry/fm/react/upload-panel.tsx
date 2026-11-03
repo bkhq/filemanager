@@ -1,5 +1,5 @@
-import type { UploadQueue } from "../client/upload";
-import type { Labels } from "./labels";
+import type { FmUploadQueue } from "../client/upload";
+import type { FmLabels } from "./labels";
 import { CheckIcon, XIcon } from "lucide-react";
 import { useStore } from "zustand";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { IconButton } from "./icon-button";
 
 /** Floating panel listing in-flight and finished uploads. */
-export function UploadPanel({ queue, labels }: { queue: UploadQueue; labels: Labels }) {
+export function UploadPanel({ queue, labels }: { queue: FmUploadQueue; labels: FmLabels }) {
   const tasks = useStore(queue, s => s.tasks);
   const { cancel, clearFinished } = queue.getState();
   if (tasks.length === 0)

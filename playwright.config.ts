@@ -22,14 +22,14 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "bun run --cwd apps/demo-web build && rm -rf .tmp/e2e-root && bun apps/demo-api/src/index.ts",
+    command: "bun run --cwd apps/fm-web build && rm -rf .tmp/e2e-root && bun apps/fm-api/src/index.ts",
     url: `http://127.0.0.1:${PORT}/api/fm/mounts`,
     reuseExistingServer: false,
     timeout: 120_000,
     env: {
       PORT: String(PORT),
-      FM_DEMO_ROOT: ".tmp/e2e-root",
-      FM_DEMO_STATIC: "apps/demo-web/dist",
+      FM_ROOT: ".tmp/e2e-root",
+      FM_STATIC: "apps/fm-web/dist",
     },
   },
 });

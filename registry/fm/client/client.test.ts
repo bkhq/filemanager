@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Hono } from "hono";
 import { memoryDriver } from "../drivers/memory";
-import { createFileManager } from "../server/router";
+import { createFmRouter } from "../server/router";
 import { createFmClient, FmApiError } from "./client";
 
 function client() {
@@ -15,7 +15,7 @@ function client() {
       }),
     },
   ];
-  app.route("/api/fm", createFileManager({
+  app.route("/api/fm", createFmRouter({
     mounts: () => mounts,
   }));
   const seen: Headers[] = [];

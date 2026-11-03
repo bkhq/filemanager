@@ -49,9 +49,9 @@ export default antfu({
     "**/*.yml",
     "**/*.yaml",
     "public/r/**",
-    "apps/demo-web/src/components/ui/**",
-    "apps/demo-web/src/components/theme-provider.tsx",
-    "apps/demo-web/src/routeTree.gen.ts",
+    "apps/fm-web/src/components/ui/**",
+    "apps/fm-web/src/components/theme-provider.tsx",
+    "apps/fm-web/src/routeTree.gen.ts",
   ],
 }, {
   // Code shipped to hosts must run on Bun and Cloudflare Workers alike.
@@ -78,6 +78,33 @@ export default antfu({
       "__dirname",
       "__filename",
     ],
+  },
+}, {
+  // Copied files share the host namespace: exported types carry the Fm prefix.
+  files: ["registry/fm/**/*.{ts,tsx}"],
+  rules: {
+    "ts/naming-convention": [
+      "error",
+      {
+        selector: "typeLike",
+        modifiers: ["exported"],
+        format: ["PascalCase"],
+        filter: { regex: "Props$", match: false },
+        prefix: ["Fm"],
+      },
+    ],
+  },
+}, {
+  files: ["registry/fm/**/*.{ts,tsx}", "apps/*/src/**/*.{ts,tsx}", "scripts/**/*.ts"],
+  ignores: ["registry/fm/{react,plugins}/**/*.test.ts", "apps/fm-web/src/components/ui/**", "apps/fm-web/src/routeTree.gen.ts"],
+  languageOptions: {
+    parserOptions: {
+      project: ["tsconfig.json", "apps/fm-api/tsconfig.json", "apps/fm-web/tsconfig.app.json"],
+      tsconfigRootDir: import.meta.dirname,
+    },
+  },
+  rules: {
+    "ts/no-deprecated": "error",
   },
 }, {
   files: ["**/*.test.ts", "**/*.test.tsx", "tests/**/*.ts"],

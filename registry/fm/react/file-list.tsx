@@ -1,8 +1,8 @@
 import type { DragEvent, MouseEvent, ReactNode } from "react";
 import type { FmClient } from "../client/client";
-import type { Entry, SortKey } from "../core/schema";
-import type { Labels } from "./labels";
-import type { FileKind, Selection, SelectMode } from "./state";
+import type { FmEntry, FmSortKey } from "../core/schema";
+import type { FmLabels } from "./labels";
+import type { FmFileKind, FmSelection, FmSelectMode } from "./state";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "cn";
 import {
@@ -21,7 +21,7 @@ import { formatSize, kindOf } from "./state";
 
 export const DRAG_TYPE = "application/x-fm-paths";
 
-const ICONS: Record<FileKind, typeof FileIcon> = {
+const ICONS: Record<FmFileKind, typeof FileIcon> = {
   dir: FolderIcon,
   image: FileImageIcon,
   video: FileVideoIcon,
@@ -32,7 +32,7 @@ const ICONS: Record<FileKind, typeof FileIcon> = {
   other: FileIcon,
 };
 
-export function EntryIcon({ entry, className }: { entry: Pick<Entry, "kind" | "name" | "mime">; className?: string }) {
+export function EntryIcon({ entry, className }: { entry: Pick<FmEntry, "kind" | "name" | "mime">; className?: string }) {
   const kind = kindOf(entry);
   const Icon = ICONS[kind];
   return (
@@ -44,28 +44,28 @@ export function EntryIcon({ entry, className }: { entry: Pick<Entry, "kind" | "n
 }
 
 export interface FileListProps {
-  entries: Entry[];
+  entries: FmEntry[];
   view: "list" | "grid";
   /** Narrow layout: hide the modified column; a tap opens entries. */
   compact?: boolean;
-  selection: Selection;
-  labels: Labels;
+  selection: FmSelection;
+  labels: FmLabels;
   client: FmClient;
-  sort: SortKey;
+  sort: FmSortKey;
   order: "asc" | "desc";
-  onSort: (key: SortKey) => void;
-  onSelect: (path: string, mode: SelectMode) => void;
+  onSort: (key: FmSortKey) => void;
+  onSelect: (path: string, mode: FmSelectMode) => void;
   onClearSelection: () => void;
-  onOpen: (entry: Entry) => void;
+  onOpen: (entry: FmEntry) => void;
   /** Right-click on an entry (before the context menu opens). */
-  onEntryContextMenu: (entry: Entry) => void;
-  onDropOnFolder: (paths: string[], folder: Entry) => void;
+  onEntryContextMenu: (entry: FmEntry) => void;
+  onDropOnFolder: (paths: string[], folder: FmEntry) => void;
   hasMore: boolean;
   onLoadMore: () => void;
   empty: ReactNode;
 }
 
-function modeOf(e: MouseEvent): SelectMode {
+function modeOf(e: MouseEvent): FmSelectMode {
   return e.shiftKey
     ? "range"
     : (e.metaKey || e.ctrlKey
@@ -73,7 +73,7 @@ function modeOf(e: MouseEvent): SelectMode {
         : "single");
 }
 
-function useEntryHandlers(p: FileListProps, entry: Entry) {
+function useEntryHandlers(p: FileListProps, entry: FmEntry) {
   const [over, setOver] = useState(false);
   const selected = p.selection.paths.has(entry.path);
   const isDir = entry.kind === "dir";
@@ -122,7 +122,7 @@ function useEntryHandlers(p: FileListProps, entry: Entry) {
   };
 }
 
-function ListRow({ p, entry, top }: { p: FileListProps; entry: Entry; top: number }) {
+function ListRow({ p, entry, top }: { p: FileListProps; entry: FmEntry; top: number }) {
   const h = useEntryHandlers(p, entry);
   return (
     <div
@@ -152,7 +152,7 @@ function ListRow({ p, entry, top }: { p: FileListProps; entry: Entry; top: numbe
   );
 }
 
-function GridCell({ p, entry }: { p: FileListProps; entry: Entry }) {
+function GridCell({ p, entry }: { p: FileListProps; entry: FmEntry }) {
   const h = useEntryHandlers(p, entry);
   const thumb = kindOf(entry) === "image" && entry.size < 20 * 1024 * 1024;
   return (
@@ -177,7 +177,7 @@ function GridCell({ p, entry }: { p: FileListProps; entry: Entry }) {
 }
 
 function SortHeader({ p }: { p: FileListProps }) {
-  const cell = (key: SortKey, label: string, className: string) => (
+  const cell = (key: FmSortKey, label: string, className: string) => (
     <button type="button" className={cn("flex items-center gap-1 hover:text-foreground", className)} onClick={() => p.onSort(key)}>
       {label}
       {p.sort === key && (p.order === "asc"

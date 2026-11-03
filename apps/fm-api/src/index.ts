@@ -1,6 +1,6 @@
 import process from "node:process";
+import { serveStatic } from "@hono/bun";
 import { Hono } from "hono";
-import { serveStatic } from "hono/bun";
 import { createApp } from "./app";
 import { loadConfig } from "./config";
 import { seedIfEmpty } from "./seed";
@@ -21,7 +21,7 @@ async function main() {
   }
 
   const server = Bun.serve({ port: config.port, fetch });
-  process.stdout.write(`demo-api listening on ${server.url} (root: ${config.root})\n`);
+  process.stdout.write(`fm-api listening on ${server.url} (root: ${config.root})\n`);
 }
 
 void main();

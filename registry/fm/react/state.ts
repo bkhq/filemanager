@@ -1,18 +1,18 @@
-export interface Selection {
+export interface FmSelection {
   /** Selected entry paths. */
   paths: ReadonlySet<string>;
   /** Anchor for shift-range selection. */
   anchor?: string | undefined;
 }
 
-export const EMPTY_SELECTION: Selection = {
+export const EMPTY_SELECTION: FmSelection = {
   paths: new Set(),
 };
 
-export type SelectMode = "single" | "toggle" | "range";
+export type FmSelectMode = "single" | "toggle" | "range";
 
 /** Applies a click to the selection; `order` is the visible order of paths. */
-export function select(sel: Selection, path: string, mode: SelectMode, order: readonly string[]): Selection {
+export function select(sel: FmSelection, path: string, mode: FmSelectMode, order: readonly string[]): FmSelection {
   if (mode === "toggle") {
     const paths = new Set(sel.paths);
     if (paths.has(path))
@@ -41,7 +41,7 @@ export function select(sel: Selection, path: string, mode: SelectMode, order: re
 }
 
 /** Moves the cursor by `delta` rows and selects it (keyboard navigation). */
-export function step(sel: Selection, order: readonly string[], delta: number, extend: boolean): Selection {
+export function step(sel: FmSelection, order: readonly string[], delta: number, extend: boolean): FmSelection {
   if (order.length === 0)
     return sel;
   const current = sel.anchor === undefined
@@ -62,7 +62,7 @@ export function step(sel: Selection, order: readonly string[], delta: number, ex
 }
 
 /** Drops selected paths that are no longer visible. */
-export function prune(sel: Selection, order: readonly string[]): Selection {
+export function prune(sel: FmSelection, order: readonly string[]): FmSelection {
   const visible = new Set(order);
   const paths = new Set([...sel.paths].filter(p => visible.has(p)));
   if (paths.size === sel.paths.size)
@@ -75,7 +75,7 @@ export function prune(sel: Selection, order: readonly string[]): Selection {
   };
 }
 
-export interface Clipboard {
+export interface FmClipboard {
   mode: "copy" | "cut";
   mount: string;
   paths: string[];
@@ -96,11 +96,11 @@ export function formatSize(bytes: number): string {
     : Math.round(n)} ${units[i]}`;
 }
 
-export type FileKind = "dir" | "image" | "video" | "audio" | "pdf" | "text" | "archive" | "other";
+export type FmFileKind = "dir" | "image" | "video" | "audio" | "pdf" | "text" | "archive" | "other";
 
 const TEXT_NAMES = /\.(?:txt|md|markdown|json|jsonc|ya?ml|toml|ini|env|csv|tsv|log|xml|html?|css|scss|less|[cm]?[jt]sx?|vue|svelte|py|rb|go|rs|java|kt|swift|c|h|cc|cpp|hpp|cs|php|sh|bash|zsh|fish|sql|graphql|proto|dockerfile|makefile|gitignore|editorconfig|conf|lock)$/i;
 
-export function kindOf(entry: { kind: "file" | "dir"; name: string; mime?: string | undefined }): FileKind {
+export function kindOf(entry: { kind: "file" | "dir"; name: string; mime?: string | undefined }): FmFileKind {
   if (entry.kind === "dir")
     return "dir";
   const mime = entry.mime ?? "";

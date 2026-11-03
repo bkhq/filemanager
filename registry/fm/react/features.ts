@@ -1,10 +1,10 @@
-import type { Entry } from "../core/schema";
+import type { FmEntry } from "../core/schema";
 
 /**
  * UI feature switches. They only hide actions; the server still enforces caps,
  * so use `authorize` / `readOnly` mounts for real access control.
  */
-export interface Features {
+export interface FmFeatures {
   upload: boolean;
   createFolder: boolean;
   createFile: boolean;
@@ -21,7 +21,7 @@ export interface Features {
   trash: boolean;
 }
 
-export const ALL_FEATURES: Features = {
+export const ALL_FEATURES: FmFeatures = {
   upload: true,
   createFolder: true,
   createFile: true,
@@ -37,7 +37,7 @@ export const ALL_FEATURES: Features = {
 };
 
 /** Browse, preview, search and download only. */
-export const VIEW_ONLY_FEATURES: Features = {
+export const VIEW_ONLY_FEATURES: FmFeatures = {
   ...ALL_FEATURES,
   upload: false,
   createFolder: false,
@@ -50,7 +50,7 @@ export const VIEW_ONLY_FEATURES: Features = {
   trash: false,
 };
 
-export function resolveFeatures(readOnly = false, overrides: Partial<Features> = {}): Features {
+export function resolveFeatures(readOnly = false, overrides: Partial<FmFeatures> = {}): FmFeatures {
   return {
     ...(readOnly
       ? VIEW_ONLY_FEATURES
@@ -60,7 +60,7 @@ export function resolveFeatures(readOnly = false, overrides: Partial<Features> =
 }
 
 /** Narrows an entry's caps to the enabled features, so every caps check in the UI honours them. */
-export function maskEntry(entry: Entry, f: Features): Entry {
+export function maskEntry(entry: FmEntry, f: FmFeatures): FmEntry {
   return {
     ...entry,
     caps: {

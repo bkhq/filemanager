@@ -1,10 +1,10 @@
-import type { Caps, EntryKind } from "../core/schema";
+import type { FmCaps, FmEntryKind } from "../core/schema";
 
 /** An entry as seen by a driver: mount-relative path, no caller caps. */
-export interface DriverEntry {
+export interface FmDriverEntry {
   path: string;
   name: string;
-  kind: EntryKind;
+  kind: FmEntryKind;
   size: number;
   /** Epoch milliseconds. */
   mtime: number;
@@ -12,20 +12,20 @@ export interface DriverEntry {
   mime?: string;
 }
 
-export interface ByteRange {
+export interface FmByteRange {
   start: number;
   /** Inclusive. */
   end: number;
 }
 
-export interface ReadResult {
+export interface FmReadResult {
   body: ReadableStream<Uint8Array>;
   /** Full object size. */
   size: number;
-  range?: ByteRange;
+  range?: FmByteRange;
 }
 
-export interface WriteOptions {
+export interface FmWriteOptions {
   /** Fail with ETAG_MISMATCH unless the current etag matches. */
   ifMatch?: string;
   /** Fail with EXISTS when the target exists. */
@@ -42,17 +42,17 @@ export interface WriteOptions {
  * - `remove` deletes directories recursively.
  * - `list` returns direct children in any order.
  */
-export interface Driver {
+export interface FmDriver {
   readonly name: string;
   /** Actions this backend supports at all. */
-  readonly caps: Caps;
-  stat: (path: string) => Promise<DriverEntry>;
-  list: (path: string) => Promise<DriverEntry[]>;
-  read: (path: string, range?: ByteRange) => Promise<ReadResult>;
-  write: (path: string, body: ReadableStream<Uint8Array> | Uint8Array, opts?: WriteOptions) => Promise<DriverEntry>;
-  mkdir: (path: string) => Promise<DriverEntry>;
-  move: (from: string, to: string) => Promise<DriverEntry>;
-  copy: (from: string, to: string) => Promise<DriverEntry>;
+  readonly caps: FmCaps;
+  stat: (path: string) => Promise<FmDriverEntry>;
+  list: (path: string) => Promise<FmDriverEntry[]>;
+  read: (path: string, range?: FmByteRange) => Promise<FmReadResult>;
+  write: (path: string, body: ReadableStream<Uint8Array> | Uint8Array, opts?: FmWriteOptions) => Promise<FmDriverEntry>;
+  mkdir: (path: string) => Promise<FmDriverEntry>;
+  move: (from: string, to: string) => Promise<FmDriverEntry>;
+  copy: (from: string, to: string) => Promise<FmDriverEntry>;
   remove: (path: string) => Promise<void>;
 }
 

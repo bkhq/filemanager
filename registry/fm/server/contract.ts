@@ -1,23 +1,23 @@
-import type { ErrorCode } from "../core/errors";
-import type { Driver } from "./driver";
+import type { FmErrorCode } from "../core/errors";
+import type { FmDriver } from "./driver";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { isFmError } from "../core/errors";
 import { readAll } from "./driver";
 
-export interface DriverFixture {
-  driver: Driver;
+export interface FmDriverFixture {
+  driver: FmDriver;
   cleanup?: () => Promise<void> | void;
 }
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-async function text(driver: Driver, path: string, range?: { start: number; end: number }): Promise<string> {
+async function text(driver: FmDriver, path: string, range?: { start: number; end: number }): Promise<string> {
   const res = await driver.read(path, range);
   return dec.decode(await readAll(res.body));
 }
 
-async function expectCode(promise: Promise<unknown>, code: ErrorCode): Promise<void> {
+async function expectCode(promise: Promise<unknown>, code: FmErrorCode): Promise<void> {
   let err: unknown;
   try {
     await promise;
@@ -30,13 +30,13 @@ async function expectCode(promise: Promise<unknown>, code: ErrorCode): Promise<v
     : err).toBe(code);
 }
 
-const names = async (driver: Driver, path: string) => (await driver.list(path)).map(e => e.name).sort();
+const names = async (driver: FmDriver, path: string) => (await driver.list(path)).map(e => e.name).sort();
 
 /** Behavioural contract every driver must pass. Run it from a `*.test.ts` file. */
-export function runDriverContract(label: string, make: () => Promise<DriverFixture>): void {
+export function runDriverContract(label: string, make: () => Promise<FmDriverFixture>): void {
   describe(`driver contract: ${label}`, () => {
-    let fx: DriverFixture;
-    let d: Driver;
+    let fx: FmDriverFixture;
+    let d: FmDriver;
 
     beforeEach(async () => {
       fx = await make();

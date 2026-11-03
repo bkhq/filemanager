@@ -1,4 +1,4 @@
-import type { OpsRequest, SortKey } from "../core/schema";
+import type { FmOpsRequest, FmSortKey } from "../core/schema";
 import type { FmClient } from "./client";
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -13,7 +13,7 @@ export const fmKeys = {
     "list",
     mount,
   ] as const,
-  list: (client: FmClient, mount: string, path: string, sort: SortKey, order: "asc" | "desc", q = "") =>
+  list: (client: FmClient, mount: string, path: string, sort: FmSortKey, order: "asc" | "desc", q = "") =>
     [
       ...fmKeys.lists(client, mount),
       path,
@@ -49,7 +49,7 @@ export function useMounts(client: FmClient) {
 const PAGE = 500;
 
 /** Directory listing, paged by the server cursor; `q` filters names. */
-export function useListing(client: FmClient, mount: string | undefined, path: string, sort: SortKey, order: "asc" | "desc", q = "") {
+export function useListing(client: FmClient, mount: string | undefined, path: string, sort: FmSortKey, order: "asc" | "desc", q = "") {
   return useInfiniteQuery({
     queryKey: fmKeys.list(client, mount ?? "", path, sort, order, q),
     enabled: !!mount,
@@ -109,7 +109,7 @@ export function useFmMutations(client: FmClient, mount: string) {
       onSuccess: invalidate,
     }),
     ops: useMutation({
-      mutationFn: (req: OpsRequest) => client.ops(mount, req),
+      mutationFn: (req: FmOpsRequest) => client.ops(mount, req),
       onSuccess: invalidate,
     }),
     restore: useMutation({

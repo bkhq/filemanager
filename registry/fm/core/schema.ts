@@ -8,7 +8,7 @@ export const ACTIONS = [
   "move",
   "copy",
 ] as const;
-export type Action = typeof ACTIONS[number];
+export type FmAction = typeof ACTIONS[number];
 
 export const capsSchema = z.object({
   read: z.boolean(),
@@ -18,9 +18,9 @@ export const capsSchema = z.object({
   move: z.boolean(),
   copy: z.boolean(),
 });
-export type Caps = z.infer<typeof capsSchema>;
+export type FmCaps = z.infer<typeof capsSchema>;
 
-export const ALL_CAPS: Caps = {
+export const ALL_CAPS: FmCaps = {
   read: true,
   write: true,
   delete: true,
@@ -28,7 +28,7 @@ export const ALL_CAPS: Caps = {
   move: true,
   copy: true,
 };
-export const READ_ONLY_CAPS: Caps = {
+export const READ_ONLY_CAPS: FmCaps = {
   read: true,
   write: false,
   delete: false,
@@ -37,7 +37,7 @@ export const READ_ONLY_CAPS: Caps = {
   copy: false,
 };
 
-export function intersectCaps(a: Caps, b: Caps): Caps {
+export function intersectCaps(a: FmCaps, b: FmCaps): FmCaps {
   return {
     read: a.read && b.read,
     write: a.write && b.write,
@@ -49,7 +49,7 @@ export function intersectCaps(a: Caps, b: Caps): Caps {
 }
 
 export const entryKindSchema = z.enum(["file", "dir"]);
-export type EntryKind = z.infer<typeof entryKindSchema>;
+export type FmEntryKind = z.infer<typeof entryKindSchema>;
 
 export const entrySchema = z.object({
   mount: z.string(),
@@ -62,7 +62,7 @@ export const entrySchema = z.object({
   etag: z.string(),
   caps: capsSchema,
 });
-export type Entry = z.infer<typeof entrySchema>;
+export type FmEntry = z.infer<typeof entrySchema>;
 
 export const mountInfoSchema = z.object({
   id: z.string(),
@@ -72,11 +72,11 @@ export const mountInfoSchema = z.object({
   /** Deletes go to a restorable trash. */
   trash: z.boolean(),
 });
-export type MountInfo = z.infer<typeof mountInfoSchema>;
+export type FmMountInfo = z.infer<typeof mountInfoSchema>;
 
 export const SORT_KEYS = ["name", "mtime", "size"] as const;
 export const sortKeySchema = z.enum(SORT_KEYS);
-export type SortKey = z.infer<typeof sortKeySchema>;
+export type FmSortKey = z.infer<typeof sortKeySchema>;
 
 export const listResultSchema = z.object({
   entry: entrySchema,
@@ -84,11 +84,11 @@ export const listResultSchema = z.object({
   cursor: z.string().optional(),
   total: z.number().int().nonnegative(),
 });
-export type ListResult = z.infer<typeof listResultSchema>;
+export type FmListResult = z.infer<typeof listResultSchema>;
 
 export const CONFLICT_MODES = ["fail", "rename", "overwrite"] as const;
 export const conflictSchema = z.enum(CONFLICT_MODES);
-export type Conflict = z.infer<typeof conflictSchema>;
+export type FmConflict = z.infer<typeof conflictSchema>;
 
 export const opsRequestSchema = z.discriminatedUnion("op", [
   z.object({
@@ -109,7 +109,7 @@ export const opsRequestSchema = z.discriminatedUnion("op", [
     conflict: conflictSchema.default("fail"),
   }),
 ]);
-export type OpsRequest = z.input<typeof opsRequestSchema>;
+export type FmOpsRequest = z.input<typeof opsRequestSchema>;
 
 export const opResultSchema = z.object({
   path: z.string(),
@@ -122,12 +122,12 @@ export const opResultSchema = z.object({
     message: z.string(),
   }).optional(),
 });
-export type OpResult = z.infer<typeof opResultSchema>;
+export type FmOpResult = z.infer<typeof opResultSchema>;
 
 export const opsResultSchema = z.object({
   results: z.array(opResultSchema),
 });
-export type OpsResult = z.infer<typeof opsResultSchema>;
+export type FmOpsResult = z.infer<typeof opsResultSchema>;
 
 export const trashItemSchema = z.object({
   id: z.string(),
@@ -138,7 +138,7 @@ export const trashItemSchema = z.object({
   size: z.number().int().nonnegative(),
   deletedAt: z.string(),
 });
-export type TrashItem = z.infer<typeof trashItemSchema>;
+export type FmTrashItem = z.infer<typeof trashItemSchema>;
 
 export const trashIdsSchema = z.object({
   ids: z.array(z.string()).min(1).max(200),
@@ -151,7 +151,7 @@ export const usageSchema = z.object({
   /** The walk stopped at the entry limit; numbers are lower bounds. */
   truncated: z.boolean(),
 });
-export type Usage = z.infer<typeof usageSchema>;
+export type FmUsage = z.infer<typeof usageSchema>;
 
 export const errorBodySchema = z.object({
   error: z.object({
@@ -159,4 +159,4 @@ export const errorBodySchema = z.object({
     message: z.string(),
   }),
 });
-export type ErrorBody = z.infer<typeof errorBodySchema>;
+export type FmErrorBody = z.infer<typeof errorBodySchema>;
