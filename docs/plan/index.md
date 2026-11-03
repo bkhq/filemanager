@@ -46,4 +46,4 @@ Each plan is a single line linking to its detail file. All detailed information 
 - [x] [**20261103-1005-publish-registry Publish the shadcn registry**](20261103-1005-publish-registry.md) `2026-11-03`
 - [x] [**20261103-1005-cross-mount-copy Cross-mount copy and move**](20261103-1005-cross-mount-copy.md) `2026-11-03`
 - [x] [**20261103-1005-resumable-uploads Large and resumable uploads**](20261103-1005-resumable-uploads.md) `2026-11-03`
-- [-] [**20261103-1005-workers-r2 Cloudflare Workers app and R2 driver**](20261103-1005-workers-r2.md) `2026-11-03`
+- [x] [**20261103-1005-workers-r2 Cloudflare Workers app and R2 driver**](20261103-1005-workers-r2.md) `2026-11-03`
