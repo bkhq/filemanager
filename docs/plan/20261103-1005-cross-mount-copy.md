@@ -44,3 +44,4 @@
 - UI: paste into another mount; tree drop moves within the same mount and copies onto another mount.
 - "Copy contents" context action for text files up to 1 MiB (clipboard API), gated by `features.download`.
 - Cross-mount operations have no undo.
+- Items whose final target is a hidden path (trash, reserved folders) fail with INVALID.
