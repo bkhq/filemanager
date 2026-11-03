@@ -14,8 +14,11 @@ See [`docs/architecture.md`](docs/architecture.md) for the design.
 Register the namespace in the host's `components.json`:
 
 ```json
-{ "registries": { "@bkhq": "https://<registry-host>/r/{name}.json" } }
+{ "registries": { "@bkhq": "https://bkhq.github.io/filemanager/r/{name}.json" } }
 ```
+
+`/r/` is the latest release. To pin a release, use its tag in the path, e.g.
+`https://bkhq.github.io/filemanager/v0.1.0/r/{name}.json`; `/next/r/` tracks `main`.
 
 Then add what you need (dependencies are pulled in automatically):
 
@@ -116,6 +119,17 @@ import { runDriverContract } from "@/fm/server/contract";
 
 runDriverContract("my-driver", async () => ({ driver: myDriver(), cleanup: async () => {} }));
 ```
+
+## Publishing
+
+The Registry workflow (`.github/workflows/registry.yml`) deploys to GitHub Pages:
+a push to `main` updates `/next/r/`; pushing a `v*` tag publishes `/v{version}/r/`
+and moves `/r/` to it. One-time setup: enable GitHub Pages (Settings -> Pages ->
+Source: GitHub Actions), then allow tag deploys (Settings -> Environments ->
+github-pages -> Deployment branches and tags -> add tag rule `v*`).
+
+Items are copied source, so upgrading a host means re-running `shadcn add` for its
+items (against `/r/` or a newer pinned version) and reviewing the diff.
 
 ## Development
 
