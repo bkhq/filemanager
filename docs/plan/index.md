@@ -37,3 +37,13 @@ Each plan is a single line linking to its detail file. All detailed information 
 - [x] [**20261103-0846-naming-conventions Naming conventions for shipped code**](20261103-0846-naming-conventions.md) `2026-11-03`
 - [x] [**20261103-0939-no-deprecated-apis Remove deprecated API usage and lint against it**](20261103-0939-no-deprecated-apis.md) `2026-11-03`
 - [x] [**20261103-0948-rename-dev-apps Rename demo apps to fm-api / fm-web**](20261103-0948-rename-dev-apps.md) `2026-11-03`
+- [ ] [**20261103-1005-p1-campaign P1 campaign: requirement docs and BKD dispatch**](20261103-1005-p1-campaign.md) `2026-11-03`
+- [ ] [**20261103-1005-change-events Change event hook**](20261103-1005-change-events.md) `2026-11-03`
+- [ ] [**20261103-1005-recursive-search Recursive search**](20261103-1005-recursive-search.md) `2026-11-03`
+- [ ] [**20261103-1005-quick-open Quick open**](20261103-1005-quick-open.md) `2026-11-03`
+- [ ] [**20261103-1005-pick-mode Pick mode (FilePicker)**](20261103-1005-pick-mode.md) `2026-11-03`
+- [ ] [**20261103-1005-sidebar-drives Sidebar drive visibility and grouping**](20261103-1005-sidebar-drives.md) `2026-11-03`
+- [ ] [**20261103-1005-publish-registry Publish the shadcn registry**](20261103-1005-publish-registry.md) `2026-11-03`
+- [ ] [**20261103-1005-cross-mount-copy Cross-mount copy and move**](20261103-1005-cross-mount-copy.md) `2026-11-03`
+- [ ] [**20261103-1005-resumable-uploads Large and resumable uploads**](20261103-1005-resumable-uploads.md) `2026-11-03`
+- [ ] [**20261103-1005-workers-r2 Cloudflare Workers app and R2 driver**](20261103-1005-workers-r2.md) `2026-11-03`

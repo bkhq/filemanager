@@ -22,3 +22,4 @@ Adding cross-mount copy and move
 
 ## Notes
 
+- 2026-11-03: requirement plan [20261103-1005-cross-mount-copy](../plan/20261103-1005-cross-mount-copy.md) (campaign [20261103-1005-p1-campaign](../plan/20261103-1005-p1-campaign.md)).

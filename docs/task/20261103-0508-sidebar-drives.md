@@ -22,3 +22,4 @@ Adding sidebar drive visibility
 
 ## Notes
 
+- 2026-11-03: requirement plan [20261103-1005-sidebar-drives](../plan/20261103-1005-sidebar-drives.md) (campaign [20261103-1005-p1-campaign](../plan/20261103-1005-p1-campaign.md)).

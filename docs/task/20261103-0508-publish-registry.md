@@ -22,3 +22,4 @@ Publishing the registry
 
 ## Notes
 
+- 2026-11-03: requirement plan [20261103-1005-publish-registry](../plan/20261103-1005-publish-registry.md) (campaign [20261103-1005-p1-campaign](../plan/20261103-1005-p1-campaign.md)).

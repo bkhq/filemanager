@@ -23,3 +23,4 @@ Adding recursive search
 ## Notes
 
 - 2026-11-03: priority raised from P2 to P1 because it blocks quick-open (P1); the index line keeps its original priority per the index rules.
+- 2026-11-03: requirement plan [20261103-1005-recursive-search](../plan/20261103-1005-recursive-search.md) (campaign [20261103-1005-p1-campaign](../plan/20261103-1005-p1-campaign.md)).
