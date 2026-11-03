@@ -1,4 +1,4 @@
-import type { FmDriver, FmDriverEntry } from "../server/driver";
+import type { FmDriver, FmDriverEntry, FmUploadPart, FmWriteOptions } from "../server/driver";
 import { FmError } from "../core/errors";
 import { basename, dirname, isWithin } from "../core/path";
 import { ALL_CAPS } from "../core/schema";
@@ -95,6 +95,31 @@ export function memoryDriver(opts: FmMemoryDriverOptions = {}): FmDriver {
     return toEntry(to, get(to));
   };
 
+  const checkWrite = (path: string, o: FmWriteOptions): void => {
+    const existing = nodes.get(path);
+    if (existing?.kind === "dir")
+      throw new FmError("IS_A_DIR", `Is a directory: ${path}`);
+    if (existing && o.exclusive)
+      throw new FmError("EXISTS", `Already exists: ${path}`);
+    if (o.ifMatch !== undefined && (!existing || toEntry(path, existing).etag !== o.ifMatch))
+      throw new FmError("ETAG_MISMATCH", "File changed since it was read");
+  };
+
+  const putFile = (path: string, data: Uint8Array<ArrayBuffer>): FmDriverEntry => {
+    ensureDir(dirname(path));
+    const node = touch("file", data);
+    nodes.set(path, node);
+    return toEntry(path, node);
+  };
+
+  const uploads = new Map<string, { path: string; parts: Map<number, FmUploadPart & { data: Uint8Array<ArrayBuffer> }> }>();
+  const getUpload = (path: string, id: string) => {
+    const upload = uploads.get(id);
+    if (upload?.path !== path)
+      throw new FmError("NOT_FOUND", `Unknown upload: ${id}`);
+    return upload;
+  };
+
   const driver: FmDriver = {
     name: "memory",
     caps: ALL_CAPS,
@@ -126,18 +151,8 @@ export function memoryDriver(opts: FmMemoryDriverOptions = {}): FmDriver {
       };
     },
     async write(path, body, o = {}) {
-      const existing = nodes.get(path);
-      if (existing?.kind === "dir")
-        throw new FmError("IS_A_DIR", `Is a directory: ${path}`);
-      if (existing && o.exclusive)
-        throw new FmError("EXISTS", `Already exists: ${path}`);
-      if (o.ifMatch !== undefined && (!existing || toEntry(path, existing).etag !== o.ifMatch))
-        throw new FmError("ETAG_MISMATCH", "File changed since it was read");
-      const data = await readAll(body);
-      ensureDir(dirname(path));
-      const node = touch("file", data.slice());
-      nodes.set(path, node);
-      return toEntry(path, node);
+      checkWrite(path, o);
+      return putFile(path, (await readAll(body)).slice());
     },
     async mkdir(path) {
       assertFree(path);
@@ -156,6 +171,62 @@ export function memoryDriver(opts: FmMemoryDriverOptions = {}): FmDriver {
       get(path);
       for (const p of subtree(path))
         nodes.delete(p);
+    },
+    multipart: {
+      async begin(path) {
+        const id = crypto.randomUUID();
+        uploads.set(id, {
+          path,
+          parts: new Map(),
+        });
+        return id;
+      },
+      async uploadPart(path, uploadId, n, body, size) {
+        const upload = getUpload(path, uploadId);
+        if (!Number.isInteger(n) || n < 1 || n > 10000)
+          throw new FmError("INVALID", `Invalid part number: ${n}`);
+        const data = (await readAll(body)).slice();
+        if (data.byteLength !== size)
+          throw new FmError("INVALID", `Part ${n} is ${data.byteLength} bytes, expected ${size}`);
+        const part = {
+          n,
+          size,
+          etag: crypto.randomUUID(),
+          data,
+        };
+        upload.parts.set(n, part);
+        return { n, size, etag: part.etag };
+      },
+      async listParts(path, uploadId) {
+        return [
+          ...getUpload(path, uploadId).parts.values(),
+        ]
+          .sort((a, b) => a.n - b.n)
+          .map(({ n, size, etag }) => ({ n, size, etag }));
+      },
+      async complete(path, uploadId, parts, o = {}) {
+        const upload = getUpload(path, uploadId);
+        const chunks = parts.map((p, i) => {
+          const stored = upload.parts.get(i + 1);
+          if (p.n !== i + 1 || stored?.etag !== p.etag)
+            throw new FmError("INVALID", `Missing or unknown part ${i + 1}`);
+          return stored.data;
+        });
+        checkWrite(path, o);
+        const data = new Uint8Array(chunks.reduce((sum, c) => sum + c.byteLength, 0));
+        let offset = 0;
+        for (const c of chunks) {
+          data.set(c, offset);
+          offset += c.byteLength;
+        }
+        const entry = putFile(path, data);
+        uploads.delete(uploadId);
+        return entry;
+      },
+      async abort(path, uploadId) {
+        if (uploads.get(uploadId)?.path === path)
+          uploads.delete(uploadId);
+      },
     },
   };
 
