@@ -18,6 +18,7 @@ import {
   CopyPlusIcon,
   DownloadIcon,
   FilePlusIcon,
+  FileSearchIcon,
   FolderPlusIcon,
   FolderUpIcon,
   InfoIcon,
@@ -63,7 +64,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { createFmClient } from "../client/client";
-import { fmKeys, useFmMutations, useListing, useMounts, useTrash } from "../client/hooks";
+import { fmKeys, useFmMutations, useListing, useMounts, useSearch, useTrash } from "../client/hooks";
 import { createUploadQueue, xhrTransport } from "../client/upload";
 import { basename, dirname, joinPath } from "../core/path";
 import { acceptsEntry } from "./accept";
@@ -77,6 +78,7 @@ import { IconButton } from "./icon-button";
 import { enLabels } from "./labels";
 import { groupMountsByDriver, parseHidden, visibleMounts } from "./mount-visibility";
 import { PreviewDialog } from "./preview-dialog";
+import { QuickOpen } from "./quick-open";
 import { EMPTY_SELECTION, formatSize, prune, select, step } from "./state";
 import { TrashView } from "./trash-view";
 import { undoFor } from "./undo";
@@ -214,6 +216,7 @@ export function FileManager(props: FileManagerProps) {
   const shownMounts = mounts.data && visibleMounts(mounts.data, hostHidden, userHidden, mount);
   const { path, trash: inTrash } = location;
   const [query, setQuery] = useState("");
+  const [searchScope, setSearchScope] = useState<"folder" | "below">("folder");
   const [view, setView] = useStoredChoice(`${storageKey}:view`, ["list", "grid"], "list");
   const [layout, setLayout] = useStoredChoice(`${storageKey}:layout`, ["split", "single"], props.layout ?? "split");
   const [rootRef, width] = useWidth();
@@ -224,6 +227,7 @@ export function FileManager(props: FileManagerProps) {
   const [clipboard, setClipboard] = useState<FmClipboard>();
   const [preview, setPreview] = useState<FmEntry>();
   const [dialog, setDialog] = useState<DialogState>();
+  const [quickOpen, setQuickOpen] = useState(false);
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<{ message: string; undo?: () => void }>();
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -232,7 +236,12 @@ export function FileManager(props: FileManagerProps) {
   const folderInputRef = useRef<HTMLInputElement>(null);
 
   const listing = useListing(client, mount, path, sort.key, sort.order, query.trim());
-  const entries = useMemo(() => listing.data?.pages.flatMap(p => p.items.map(e => maskEntry(e, features))) ?? [], [listing.data, features]);
+  const below = features.search && searchScope === "below" && !!query.trim();
+  const search = useSearch(client, mount, path, query.trim(), below);
+  const items = useMemo(() => (below
+    ? search.data?.items
+    : listing.data?.pages.flatMap(p => p.items)), [below, search.data, listing.data]);
+  const entries = useMemo(() => items?.map(e => maskEntry(e, features)) ?? [], [items, features]);
   const rawDir = listing.data?.pages[0]?.entry;
   const dir = useMemo(() => rawDir && maskEntry(rawDir, features), [rawDir, features]);
   const order = useMemo(() => entries.map(e => e.path), [entries]);
@@ -269,7 +278,9 @@ export function FileManager(props: FileManagerProps) {
     onUploaded: () => onUploadedRef.current(),
   }));
 
-  const shownError = error ?? listing.error?.message;
+  const shownError = error ?? listing.error?.message ?? (below
+    ? search.error?.message
+    : undefined);
   const currentMount = mounts.data?.find(m => m.id === mount);
   const trashItems = useTrash(client, mount, inTrash).data ?? [];
 
@@ -284,9 +295,16 @@ export function FileManager(props: FileManagerProps) {
     setLocation({ mount: m, path: p, trash });
     setRawSelection(EMPTY_SELECTION);
     setQuery("");
+    setSearchScope("folder");
     setError(undefined);
   }, []);
   const navigate = useCallback((m: string, p: string) => go(m, p, false), [go]);
+
+  const changeQuery = (q: string) => {
+    setQuery(q);
+    if (!q.trim())
+      setSearchScope("folder");
+  };
 
   const failedMessage = (results: { ok: boolean; error?: { message: string } | undefined }[]) => {
     const failed = results.filter(r => !r.ok);
@@ -363,6 +381,27 @@ export function FileManager(props: FileManagerProps) {
       pick.onPick([e]);
   };
 
+  /** Search hit: go to its folder with the hit selected. */
+  const reveal = (e: FmEntry) => {
+    navigate(e.mount, dirname(e.path));
+    setRawSelection({
+      paths: new Set([e.path]),
+      anchor: e.path,
+    });
+  };
+  const openEntry = below
+    ? reveal
+    : open;
+
+  /** Quick-open pick: a folder opens, a file previews within its folder. */
+  const pickQuickOpen = (e: FmEntry) => {
+    if (e.kind === "dir")
+      return navigate(e.mount, e.path);
+    navigate(e.mount, dirname(e.path));
+    setPreview(maskEntry(e, features));
+  };
+  const canQuickOpen = features.search && !inTrash && !!mount;
+
   const download = (targets: FmEntry[]) => {
     if (!mount || targets.length === 0)
       return;
@@ -431,9 +470,15 @@ export function FileManager(props: FileManagerProps) {
     : mode, order));
 
   const onKeyDown = (e: KeyboardEvent) => {
+    const mod = e.metaKey || e.ctrlKey;
+    // Before the input check so it also works from the search box.
+    if (mod && e.key.toLowerCase() === "p" && canQuickOpen && !dialog && !preview && !quickOpen) {
+      e.preventDefault();
+      setQuickOpen(true);
+      return;
+    }
     if (inTrash || dialog || preview || (e.target as HTMLElement).closest("input, textarea, [contenteditable]"))
       return;
-    const mod = e.metaKey || e.ctrlKey;
     const one = selected.length === 1
       ? selected[0]
       : undefined;
@@ -450,7 +495,7 @@ export function FileManager(props: FileManagerProps) {
         if (pick && selection.anchor !== undefined && byPath.has(selection.anchor))
           open(byPath.get(selection.anchor)!);
         else if (one)
-          open(one);
+          openEntry(one);
         break;
       case "Backspace":
         if (mount && path !== "/")
@@ -711,7 +756,7 @@ export function FileManager(props: FileManagerProps) {
                 </Button>
               )
             : features.search && (
-              <div className={cn("relative", narrow && "order-last basis-full")}>
+              <div className={cn("relative flex items-center gap-1", narrow && "order-last basis-full")}>
                 <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   type="search"
@@ -721,9 +766,29 @@ export function FileManager(props: FileManagerProps) {
                     ? "w-full"
                     : "w-48")}
                   value={query}
-                  onChange={e => setQuery(e.target.value)}
-                  onKeyDown={e => e.key === "Escape" && setQuery("")}
+                  onChange={e => changeQuery(e.target.value)}
+                  onKeyDown={e => e.key === "Escape" && changeQuery("")}
                 />
+                {canQuickOpen && <IconButton label={labels.quickOpen} onClick={() => setQuickOpen(true)}><FileSearchIcon /></IconButton>}
+                {query.trim() && (
+                  <div className="flex shrink-0 items-center gap-0.5" role="group" aria-label={labels.search}>
+                    {(["folder", "below"] as const).map(s => (
+                      <Button
+                        key={s}
+                        size="xs"
+                        variant={searchScope === s
+                          ? "secondary"
+                          : "ghost"}
+                        aria-pressed={searchScope === s}
+                        onClick={() => setSearchScope(s)}
+                      >
+                        {s === "folder"
+                          ? labels.searchHere
+                          : labels.searchBelow}
+                      </Button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -831,6 +896,10 @@ export function FileManager(props: FileManagerProps) {
           </div>
         )}
 
+        {below && search.data?.truncated && (
+          <div className="border-b px-3 py-1 text-xs text-muted-foreground">{labels.searchTruncated}</div>
+        )}
+
         {inTrash && mount
           ? (
               <TrashView
@@ -868,7 +937,7 @@ export function FileManager(props: FileManagerProps) {
                     }))}
                     onSelect={onSelect}
                     onClearSelection={() => setRawSelection(EMPTY_SELECTION)}
-                    onOpen={open}
+                    onOpen={openEntry}
                     onEntryContextMenu={e => !selection.paths.has(e.path) && setRawSelection({
                       paths: new Set([e.path]),
                       anchor: e.path,
@@ -879,12 +948,15 @@ export function FileManager(props: FileManagerProps) {
                       dest: folder.path,
                       conflict: "rename",
                     })}
-                    hasMore={!!listing.hasNextPage && !listing.isFetchingNextPage}
+                    showParent={below}
+                    hasMore={!below && !!listing.hasNextPage && !listing.isFetchingNextPage}
                     onLoadMore={() => void listing.fetchNextPage()}
                     disabled={pick && (e => e.kind === "file" && !acceptsEntry(e, pick.accept))}
                     empty={(
                       <div className="flex h-full min-h-40 items-center justify-center text-sm text-muted-foreground">
-                        {listing.isPending
+                        {(below
+                          ? search.isPending
+                          : listing.isPending)
                           ? labels.loading
                           : (query.trim()
                               ? labels.noMatches
@@ -973,6 +1045,17 @@ export function FileManager(props: FileManagerProps) {
               }
             : {})}
           onClose={() => setPreview(undefined)}
+        />
+      )}
+
+      {canQuickOpen && (
+        <QuickOpen
+          client={client}
+          mount={mount}
+          labels={labels}
+          open={quickOpen}
+          onOpenChange={setQuickOpen}
+          onPick={pickQuickOpen}
         />
       )}
 

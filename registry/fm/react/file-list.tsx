@@ -17,6 +17,7 @@ import {
   FolderIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { dirname } from "../core/path";
 import { formatSize, kindOf } from "./state";
 
 export const DRAG_TYPE = "application/x-fm-paths";
@@ -65,6 +66,8 @@ export interface FileListProps {
   empty: ReactNode;
   /** Entries shown dimmed with `aria-disabled` (e.g. not pickable). */
   disabled?: ((entry: FmEntry) => boolean) | undefined;
+  /** Show each entry's parent folder (search results from several folders). */
+  showParent?: boolean;
 }
 
 function modeOf(e: MouseEvent): FmSelectMode {
@@ -146,6 +149,7 @@ function ListRow({ p, entry, top }: { p: FileListProps; entry: FmEntry; top: num
     >
       <EntryIcon entry={entry} className="size-4" />
       <span className="min-w-0 flex-1 truncate" role="gridcell">{entry.name}</span>
+      {p.showParent && <span className="max-w-[40%] min-w-0 truncate text-xs text-muted-foreground" role="gridcell">{dirname(entry.path)}</span>}
       <span className="w-24 shrink-0 text-right text-xs text-muted-foreground tabular-nums" role="gridcell">
         {entry.kind === "file"
           ? formatSize(entry.size)
@@ -180,7 +184,8 @@ function GridCell({ p, entry }: { p: FileListProps; entry: FmEntry }) {
           ? <img src={p.client.readUrl(entry.mount, entry.path, { version: entry.etag })} alt="" loading="lazy" draggable={false} className="max-h-full max-w-full object-contain" />
           : <EntryIcon entry={entry} className="size-10" />}
       </div>
-      <span className="line-clamp-2 w-full text-center break-all">{entry.name}</span>
+      <span className={cn("line-clamp-2 w-full text-center break-all", p.showParent && "line-clamp-1")}>{entry.name}</span>
+      {p.showParent && <span className="w-full truncate text-center text-muted-foreground">{dirname(entry.path)}</span>}
     </div>
   );
 }

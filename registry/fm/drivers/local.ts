@@ -1,8 +1,10 @@
 import type { Stats } from "node:fs";
-import type { FmDriver, FmDriverEntry } from "../server/driver";
+import type { FmDriver, FmDriverEntry, FmSearchOptions } from "../server/driver";
 import { cp, link, lstat, mkdir, readdir, realpath, rename, rm, stat, unlink } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
+import process from "node:process";
 import { FmError } from "../core/errors";
+import { fuzzyRank } from "../core/fuzzy";
 import { basename, dirname, isWithin } from "../core/path";
 import { ALL_CAPS, READ_ONLY_CAPS } from "../core/schema";
 
@@ -12,6 +14,15 @@ export interface FmLocalDriverOptions {
   readOnly?: boolean;
   /** List dotfiles (default true). */
   showHidden?: boolean;
+  /**
+   * When true and the root is inside a git work tree, `search` lists candidates
+   * with `git ls-files`, honouring .gitignore. Only files are found (git does not
+   * list directories). Otherwise the router walks. git runs with fsmonitor and
+   * the untracked cache disabled, literal pathspecs and a minimal environment.
+   * `.git` paths become read-only through this driver: write / mkdir / move /
+   * copy / remove on any path with a `.git` segment throw FORBIDDEN.
+   */
+  gitIgnore?: boolean;
 }
 
 const ERRNO: Record<string, ConstructorParameters<typeof FmError>[0]> = {
@@ -109,9 +120,94 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
     return [a, b] as const;
   };
 
-  const writable = () => {
+  /** Root-relative paths from `git ls-files` below `dir`; null when git fails or the root is not a work tree. */
+  const gitFiles = async (dir: string, signal?: AbortSignal): Promise<string[] | null> => {
+    try {
+      const proc = Bun.spawn([
+        "git",
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "core.untrackedCache=false",
+        "--literal-pathspecs",
+        "ls-files",
+        "-z",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "--",
+        dir === "/"
+          ? "."
+          : dir.slice(1),
+      ], {
+        cwd: await abs("/"),
+        env: {
+          PATH: process.env.PATH ?? "",
+          ...(process.env.HOME !== undefined
+            ? { HOME: process.env.HOME }
+            : {}),
+          GIT_CONFIG_NOSYSTEM: "1",
+          GIT_TERMINAL_PROMPT: "0",
+          GIT_OPTIONAL_LOCKS: "0",
+        },
+        stdout: "pipe",
+        stderr: "ignore",
+        ...(signal
+          ? { signal }
+          : {}),
+      });
+      const [out, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        proc.exited,
+      ]);
+      return exitCode === 0
+        ? out.split("\0").filter(Boolean)
+        : null;
+    }
+    catch {
+      return null;
+    }
+  };
+
+  const search = async (dir: string, q: string, o: FmSearchOptions): Promise<FmDriverEntry[] | null> => {
+    const files = await gitFiles(dir, o.signal);
+    if (!files)
+      return null;
+    let paths = files
+      .map(rel => `/${rel}`)
+      .filter(p => opts.showHidden !== false || !p.split("/").some(s => s.startsWith(".")));
+    const relative = (path: string) => (dir === "/"
+      ? path
+      : path.slice(dir.length));
+    if (o.mode === "fuzzy") {
+      paths = fuzzyRank(q, paths, relative, paths.length);
+    }
+    else {
+      const needle = q.toLocaleLowerCase();
+      paths = paths.filter(p => basename(p).toLocaleLowerCase().includes(needle));
+    }
+    const out: FmDriverEntry[] = [];
+    for (const p of paths) {
+      if (out.length >= o.limit)
+        break;
+      try {
+        out.push(await statAbs(p, await abs(p)));
+      }
+      catch {
+        // Deleted but still in the index, or outside the jail.
+      }
+    }
+    return out;
+  };
+
+  /** Throws when the mount is read-only, or when gitIgnore is set and a path is inside `.git`. */
+  const writable = (...paths: string[]) => {
     if (opts.readOnly)
       throw new FmError("UNSUPPORTED", "Mount is read-only");
+    for (const path of paths) {
+      if (opts.gitIgnore && path.split("/").some(s => s.toLowerCase() === ".git"))
+        throw new FmError("FORBIDDEN", `Forbidden: ${path}`);
+    }
   };
 
   return {
@@ -167,7 +263,7 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
       };
     },
     async write(path, body, o = {}) {
-      writable();
+      writable(path);
       const a = await abs(path);
       const current = await stat(a, { bigint: true }).catch(() => undefined);
       if (current?.isDirectory())
@@ -198,7 +294,7 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
       return statAbs(path, a);
     },
     async mkdir(path) {
-      writable();
+      writable(path);
       const a = await abs(path);
       if (await exists(a))
         throw new FmError("EXISTS", `Already exists: ${path}`);
@@ -206,7 +302,7 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
       return statAbs(path, a);
     },
     async move(from, to) {
-      writable();
+      writable(from, to);
       const [a, b] = await assertTransfer(from, to);
       try {
         await rename(a, b);
@@ -220,13 +316,13 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
       return statAbs(to, b);
     },
     async copy(from, to) {
-      writable();
+      writable(from, to);
       const [a, b] = await assertTransfer(from, to);
       await cp(a, b, { recursive: true, errorOnExist: true, force: false }).catch(e => mapError(e, to));
       return statAbs(to, b);
     },
     async remove(path) {
-      writable();
+      writable(path);
       if (path === "/")
         throw new FmError("INVALID", "Cannot remove the root");
       const a = await abs(path);
@@ -234,5 +330,8 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
         throw new FmError("NOT_FOUND", `Not found: ${path}`);
       await rm(a, { recursive: true, force: true });
     },
+    ...(opts.gitIgnore
+      ? { search }
+      : {}),
   };
 }
