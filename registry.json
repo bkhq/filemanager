@@ -143,6 +143,22 @@
       ]
     },
     {
+      "name": "fm-driver-r2",
+      "type": "registry:lib",
+      "title": "R2 driver",
+      "description": "Cloudflare R2 driver over the Workers bucket binding.",
+      "registryDependencies": [
+        "@bkhq/fm-server"
+      ],
+      "files": [
+        {
+          "path": "registry/fm/drivers/r2.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/drivers/r2.ts"
+        }
+      ]
+    },
+    {
       "name": "fm-client",
       "type": "registry:lib",
       "title": "File manager client",
