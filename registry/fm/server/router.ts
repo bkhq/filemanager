@@ -64,7 +64,25 @@ export interface FmRouterOptions<E extends Env> {
    */
   authorize?: (c: Context<E>, target: { mount: FmMount; path: string }) => FmCaps | Promise<FmCaps>;
   limits?: Partial<FmLimits>;
+  /**
+   * Called once per mutated item after the work, for successes and failures.
+   * Awaited; a throwing hook is logged and never changes the response.
+   */
+  onEvent?: (c: Context<E>, event: FmChangeEvent) => void | Promise<void>;
 }
+
+export interface FmChangeEvent {
+  op: "write" | "mkdir" | "delete" | "move" | "copy" | "rename" | "restore" | "purge";
+  /** Mount id. */
+  mount: string;
+  path: string;
+  to?: string;
+  trashId?: string;
+  ok: boolean;
+  error?: { code: string; message: string };
+}
+
+type EventDraft = Omit<FmChangeEvent, "ok" | "error">;
 
 type ItemOutcome = Pick<FmOpResult, "entry" | "trashId">;
 
@@ -149,7 +167,7 @@ function contentDisposition(type: "inline" | "attachment", name: string) {
   return `${type}; filename="${name.replace(/[^\x20-\x7E]|["\\]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(name)}`;
 }
 
-/** Builds the file manager API. Mount it with `app.route("/api/fm", createFileManager(...))`. */
+/** Builds the file manager API. Mount it with `app.route("/api/fm", createFmRouter(...))`. */
 export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>): Hono<E> {
   const limits: FmLimits = {
     ...DEFAULT_LIMITS,
@@ -208,13 +226,43 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
     };
   };
 
+  const emit = async (c: unknown, event: FmChangeEvent) => {
+    if (!options.onEvent)
+      return;
+    try {
+      await options.onEvent(host(c), event);
+    }
+    catch (e) {
+      console.error("onEvent hook failed", e);
+    }
+  };
+
+  /** Runs one mutation and emits its event; `fn` may refine the draft. Errors are rethrown. */
+  const track = async <T>(c: unknown, event: EventDraft, fn: () => Promise<T>): Promise<T> => {
+    try {
+      const out = await fn();
+      await emit(c, { ...event, ok: true });
+      return out;
+    }
+    catch (e) {
+      if (e instanceof FmError) {
+        await emit(c, {
+          ...event,
+          ok: false,
+          error: { code: e.code, message: e.message },
+        });
+      }
+      throw e;
+    }
+  };
+
   /** Runs one item of a batch; file-manager errors become a failed result, others reach the host. */
-  const settle = async (results: FmOpResult[], path: string, fn: () => Promise<ItemOutcome>) => {
+  const settle = async (c: unknown, results: FmOpResult[], path: string, event: EventDraft, fn: () => Promise<ItemOutcome>) => {
     try {
       results.push({
         path,
         ok: true,
-        ...await fn(),
+        ...await track(c, event, fn),
       });
     }
     catch (e) {
@@ -411,27 +459,36 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
     conflict: conflictSchema.default("overwrite"),
   })), async (c) => {
     const q = c.req.valid("query");
-    const t = await resolve(c, c.req.param("mount"), q.path, "write");
-    if (t.path === "/")
-      throw new FmError("INVALID", "Invalid path");
-    const length = Number(c.req.header("content-length") ?? 0);
-    if (length > limits.maxUploadBytes)
-      throw new FmError("TOO_LARGE", `Upload exceeds ${limits.maxUploadBytes} bytes`);
-    const ifMatch = c.req.header("if-match")?.replace(/^W\//, "").replace(/"/g, "");
-    const d = t.mount.driver;
-    const path = await destination(d, dirname(t.path), basename(t.path), q.conflict);
-    const body = c.req.raw.body
-      ? limitStream(c.req.raw.body, limits.maxUploadBytes)
-      : new Uint8Array();
-    const written = await d.write(path, body, {
-      ...(ifMatch
-        ? { ifMatch }
-        : {}),
-      ...(q.conflict === "fail"
-        ? { exclusive: true }
-        : {}),
+    const event: EventDraft = {
+      op: "write",
+      mount: c.req.param("mount"),
+      path: q.path,
+    };
+    return track(c, event, async () => {
+      const t = await resolve(c, event.mount, q.path, "write");
+      event.path = t.path;
+      if (t.path === "/")
+        throw new FmError("INVALID", "Invalid path");
+      const length = Number(c.req.header("content-length") ?? 0);
+      if (length > limits.maxUploadBytes)
+        throw new FmError("TOO_LARGE", `Upload exceeds ${limits.maxUploadBytes} bytes`);
+      const ifMatch = c.req.header("if-match")?.replace(/^W\//, "").replace(/"/g, "");
+      const d = t.mount.driver;
+      const path = await destination(d, dirname(t.path), basename(t.path), q.conflict);
+      const body = c.req.raw.body
+        ? limitStream(c.req.raw.body, limits.maxUploadBytes)
+        : new Uint8Array();
+      const written = await d.write(path, body, {
+        ...(ifMatch
+          ? { ifMatch }
+          : {}),
+        ...(q.conflict === "fail"
+          ? { exclusive: true }
+          : {}),
+      });
+      event.path = path;
+      return c.json(toEntry(t, written));
     });
-    return c.json(toEntry(t, written));
   });
 
   app.post("/m/:mount/mkdir", describeRoute({
@@ -444,8 +501,16 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
   }), v("json", z.object({
     path: z.string().min(2),
   })), async (c) => {
-    const t = await resolve(c, c.req.param("mount"), c.req.valid("json").path, "write");
-    return c.json(toEntry(t, await t.mount.driver.mkdir(t.path)), 201);
+    const event: EventDraft = {
+      op: "mkdir",
+      mount: c.req.param("mount"),
+      path: c.req.valid("json").path,
+    };
+    return track(c, event, async () => {
+      const t = await resolve(c, event.mount, event.path, "write");
+      event.path = t.path;
+      return c.json(toEntry(t, await t.mount.driver.mkdir(t.path)), 201);
+    });
   });
 
   app.post("/m/:mount/ops", describeRoute({
@@ -460,47 +525,55 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
     const req = c.req.valid("json");
     const mountId = c.req.param("mount");
     const results: FmOpResult[] = [];
-    const run = (path: string, fn: () => Promise<ItemOutcome>) => settle(results, path, fn);
+    const run = (path: string, event: EventDraft, fn: () => Promise<ItemOutcome>) => settle(c, results, path, event, fn);
 
     if (req.op === "delete") {
       for (const p of req.paths) {
-        await run(p, async () => {
+        const event: EventDraft = { op: "delete", mount: mountId, path: p };
+        await run(p, event, async () => {
           const t = await resolve(c, mountId, p, "delete");
+          event.path = t.path;
           if (t.path === "/")
             throw new FmError("INVALID", "Cannot delete the root");
-          if (hasTrash(t.mount) && !req.permanent)
-            return { trashId: await moveToTrash(t.mount.driver, t.path) };
+          if (hasTrash(t.mount) && !req.permanent) {
+            event.trashId = await moveToTrash(t.mount.driver, t.path);
+            return { trashId: event.trashId };
+          }
           await t.mount.driver.remove(t.path);
           return {};
         });
       }
     }
     else if (req.op === "rename") {
-      await run(req.path, async () => {
+      const event: EventDraft = { op: "rename", mount: mountId, path: req.path };
+      await run(req.path, event, async () => {
         const t = await resolve(c, mountId, req.path, "rename");
+        event.path = t.path;
         if (t.path === "/")
           throw new FmError("INVALID", "Cannot rename the root");
         assertName(req.name);
         const to = await resolve(c, mountId, joinPath(dirname(t.path), req.name), "write");
-        return {
-          entry: toEntry(t, await t.mount.driver.move(t.path, to.path)),
-        };
+        const entry = toEntry(t, await t.mount.driver.move(t.path, to.path));
+        event.to = to.path;
+        return { entry };
       });
     }
     else {
       const dest = await resolve(c, mountId, req.dest, "write");
       for (const p of req.paths) {
-        await run(p, async () => {
+        const event: EventDraft = { op: req.op, mount: mountId, path: p };
+        await run(p, event, async () => {
           const src = await resolve(c, mountId, p, req.op);
+          event.path = src.path;
           const d = src.mount.driver;
           if (src.path === "/" || isWithin(dest.path, src.path))
             throw new FmError("INVALID", "Cannot move or copy a directory into itself");
           let to = await destination(d, dest.path, basename(src.path), req.conflict);
           if (to === src.path) {
             if (req.op === "move") {
-              return {
-                entry: toEntry(dest, await d.stat(to)),
-              };
+              const entry = toEntry(dest, await d.stat(to));
+              event.to = to;
+              return { entry };
             }
             to = await destination(d, dest.path, basename(src.path), "rename");
           }
@@ -511,6 +584,7 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
           const moved = req.op === "move"
             ? await d.move(src.path, to)
             : await d.copy(src.path, to);
+          event.to = to;
           return {
             entry: toEntry(dest, moved),
           };
@@ -643,12 +717,20 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
     const d = mount.driver;
     const results: FmOpResult[] = [];
     for (const id of c.req.valid("json").ids) {
-      await settle(results, id, async () => {
+      const event: EventDraft = {
+        op: "restore",
+        mount: mount.id,
+        path: id,
+        trashId: id,
+      };
+      await settle(c, results, id, event, async () => {
         const item = await getTrashItem(d, id);
+        event.path = item.path;
         const t = await resolve(c, mount.id, item.path, "write");
         const to = await destination(d, dirname(t.path), item.name, "rename");
         const entry = toEntry(t, await d.move(trashedPath(item), to));
         await dropTrashItem(d, id);
+        event.to = to;
         return { entry };
       });
     }
@@ -670,8 +752,15 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
     const ids = c.req.valid("json").ids ?? (await listTrash(d)).map(i => i.id);
     const results: FmOpResult[] = [];
     for (const id of ids) {
-      await settle(results, id, async () => {
+      const event: EventDraft = {
+        op: "purge",
+        mount: mount.id,
+        path: id,
+        trashId: id,
+      };
+      await settle(c, results, id, event, async () => {
         const item = await getTrashItem(d, id);
+        event.path = item.path;
         await resolve(c, mount.id, item.path, "delete");
         await dropTrashItem(d, id);
         return {};
