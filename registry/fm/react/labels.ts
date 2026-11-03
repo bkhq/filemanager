@@ -86,6 +86,9 @@ export const enLabels = {
   next: "Next",
   discardChanges: "Discard unsaved changes?",
   discard: "Discard",
+  storage: "Storage",
+  showSidebar: "Show sidebar",
+  hideSidebar: "Hide sidebar",
 };
 
 export type Labels = typeof enLabels;
@@ -172,4 +175,7 @@ export const zhLabels: Labels = {
   next: "下一个",
   discardChanges: "放弃未保存的更改？",
   discard: "放弃",
+  storage: "存储位置",
+  showSidebar: "显示侧栏",
+  hideSidebar: "隐藏侧栏",
 };

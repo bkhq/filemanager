@@ -46,6 +46,8 @@ export function EntryIcon({ entry, className }: { entry: Pick<Entry, "kind" | "n
 export interface FileListProps {
   entries: Entry[];
   view: "list" | "grid";
+  /** Narrow layout: hide the modified column; a tap opens entries. */
+  compact?: boolean;
   selection: Selection;
   labels: Labels;
   client: FmClient;
@@ -83,7 +85,11 @@ function useEntryHandlers(p: FileListProps, entry: Entry) {
       "draggable": entry.caps.move,
       "onClick": (e: MouseEvent) => {
         e.stopPropagation();
-        p.onSelect(entry.path, modeOf(e));
+        // Touch has no double-click: a tap opens, a long press opens the context menu.
+        if ((e.nativeEvent as PointerEvent).pointerType === "touch")
+          p.onOpen(entry);
+        else
+          p.onSelect(entry.path, modeOf(e));
       },
       "onDoubleClick": () => p.onOpen(entry),
       "onContextMenu": () => p.onEntryContextMenu(entry),
@@ -137,7 +143,7 @@ function ListRow({ p, entry, top }: { p: FileListProps; entry: Entry; top: numbe
           ? formatSize(entry.size)
           : ""}
       </span>
-      <span className="hidden w-40 shrink-0 text-right text-xs text-muted-foreground tabular-nums sm:block" role="gridcell">
+      <span className={cn("w-40 shrink-0 text-right text-xs text-muted-foreground tabular-nums", p.compact && "hidden")} role="gridcell">
         {Date.parse(entry.mtime) > 0
           ? new Date(entry.mtime).toLocaleString()
           : ""}
@@ -184,7 +190,7 @@ function SortHeader({ p }: { p: FileListProps }) {
       <span className="size-4" />
       {cell("name", p.labels.name, "min-w-0 flex-1")}
       {cell("size", p.labels.size, "w-24 justify-end")}
-      {cell("mtime", p.labels.modified, "hidden w-40 justify-end sm:flex")}
+      {cell("mtime", p.labels.modified, cn("w-40 justify-end", p.compact && "hidden"))}
     </div>
   );
 }

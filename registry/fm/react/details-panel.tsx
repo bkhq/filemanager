@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { FmClient } from "../client/client";
 import type { Entry } from "../core/schema";
 import type { Labels } from "./labels";
+import { cn } from "cn";
 import { CopyIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -21,11 +22,13 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /** Side panel with the properties of one entry; folders show their total size. */
-export function DetailsPanel({ entry, mountLabel, client, labels, onClose }: {
+export function DetailsPanel({ entry, mountLabel, client, labels, overlay, onClose }: {
   entry: Entry;
   mountLabel: string;
   client: FmClient;
   labels: Labels;
+  /** Float above the list (narrow layouts) instead of taking a column. */
+  overlay?: boolean;
   onClose: () => void;
 }) {
   const isDir = entry.kind === "dir";
@@ -41,7 +44,10 @@ export function DetailsPanel({ entry, mountLabel, client, labels, onClose }: {
   };
 
   return (
-    <aside className="flex w-72 shrink-0 flex-col border-l" aria-label={labels.details}>
+    <aside
+      className={cn("flex w-72 shrink-0 flex-col border-l bg-background", overlay && "absolute inset-y-0 right-0 z-20 max-w-[85%] shadow-lg")}
+      aria-label={labels.details}
+    >
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <EntryIcon entry={entry} className="size-5" />
         <span className="min-w-0 flex-1 truncate text-sm font-medium">

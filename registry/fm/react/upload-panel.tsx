@@ -13,7 +13,7 @@ export function UploadPanel({ queue, labels }: { queue: UploadQueue; labels: Lab
   if (tasks.length === 0)
     return null;
   return (
-    <div className="absolute right-3 bottom-3 z-20 w-80 rounded-lg border bg-popover text-popover-foreground shadow-lg" role="status" aria-label={labels.uploads}>
+    <div className="absolute right-3 bottom-3 z-20 w-80 max-w-[calc(100%-1.5rem)] rounded-lg border bg-popover text-popover-foreground shadow-lg" role="status" aria-label={labels.uploads}>
       <div className="flex items-center justify-between border-b px-3 py-2 text-sm font-medium">
         {labels.uploads}
         <Button size="sm" variant="ghost" onClick={clearFinished}>{labels.clearFinished}</Button>

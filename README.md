@@ -60,6 +60,9 @@ import { FileManager } from "@/fm/react/file-manager";
 
 // Per-feature switches on top of the preset (see `src/fm/react/features.ts`).
 <FileManager baseUrl="/api/fm" features={{ delete: false, upload: false }} />;
+
+// Start without the folder tree; users can toggle it. Below 640px it is always single-pane.
+<FileManager baseUrl="/api/fm" layout="single" />;
 ```
 
 `readOnly` / `features` only hide UI actions. Enforce access on the server with

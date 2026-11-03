@@ -9,7 +9,9 @@ import type { Undo } from "./undo";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "cn";
 import {
+  ArrowUpDownIcon,
   ArrowUpIcon,
+  ChevronDownIcon,
   ClipboardPasteIcon,
   CopyIcon,
   CopyPlusIcon,
@@ -20,6 +22,7 @@ import {
   InfoIcon,
   LayoutGridIcon,
   ListIcon,
+  PanelLeftIcon,
   PencilIcon,
   RefreshCwIcon,
   ScissorsIcon,
@@ -92,8 +95,13 @@ export interface FileManagerProps {
   /** Extra actions for the entry context menu (share, attach …). */
   actions?: FileAction[];
   className?: string;
-  /** localStorage key for the list / grid preference. */
+  /** localStorage key prefix for the view / layout preferences. */
   storageKey?: string;
+  /**
+   * Initial layout: folder tree beside the list (`split`) or the list alone
+   * (`single`). Users can toggle it; containers narrower than 640px always use `single`.
+   */
+  layout?: "split" | "single";
   /** View-only preset: browse, preview, search and download. */
   readOnly?: boolean;
   /** Per-feature switches applied on top of `readOnly`, e.g. `{ delete: false }`. */
@@ -122,16 +130,35 @@ function triggerDownload(url: string) {
   a.remove();
 }
 
-function useViewMode(key: string) {
-  const [view, setView] = useState<"list" | "grid">(() =>
-    (typeof localStorage !== "undefined" && localStorage.getItem(key) === "grid"
-      ? "grid"
-      : "list"));
-  const change = (v: "list" | "grid") => {
-    setView(v);
+/** A string choice persisted in localStorage. */
+function useStoredChoice<T extends string>(key: string, values: readonly T[], fallback: T) {
+  const [value, setValue] = useState<T>(() => {
+    const stored = typeof localStorage !== "undefined"
+      ? localStorage.getItem(key)
+      : null;
+    return values.find(v => v === stored) ?? fallback;
+  });
+  const change = (v: T) => {
+    setValue(v);
     localStorage.setItem(key, v);
   };
-  return [view, change] as const;
+  return [value, change] as const;
+}
+
+const NARROW = 640;
+
+/** Width of an element, tracked with ResizeObserver (0 until measured). */
+function useWidth() {
+  const [el, setEl] = useState<HTMLElement | null>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    if (!el)
+      return;
+    const ro = new ResizeObserver(([e]) => setWidth(e!.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [el]);
+  return [setEl, width] as const;
 }
 
 export function FileManager(props: FileManagerProps) {
@@ -144,7 +171,12 @@ export function FileManager(props: FileManagerProps) {
   const mount = location.mount ?? mounts.data?.[0]?.id;
   const { path, trash: inTrash } = location;
   const [query, setQuery] = useState("");
-  const [view, setView] = useViewMode(props.storageKey ?? "fm:view");
+  const storageKey = props.storageKey ?? "fm";
+  const [view, setView] = useStoredChoice(`${storageKey}:view`, ["list", "grid"], "list");
+  const [layout, setLayout] = useStoredChoice(`${storageKey}:layout`, ["split", "single"], props.layout ?? "split");
+  const [rootRef, width] = useWidth();
+  const narrow = width > 0 && width < NARROW;
+  const split = layout === "split" && !narrow;
   const [sort, setSort] = useState<{ key: SortKey; order: "asc" | "desc" }>({ key: "name", order: "asc" });
   const [rawSelection, setRawSelection] = useState<Selection>(EMPTY_SELECTION);
   const [clipboard, setClipboard] = useState<Clipboard>();
@@ -464,24 +496,26 @@ export function FileManager(props: FileManagerProps) {
     return <div className={cn("p-6 text-sm text-muted-foreground", props.className)}>{labels.noMounts}</div>;
 
   return (
-    <div className={cn("relative flex h-full min-h-0 overflow-hidden rounded-lg border bg-background", props.className)}>
-      <aside className="hidden w-56 shrink-0 overflow-auto border-r md:block">
-        {mounts.data && (
-          <FileTree
-            client={client}
-            mounts={features.trash
-              ? mounts.data
-              : mounts.data.map(m => ({ ...m, trash: false }))}
-            mount={mount}
-            path={path}
-            inTrash={inTrash}
-            onNavigate={navigate}
-            onOpenTrash={m => go(m, "/", true)}
-            readOnlyLabel={labels.readOnly}
-            trashLabel={labels.trash}
-          />
-        )}
-      </aside>
+    <div ref={rootRef} className={cn("relative flex h-full min-h-0 overflow-hidden rounded-lg border bg-background", props.className)}>
+      {split && (
+        <aside className="w-56 shrink-0 overflow-auto border-r">
+          {mounts.data && (
+            <FileTree
+              client={client}
+              mounts={features.trash
+                ? mounts.data
+                : mounts.data.map(m => ({ ...m, trash: false }))}
+              mount={mount}
+              path={path}
+              inTrash={inTrash}
+              onNavigate={navigate}
+              onOpenTrash={m => go(m, "/", true)}
+              readOnlyLabel={labels.readOnly}
+              trashLabel={labels.trash}
+            />
+          )}
+        </aside>
+      )}
 
       <section
         className="flex min-w-0 flex-1 flex-col outline-none"
@@ -496,12 +530,41 @@ export function FileManager(props: FileManagerProps) {
           <IconButton label={labels.up} disabled={path === "/"} onClick={() => mount && navigate(mount, dirname(path))}>
             <ArrowUpIcon />
           </IconButton>
-          <Breadcrumb className="min-w-0 flex-1 px-1">
+          {/* Narrow: the toolbar wraps below the breadcrumb instead of squeezing it. */}
+          <Breadcrumb className={cn("min-w-0 flex-1 px-1", narrow && "basis-[calc(100%-2.5rem)]")}>
             <BreadcrumbList className="flex-nowrap overflow-hidden">
               <BreadcrumbItem>
-                {crumbs.length || inTrash
-                  ? <BreadcrumbLink render={<button type="button" onClick={() => mount && navigate(mount, "/")} />}>{currentMount?.label}</BreadcrumbLink>
-                  : <BreadcrumbPage>{currentMount?.label}</BreadcrumbPage>}
+                {!split && mounts.data
+                  ? (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger render={<button type="button" className="flex items-center gap-1 rounded-sm hover:text-foreground" aria-label={labels.storage} />}>
+                          <span className="truncate">{currentMount?.label}</span>
+                          <ChevronDownIcon className="size-3.5" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="w-56">
+                          <DropdownMenuRadioGroup
+                            value={inTrash
+                              ? ""
+                              : mount ?? ""}
+                            onValueChange={v => navigate(v as string, "/")}
+                          >
+                            {mounts.data.map(m => <DropdownMenuRadioItem key={m.id} value={m.id} closeOnClick>{m.label}</DropdownMenuRadioItem>)}
+                          </DropdownMenuRadioGroup>
+                          {currentMount?.trash && features.trash && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => go(currentMount.id, "/", true)}>
+                                <Trash2Icon />
+                                {labels.trash}
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )
+                  : crumbs.length || inTrash
+                    ? <BreadcrumbLink render={<button type="button" onClick={() => mount && navigate(mount, "/")} />}>{currentMount?.label}</BreadcrumbLink>
+                    : <BreadcrumbPage>{currentMount?.label}</BreadcrumbPage>}
               </BreadcrumbItem>
               {inTrash && (
                 <>
@@ -533,13 +596,15 @@ export function FileManager(props: FileManagerProps) {
                 </Button>
               )
             : features.search && (
-              <div className="relative">
+              <div className={cn("relative", narrow && "order-last basis-full")}>
                 <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   type="search"
                   aria-label={labels.search}
                   placeholder={labels.search}
-                  className="h-7 w-48 pl-7 text-xs md:text-xs"
+                  className={cn("h-7 pl-7 text-xs md:text-xs", narrow
+                    ? "w-full"
+                    : "w-48")}
                   value={query}
                   onChange={e => setQuery(e.target.value)}
                   onKeyDown={e => e.key === "Escape" && setQuery("")}
@@ -594,7 +659,9 @@ export function FileManager(props: FileManagerProps) {
                       </DropdownMenu>
                     )}
                     <DropdownMenu>
-                      <DropdownMenuTrigger render={<Button size="sm" variant="ghost" />}>{labels.sortBy}</DropdownMenuTrigger>
+                      {narrow
+                        ? <DropdownMenuTrigger render={<IconButton label={labels.sortBy} />}><ArrowUpDownIcon /></DropdownMenuTrigger>
+                        : <DropdownMenuTrigger render={<Button size="sm" variant="ghost" />}>{labels.sortBy}</DropdownMenuTrigger>}
                       <DropdownMenuContent align="end" className="w-40">
                         <DropdownMenuRadioGroup value={sort.key} onValueChange={v => setSort(s => ({ ...s, key: v as SortKey }))}>
                           <DropdownMenuRadioItem value="name">{labels.name}</DropdownMenuRadioItem>
@@ -630,6 +697,11 @@ export function FileManager(props: FileManagerProps) {
                     </IconButton>
                   </div>
                 )}
+          {!narrow && (
+            <IconButton label={split ? labels.hideSidebar : labels.showSidebar} aria-pressed={split} onClick={() => setLayout(split ? "single" : "split")}>
+              <PanelLeftIcon />
+            </IconButton>
+          )}
           {!inTrash && features.details && (
             <IconButton label={labels.details} aria-pressed={detailsOpen} onClick={() => setDetailsOpen(!detailsOpen)}>
               <InfoIcon />
@@ -665,6 +737,7 @@ export function FileManager(props: FileManagerProps) {
                   }}
                 >
                   <FileList
+                    compact={narrow}
                     entries={entries}
                     view={view}
                     selection={selection}
@@ -732,6 +805,7 @@ export function FileManager(props: FileManagerProps) {
           mountLabel={currentMount?.label ?? ""}
           client={client}
           labels={labels}
+          overlay={narrow}
           onClose={() => setDetailsOpen(false)}
         />
       )}

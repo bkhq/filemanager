@@ -31,3 +31,11 @@ The driver contract now requires `move` to create missing parent folders (trash 
 ## 2026-11-03 [progress]
 
 `<FileManager>` gains `readOnly` (view-only preset) and `features` (per-action switches: upload, createFolder, createFile, edit, rename, move, copy, delete, download, search, details, trash), replacing the short-lived `editable` prop. Features mask entry caps client-side; server access control is unchanged. Demo has a "View only" toggle (`?view`).
+
+## 2026-11-03 [progress]
+
+Layouts: `layout="split" | "single"` initial value with a persisted sidebar toggle; containers under 640px are always single-pane (mount / trash switcher in the breadcrumb, details as overlay, compact list, toolbar wraps, tap opens, long press opens the context menu). Repository published to `github.com/bkhq/filemanager` (private).
+
+## 2026-11-03 [pitfall]
+
+Base UI menu radio items keep the menu open on click; navigation menus need `closeOnClick`.

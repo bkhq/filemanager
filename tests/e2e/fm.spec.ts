@@ -286,3 +286,41 @@ test("downloads a folder as zip", async ({ page }) => {
   ]);
   expect(download.suggestedFilename()).toBe("images.zip");
 });
+
+test("toggles between split and single layouts", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await page.getByRole("button", { name: "Hide sidebar" }).click();
+  await expect(page.getByRole("tree")).toHaveCount(0);
+  await page.getByRole("button", { name: "Storage" }).click();
+  await page.getByRole("menuitemradio", { name: "Scratch (memory)" }).click();
+  await expect(page.getByRole("navigation")).toContainText("Scratch (memory)");
+  await page.getByRole("button", { name: "Storage" }).click();
+  await page.getByRole("menuitem", { name: "Trash" }).click();
+  await expect(page.getByRole("navigation")).toContainText("Trash");
+  await page.reload();
+  await expect(page.getByRole("tree")).toHaveCount(0);
+  await page.getByRole("button", { name: "Show sidebar" }).click();
+  await expect(page.getByRole("tree")).toBeVisible();
+});
+
+test.describe("on a phone", () => {
+  test.use({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+  });
+
+  test("uses the single layout and opens entries with a tap", async ({ page }) => {
+    await page.goto("/");
+    await expect(row(page, "/notes")).toBeVisible();
+    await expect(page.getByRole("tree")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /sidebar/ })).toHaveCount(0);
+    await row(page, "/notes").tap();
+    await expect(row(page, "/notes/todo.txt")).toBeVisible();
+    await row(page, "/notes/todo.txt").tap();
+    await expect(page.getByRole("dialog").getByRole("heading", { name: "todo.txt" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Details" }).click();
+    await expect(page.getByRole("complementary", { name: "Details" })).toContainText("2 files, 0 folders");
+  });
+});
