@@ -52,6 +52,7 @@ export default antfu({
     "apps/fm-web/src/components/ui/**",
     "apps/fm-web/src/components/theme-provider.tsx",
     "apps/fm-web/src/routeTree.gen.ts",
+    "apps/fm-worker/wrangler.jsonc",
   ],
 }, {
   // Code shipped to hosts must run on Bun and Cloudflare Workers alike.
@@ -99,7 +100,12 @@ export default antfu({
   ignores: ["registry/fm/{react,plugins}/**/*.test.ts", "apps/fm-web/src/components/ui/**", "apps/fm-web/src/routeTree.gen.ts"],
   languageOptions: {
     parserOptions: {
-      project: ["tsconfig.json", "apps/fm-api/tsconfig.json", "apps/fm-web/tsconfig.app.json"],
+      project: [
+        "tsconfig.json",
+        "apps/fm-api/tsconfig.json",
+        "apps/fm-web/tsconfig.app.json",
+        "apps/fm-worker/tsconfig.json",
+      ],
       tsconfigRootDir: import.meta.dirname,
     },
   },

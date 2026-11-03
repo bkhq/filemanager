@@ -37,6 +37,7 @@
     "eslint": "10.14.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",
+    "miniflare": "4.20260730.0",
     "shadcn": "4.23.0",
     "typescript": "npm:@typescript/typescript6@6.0.2"
   }
