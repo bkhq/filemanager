@@ -17,8 +17,10 @@ export interface FmLocalDriverOptions {
   /**
    * When true and the root is inside a git work tree, `search` lists candidates
    * with `git ls-files`, honouring .gitignore. Only files are found (git does not
-   * list directories). Otherwise the router walks. `.git` paths become read-only
-   * through this driver.
+   * list directories). Otherwise the router walks. git runs with fsmonitor and
+   * the untracked cache disabled, literal pathspecs and a minimal environment.
+   * `.git` paths become read-only through this driver: write / mkdir / move /
+   * copy / remove on any path with a `.git` segment throw FORBIDDEN.
    */
   gitIgnore?: boolean;
 }
