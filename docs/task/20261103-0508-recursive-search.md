@@ -1,8 +1,8 @@
 # 20261103-0508-recursive-search Recursive search
 
-- **status**: pending
+- **status**: in_progress
 - **priority**: P1
-- **owner**: (unassigned)
+- **owner**: bkd-l2/l5adrsb4
 - **createdAt**: 2026-11-03 05:08
 
 ## Description

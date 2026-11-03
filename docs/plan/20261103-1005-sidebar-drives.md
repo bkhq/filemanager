@@ -1,8 +1,8 @@
 # 20261103-1005-sidebar-drives Sidebar drive visibility and grouping
 
-- **status**: draft
+- **status**: implementing
 - **createdAt**: 2026-11-03 10:05
-- **approvedAt**: (pending)
+- **approvedAt**: 2026-11-03 10:12
 - **relatedTask**: 20261103-0508-sidebar-drives
 
 ## Context
