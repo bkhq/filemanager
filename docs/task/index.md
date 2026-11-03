@@ -38,7 +38,7 @@ Each task is a single line linking to its detail file. All detailed information 
 - [x] [**20261103-0508-cross-mount-copy Cross-mount copy and move (content copy between drivers)**](20261103-0508-cross-mount-copy.md) `P1`
 - [x] [**20261103-0508-sidebar-drives Sidebar drive visibility and grouping**](20261103-0508-sidebar-drives.md) `P1`
 - [x] [**20261103-0508-publish-registry Publish the shadcn registry**](20261103-0508-publish-registry.md) `P1`
-- [-] [**20261103-0508-resumable-uploads Large and resumable uploads**](20261103-0508-resumable-uploads.md) `P1`
+- [x] [**20261103-0508-resumable-uploads Large and resumable uploads**](20261103-0508-resumable-uploads.md) `P1`
 - [-] [**20261103-0508-workers-r2 Cloudflare Workers demo and R2 driver**](20261103-0508-workers-r2.md) `P1`
 - [ ] [**20261103-0508-thumbnails Thumbnails and saving image edits**](20261103-0508-thumbnails.md) `P2`
 - [ ] [**20261103-0508-trash-retention Trash retention and bulk actions**](20261103-0508-trash-retention.md) `P2`
