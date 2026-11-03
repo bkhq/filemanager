@@ -119,3 +119,7 @@ Cross-mount copy and move delivered (20261103-1005-cross-mount-copy): `POST /m/:
 ## 2026-11-03 11:55 [progress]
 
 Resumable uploads delivered (20261103-1005-resumable-uploads): upload session routes under `/m/:mount/uploads` (create, status, part, complete, abort) with records in a hidden `/.fm-uploads` folder, `write` re-authorized on every call and one `write` change event on complete; optional `FmDriver.multipart` in the memory, local and S3 drivers (S3 presigned part URLs opt-in via `presignUploads`), and a streaming S3 PUT when the size is known. The client queue sends files of 16 MiB and more through sessions with per-part retry and resume via `localStorage`; `fm-api` reads `FM_UPLOAD_PART_SIZE`. Verified: `bun run check` (194 tests, 193 pass / 1 skip), the same against RustFS (234 pass), 32 Playwright e2e including an 18 MiB multi-part upload.
+
+## 2026-11-03 [progress]
+
+Cloudflare Workers delivered (20261103-1005-workers-r2): `r2Driver({ bucket, prefix?, readOnly?, maxObjects? })` over the R2 binding (registry item `fm-driver-r2`, structural `FmR2Bucket` type, native multipart with part records in a hidden `.fm-r2-parts` folder, no presign) and `apps/fm-worker` (wrangler, `/api/fm` with an R2 mount plus the `fm-web` assets; no auth, add Access / bearer token / `authorize` before deploying). The driver contract runs under `bun test` against miniflare 4.20260730.0; wrangler 4.157.0, `@cloudflare/workers-types` 5.20261103.1, compatibility date 2026-11-03. CI job `workers` runs the contract and `wrangler deploy --dry-run`.
