@@ -91,3 +91,7 @@ Campaign report: requirement plans written for the nine P1 tasks in this reposit
 ## 2026-11-03 10:17 [progress]
 
 Change event hook delivered (20261103-1005-change-events): `onEvent` / `FmChangeEvent` on the router, fired per item for write, mkdir, delete (incl. trash), rename, move, copy, restore, purge; awaited, hook errors logged and ignored; documented in architecture §3.3 and README; verified by `bun run check`.
+
+## 2026-11-03 10:30 [progress]
+
+Search delivered (20261103-1005-recursive-search, 20261103-1005-quick-open): recursive search via `GET /m/:mount/search` with an optional `FmDriver.search` (bounded walk otherwise) and a "This folder" / "Everywhere below" scope toggle; quick open via `mode=fuzzy` ranked by `core/fuzzy.ts`, `localDriver({ gitIgnore })` listing candidates with `git ls-files`, and a Ctrl/Cmd+P dialog (toolbar button for touch) that previews a file or opens a folder. Verified: `bun run check` (110 tests, 109 pass / 1 skip), 21 Playwright e2e.
