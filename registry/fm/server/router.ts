@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { describeRoute, resolver, validator } from "hono-openapi";
 import { z } from "zod";
 import { FmError } from "../core/errors";
+import { fuzzyRank, fuzzyScore } from "../core/fuzzy";
 import { assertName, basename, dirname, isWithin, joinPath, nextFreeName, normalizePath } from "../core/path";
 import {
   ALL_CAPS,
@@ -18,6 +19,7 @@ import {
   opsRequestSchema,
   opsResultSchema,
   READ_ONLY_CAPS,
+  searchModeSchema,
   searchResultSchema,
   sortKeySchema,
   trashIdsSchema,
@@ -605,7 +607,7 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
   app.get("/m/:mount/search", describeRoute({
     tags: [TAG],
     summary: "Search below a folder",
-    description: "Case-insensitive name match at any depth. Without a driver search, walks at most `archiveMaxEntries` entries; `truncated` marks a partial result (walk budget or `limit` reached).",
+    description: "Case-insensitive name match at any depth, or with `mode=fuzzy` a fuzzy match on the path below `path`, best first. Without a driver search, walks at most `archiveMaxEntries` entries; `truncated` marks a partial result (walk budget or `limit` reached).",
     responses: {
       200: ok(searchResultSchema, "Matches"),
       ...ERRORS,
@@ -613,6 +615,7 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
   }), v("query", pathQuery.extend({
     q: z.string().trim().min(1).max(255),
     limit: z.coerce.number().int().min(1).max(500).default(100),
+    mode: searchModeSchema.default("substring"),
   })), async (c) => {
     const q = c.req.valid("query");
     const t = await resolve(c, c.req.param("mount"), q.path);
@@ -630,9 +633,14 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
       }
       return caps;
     };
+    const fuzzy = q.mode === "fuzzy";
+    const relative = (path: string) => (t.path === "/"
+      ? path
+      : path.slice(t.path.length));
     let truncated = false;
     let candidates = await d.search?.(t.path, q.q, {
       limit: q.limit,
+      mode: q.mode,
       signal: c.req.raw.signal,
     }) ?? null;
     if (candidates) {
@@ -647,12 +655,16 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
         for (const e of await d.list(queue.shift()!)) {
           if (hidden(t.mount, e.path))
             continue;
-          if (candidates.length >= q.limit || ++seen > limits.archiveMaxEntries) {
+          // Fuzzy mode ranks afterwards, so it keeps every match within the budget.
+          if ((!fuzzy && candidates.length >= q.limit) || ++seen > limits.archiveMaxEntries) {
             truncated = true;
             break;
           }
-          if (e.name.toLocaleLowerCase().includes(needle))
+          if (fuzzy
+            ? fuzzyScore(q.q, relative(e.path)) !== null
+            : e.name.toLocaleLowerCase().includes(needle)) {
             candidates.push(e);
+          }
           if (e.kind === "dir" && (await capsOf(e.path)).read)
             queue.push(e.path);
         }
@@ -665,6 +677,13 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
       const caps = await capsOf(e.path);
       if (caps.read)
         items.push(toEntry({ ...t, caps }, e));
+    }
+    if (fuzzy) {
+      truncated ||= items.length > q.limit;
+      return c.json({
+        items: fuzzyRank(q.q, items, e => relative(e.path), q.limit),
+        truncated,
+      });
     }
     return c.json({ items, truncated });
   });

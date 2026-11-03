@@ -1,4 +1,4 @@
-import type { FmConflict, FmEntry, FmListResult, FmMountInfo, FmOpsRequest, FmOpsResult, FmSearchResult, FmSortKey, FmTrashItem, FmUsage } from "../core/schema";
+import type { FmConflict, FmEntry, FmListResult, FmMountInfo, FmOpsRequest, FmOpsResult, FmSearchMode, FmSearchResult, FmSortKey, FmTrashItem, FmUsage } from "../core/schema";
 
 export class FmApiError extends Error {
   readonly status: number;
@@ -31,6 +31,7 @@ export interface FmListParams {
 
 export interface FmSearchParams {
   limit?: number;
+  mode?: FmSearchMode;
 }
 
 export interface FmWriteParams {
@@ -100,6 +101,7 @@ export function createFmClient(opts: FmClientOptions) {
       path,
       q,
       limit: p.limit?.toString(),
+      mode: p.mode,
     })),
     /** URL for `<img src>` / `<a href>`; `download` forces an attachment. */
     readUrl: (mount: string, path: string, o: { download?: boolean; version?: string } = {}) =>
