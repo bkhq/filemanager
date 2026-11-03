@@ -86,6 +86,17 @@ export const listResultSchema = z.object({
 });
 export type FmListResult = z.infer<typeof listResultSchema>;
 
+export const searchResultSchema = z.object({
+  items: z.array(entrySchema),
+  /** The walk or hit limit stopped the search; more matches may exist. */
+  truncated: z.boolean(),
+});
+export type FmSearchResult = z.infer<typeof searchResultSchema>;
+
+export const SEARCH_MODES = ["substring", "fuzzy"] as const;
+export const searchModeSchema = z.enum(SEARCH_MODES);
+export type FmSearchMode = z.infer<typeof searchModeSchema>;
+
 export const CONFLICT_MODES = ["fail", "rename", "overwrite"] as const;
 export const conflictSchema = z.enum(CONFLICT_MODES);
 export type FmConflict = z.infer<typeof conflictSchema>;

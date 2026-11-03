@@ -1,8 +1,9 @@
 import type { Stats } from "node:fs";
-import type { FmDriver, FmDriverEntry } from "../server/driver";
+import type { FmDriver, FmDriverEntry, FmSearchOptions } from "../server/driver";
 import { cp, link, lstat, mkdir, readdir, realpath, rename, rm, stat, unlink } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { FmError } from "../core/errors";
+import { fuzzyRank } from "../core/fuzzy";
 import { basename, dirname, isWithin } from "../core/path";
 import { ALL_CAPS, READ_ONLY_CAPS } from "../core/schema";
 
@@ -12,6 +13,12 @@ export interface FmLocalDriverOptions {
   readOnly?: boolean;
   /** List dotfiles (default true). */
   showHidden?: boolean;
+  /**
+   * When true and the root is inside a git work tree, `search` lists candidates
+   * with `git ls-files`, honouring .gitignore. Only files are found (git does not
+   * list directories). Otherwise the router walks.
+   */
+  gitIgnore?: boolean;
 }
 
 const ERRNO: Record<string, ConstructorParameters<typeof FmError>[0]> = {
@@ -107,6 +114,72 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
       throw new FmError("EXISTS", `Already exists: ${to}`);
     await mkdir(await abs(dirname(to)), { recursive: true }).catch(e => mapError(e, to));
     return [a, b] as const;
+  };
+
+  /** Root-relative paths from `git ls-files` below `dir`; null when git fails or the root is not a work tree. */
+  const gitFiles = async (dir: string, signal?: AbortSignal): Promise<string[] | null> => {
+    try {
+      const proc = Bun.spawn([
+        "git",
+        "ls-files",
+        "-z",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "--",
+        dir === "/"
+          ? "."
+          : dir.slice(1),
+      ], {
+        cwd: await abs("/"),
+        stdout: "pipe",
+        stderr: "ignore",
+        ...(signal
+          ? { signal }
+          : {}),
+      });
+      const [out, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        proc.exited,
+      ]);
+      return exitCode === 0
+        ? out.split("\0").filter(Boolean)
+        : null;
+    }
+    catch {
+      return null;
+    }
+  };
+
+  const search = async (dir: string, q: string, o: FmSearchOptions): Promise<FmDriverEntry[] | null> => {
+    const files = await gitFiles(dir, o.signal);
+    if (!files)
+      return null;
+    let paths = files
+      .map(rel => `/${rel}`)
+      .filter(p => opts.showHidden !== false || !p.split("/").some(s => s.startsWith(".")));
+    const relative = (path: string) => (dir === "/"
+      ? path
+      : path.slice(dir.length));
+    if (o.mode === "fuzzy") {
+      paths = fuzzyRank(q, paths, relative, paths.length);
+    }
+    else {
+      const needle = q.toLocaleLowerCase();
+      paths = paths.filter(p => basename(p).toLocaleLowerCase().includes(needle));
+    }
+    const out: FmDriverEntry[] = [];
+    for (const p of paths) {
+      if (out.length >= o.limit)
+        break;
+      try {
+        out.push(await statAbs(p, await abs(p)));
+      }
+      catch {
+        // Deleted but still in the index, or outside the jail.
+      }
+    }
+    return out;
   };
 
   const writable = () => {
@@ -234,5 +307,8 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
         throw new FmError("NOT_FOUND", `Not found: ${path}`);
       await rm(a, { recursive: true, force: true });
     },
+    ...(opts.gitIgnore
+      ? { search }
+      : {}),
   };
 }

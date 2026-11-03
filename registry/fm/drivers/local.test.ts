@@ -100,3 +100,70 @@ describe("localDriver jail", () => {
     }
   });
 });
+
+describe("localDriver gitIgnore search", () => {
+  const hasGit = Bun.which("git") !== null;
+  if (!hasGit)
+    console.warn("git is not on PATH; skipping gitIgnore search tests");
+
+  const git = async (cwd: string, ...args: string[]) => {
+    const proc = Bun.spawn([
+      "git",
+      "-c",
+      "user.name=fm",
+      "-c",
+      "user.email=fm@example.invalid",
+      ...args,
+    ], {
+      cwd,
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    expect(await proc.exited).toBe(0);
+  };
+
+  it.skipIf(!hasGit)("lists committed and untracked files, never ignored ones", async () => {
+    const t = await tempRoot();
+    try {
+      await git(t.root, "init", "-q");
+      await writeFile(join(t.root, ".gitignore"), "ignored.txt\nbuild/\n");
+      await writeFile(join(t.root, "committed.txt"), "c");
+      await git(t.root, "add", ".");
+      await git(t.root, "commit", "-q", "-m", "init");
+      await mkdir(join(t.root, "src"));
+      await writeFile(join(t.root, "src", "untracked.txt"), "u");
+      await writeFile(join(t.root, "ignored.txt"), "i");
+      await mkdir(join(t.root, "build"));
+      await writeFile(join(t.root, "build", "out.txt"), "b");
+
+      const driver = localDriver({ root: t.root, gitIgnore: true });
+      const found = await driver.search!("/", "txt", { limit: 10 });
+      expect(found?.map(e => e.path).sort()).toEqual(["/committed.txt", "/src/untracked.txt"]);
+      expect(found?.find(e => e.path === "/committed.txt")).toMatchObject({ kind: "file", size: 1 });
+
+      const fuzzy = await driver.search!("/", "srcuntr", { limit: 10, mode: "fuzzy" });
+      expect(fuzzy?.map(e => e.path)).toEqual(["/src/untracked.txt"]);
+      const below = await driver.search!("/src", "txt", { limit: 10 });
+      expect(below?.map(e => e.path)).toEqual(["/src/untracked.txt"]);
+      expect(await driver.search!("/", "txt", { limit: 1 })).toHaveLength(1);
+    }
+    finally {
+      await t.cleanup();
+    }
+  });
+
+  it.skipIf(!hasGit)("returns null outside a work tree", async () => {
+    const t = await tempRoot();
+    try {
+      await writeFile(join(t.root, "a.txt"), "a");
+      expect(await localDriver({ root: t.root, gitIgnore: true }).search!("/", "a", { limit: 10 })).toBeNull();
+    }
+    finally {
+      await t.cleanup();
+    }
+  });
+
+  it("has no search without gitIgnore", () => {
+    expect(localDriver({ root: "/tmp" }).search).toBeUndefined();
+  });
+});

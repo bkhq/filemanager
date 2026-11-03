@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { describeRoute, resolver, validator } from "hono-openapi";
 import { z } from "zod";
 import { FmError } from "../core/errors";
+import { fuzzyRank, fuzzyScore } from "../core/fuzzy";
 import { assertName, basename, dirname, isWithin, joinPath, nextFreeName, normalizePath } from "../core/path";
 import {
   ALL_CAPS,
@@ -18,6 +19,8 @@ import {
   opsRequestSchema,
   opsResultSchema,
   READ_ONLY_CAPS,
+  searchModeSchema,
+  searchResultSchema,
   sortKeySchema,
   trashIdsSchema,
   trashItemSchema,
@@ -673,6 +676,90 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
       }
     }
     return c.json(usage);
+  });
+
+  app.get("/m/:mount/search", describeRoute({
+    tags: [TAG],
+    summary: "Search below a folder",
+    description: "Case-insensitive name match at any depth, or with `mode=fuzzy` a fuzzy match on the path below `path`, best first. Without a driver search, walks at most `archiveMaxEntries` entries; `truncated` marks a partial result (walk budget or `limit` reached).",
+    responses: {
+      200: ok(searchResultSchema, "Matches"),
+      ...ERRORS,
+    },
+  }), v("query", pathQuery.extend({
+    q: z.string().trim().min(1).max(255),
+    limit: z.coerce.number().int().min(1).max(500).default(100),
+    mode: searchModeSchema.default("substring"),
+  })), async (c) => {
+    const q = c.req.valid("query");
+    const t = await resolve(c, c.req.param("mount"), q.path);
+    const d = t.mount.driver;
+    if ((await d.stat(t.path)).kind !== "dir")
+      throw new FmError("NOT_A_DIR", "Not a directory");
+    const granted = new Map<string, FmCaps>();
+    const capsOf = async (path: string) => {
+      let caps = granted.get(path);
+      if (!caps) {
+        caps = intersectCaps(mountCaps(t.mount), options.authorize
+          ? await options.authorize(host(c), { mount: t.mount, path })
+          : ALL_CAPS);
+        granted.set(path, caps);
+      }
+      return caps;
+    };
+    const fuzzy = q.mode === "fuzzy";
+    const relative = (path: string) => (t.path === "/"
+      ? path
+      : path.slice(t.path.length));
+    let truncated = false;
+    let candidates = await d.search?.(t.path, q.q, {
+      limit: q.limit,
+      mode: q.mode,
+      signal: c.req.raw.signal,
+    }) ?? null;
+    if (candidates) {
+      truncated = candidates.length >= q.limit;
+    }
+    else {
+      candidates = [];
+      const needle = q.q.toLocaleLowerCase();
+      const queue = [t.path];
+      let seen = 0;
+      while (queue.length > 0 && !truncated) {
+        for (const e of await d.list(queue.shift()!)) {
+          if (hidden(t.mount, e.path))
+            continue;
+          // Fuzzy mode ranks afterwards, so it keeps every match within the budget.
+          if ((!fuzzy && candidates.length >= q.limit) || ++seen > limits.archiveMaxEntries) {
+            truncated = true;
+            break;
+          }
+          if (fuzzy
+            ? fuzzyScore(q.q, relative(e.path)) !== null
+            : e.name.toLocaleLowerCase().includes(needle)) {
+            candidates.push(e);
+          }
+          if (e.kind === "dir" && (await capsOf(e.path)).read)
+            queue.push(e.path);
+        }
+      }
+    }
+    const items: FmEntry[] = [];
+    for (const e of candidates) {
+      if (hidden(t.mount, e.path))
+        continue;
+      const caps = await capsOf(e.path);
+      if (caps.read)
+        items.push(toEntry({ ...t, caps }, e));
+    }
+    if (fuzzy) {
+      truncated ||= items.length > q.limit;
+      return c.json({
+        items: fuzzyRank(q.q, items, e => relative(e.path), q.limit),
+        truncated,
+      });
+    }
+    return c.json({ items, truncated });
   });
 
   const trashMount = async (c: unknown, mountId: string) => {
