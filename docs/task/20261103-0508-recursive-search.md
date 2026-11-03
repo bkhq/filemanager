@@ -18,7 +18,7 @@ Adding recursive search
 ## Dependencies
 
 - **blocked by**: (none)
-- **blocks**: (none)
+- **blocks**: 20261103-1530-quick-open
 
 ## Notes
 
