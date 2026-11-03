@@ -1,6 +1,6 @@
 # 20261103-1005-cross-mount-copy Cross-mount copy and move
 
-- **status**: implementing
+- **status**: completed
 - **createdAt**: 2026-11-03 10:05
 - **approvedAt**: 2026-11-03 11:26
 - **relatedTask**: 20261103-0508-cross-mount-copy
@@ -34,3 +34,13 @@
 ## Alternatives
 
 - Client-driven copy (download + upload per file): no server change, doubles traffic, no atomic source delete.
+
+## As built
+
+- `POST /m/:mount/ops` move / copy accept `destMount`; same mount or absent keeps the driver `move` / `copy` path.
+- Another mount: `copy|move` on the source and `write` on the destination are authorized; the source walk is bounded by `archiveMaxEntries` / `archiveMaxBytes` before anything is written; each file is streamed `read -> write`, and a failed item removes its partial copy.
+- `move` deletes the source (to the trash when enabled) only after the whole item was copied.
+- Change events for cross-mount items carry `toMount` (architecture §3.3).
+- UI: paste into another mount; tree drop moves within the same mount and copies onto another mount.
+- "Copy contents" context action for text files up to 1 MiB (clipboard API), gated by `features.download`.
+- Cross-mount operations have no undo.

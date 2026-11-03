@@ -117,6 +117,8 @@ export const opsRequestSchema = z.discriminatedUnion("op", [
     op: z.enum(["move", "copy"]),
     paths: z.array(z.string()).min(1).max(200),
     dest: z.string(),
+    /** Mount of `dest`; defaults to the source mount. */
+    destMount: z.string().optional(),
     conflict: conflictSchema.default("fail"),
   }),
 ]);

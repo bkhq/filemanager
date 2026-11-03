@@ -2,11 +2,17 @@ import type { Env } from "hono";
 import type { FmCaps } from "../core/schema";
 import type { FmDriver } from "./driver";
 import type { FmChangeEvent, FmMount, FmRouterOptions } from "./router";
-import { describe, expect, it, spyOn } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { unzipSync } from "fflate";
 import { Hono } from "hono";
+import { FmError } from "../core/errors";
 import { ALL_CAPS, READ_ONLY_CAPS } from "../core/schema";
+import { localDriver } from "../drivers/local";
 import { memoryDriver } from "../drivers/memory";
+import { readAll } from "./driver";
 import { createFmRouter } from "./router";
 
 const NONE: FmCaps = {
@@ -964,6 +970,371 @@ describe("change events", () => {
     finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe("cross-mount ops", () => {
+  const enc = (s: string) => new TextEncoder().encode(s);
+  const text = async (d: FmDriver, path: string) => new TextDecoder().decode(await readAll((await d.read(path)).body));
+  const has = (d: FmDriver, path: string) => d.stat(path).then(() => true, () => false);
+  let tmp: string | undefined;
+
+  afterEach(async () => {
+    if (tmp)
+      await rm(tmp, { recursive: true, force: true });
+    tmp = undefined;
+  });
+
+  async function crossSetup(opts: {
+    files?: Record<string, string>;
+    trash?: boolean;
+    authorize?: (mount: string, path: string) => FmCaps;
+    archiveMaxEntries?: number;
+    wrap?: (d: FmDriver) => FmDriver;
+  } = {}) {
+    tmp = await mkdtemp(join(tmpdir(), "fm-cross-"));
+    const drivers: Record<string, FmDriver> = {
+      mem: memoryDriver(),
+      disk: localDriver({ root: tmp }),
+    };
+    for (const d of Object.values(drivers)) {
+      for (const [path, body] of Object.entries(opts.files ?? {}))
+        await d.write(path, enc(body));
+    }
+    const mounts: FmMount[] = Object.entries(drivers).map(([id, driver]) => ({
+      id,
+      label: id,
+      driver: opts.wrap
+        ? opts.wrap(driver)
+        : driver,
+      ...(opts.trash
+        ? { trash: true }
+        : {}),
+    }));
+    const events: FmChangeEvent[] = [];
+    const app = new Hono();
+    app.route("/fm", createFmRouter({
+      mounts: () => mounts,
+      ...(opts.authorize
+        ? {
+            authorize: (_c, t) => opts.authorize!(t.mount.id, t.path),
+          }
+        : {}),
+      onEvent: (_c, e) => {
+        events.push(e);
+      },
+      limits: { archiveMaxEntries: opts.archiveMaxEntries ?? 100 },
+    }));
+    const ops = async (mount: string, body: unknown) => {
+      const res = await app.request(`/fm/m/${mount}/ops`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      return { status: res.status, body: await res.json() };
+    };
+    return { app, drivers, events, ops };
+  }
+
+  for (const [from, to] of [
+    ["mem", "disk"],
+    ["disk", "mem"],
+  ] as const) {
+    describe(`${from} -> ${to}`, () => {
+      it("copies a file and a nested folder", async () => {
+        const { drivers, ops } = await crossSetup({
+          files: { "/a.txt": "a", "/d/x.txt": "x", "/d/sub/y.txt": "y" },
+        });
+        await drivers[to]!.remove("/a.txt");
+        await drivers[to]!.remove("/d");
+        await drivers[to]!.mkdir("/in");
+        const res = await ops(from, {
+          op: "copy",
+          paths: ["/a.txt", "/d"],
+          dest: "/in",
+          destMount: to,
+        });
+        expect(res.status).toBe(200);
+        expect(res.body.results).toEqual([
+          expect.objectContaining({
+            path: "/a.txt",
+            ok: true,
+            entry: expect.objectContaining({ mount: to, path: "/in/a.txt", kind: "file" }),
+          }),
+          expect.objectContaining({
+            path: "/d",
+            ok: true,
+            entry: expect.objectContaining({ mount: to, path: "/in/d", kind: "dir" }),
+          }),
+        ]);
+        expect(await text(drivers[to]!, "/in/a.txt")).toBe("a");
+        expect(await text(drivers[to]!, "/in/d/x.txt")).toBe("x");
+        expect(await text(drivers[to]!, "/in/d/sub/y.txt")).toBe("y");
+        expect(await text(drivers[from]!, "/a.txt")).toBe("a");
+        expect(await text(drivers[from]!, "/d/sub/y.txt")).toBe("y");
+      });
+
+      it("moves a file and a folder", async () => {
+        const { drivers, ops } = await crossSetup({
+          files: { "/a.txt": "a", "/d/x.txt": "x" },
+        });
+        await drivers[to]!.remove("/a.txt");
+        await drivers[to]!.remove("/d");
+        const res = await ops(from, {
+          op: "move",
+          paths: ["/a.txt", "/d"],
+          dest: "/",
+          destMount: to,
+        });
+        expect(res.body.results.map((r: { ok: boolean }) => r.ok)).toEqual([true, true]);
+        expect(await text(drivers[to]!, "/a.txt")).toBe("a");
+        expect(await text(drivers[to]!, "/d/x.txt")).toBe("x");
+        expect(await has(drivers[from]!, "/a.txt")).toBe(false);
+        expect(await has(drivers[from]!, "/d")).toBe(false);
+      });
+
+      it("moves into the source trash when enabled", async () => {
+        const { app, drivers, ops } = await crossSetup({
+          files: { "/a.txt": "a" },
+          trash: true,
+        });
+        await drivers[to]!.remove("/a.txt");
+        const res = await ops(from, {
+          op: "move",
+          paths: ["/a.txt"],
+          dest: "/",
+          destMount: to,
+        });
+        expect(res.body.results[0].ok).toBe(true);
+        expect(await text(drivers[to]!, "/a.txt")).toBe("a");
+        expect(await has(drivers[from]!, "/a.txt")).toBe(false);
+        const { items } = await (await app.request(`/fm/m/${from}/trash`)).json();
+        expect(items.map((i: { path: string }) => i.path)).toEqual(["/a.txt"]);
+      });
+
+      it("handles each conflict mode", async () => {
+        const { drivers, ops } = await crossSetup({
+          files: { "/a.txt": "a" },
+        });
+        await drivers[to]!.write("/a.txt", enc("old"));
+        const fail = await ops(from, {
+          op: "copy",
+          paths: ["/a.txt"],
+          dest: "/",
+          destMount: to,
+        });
+        expect(fail.body.results).toEqual([
+          {
+            path: "/a.txt",
+            ok: false,
+            error: expect.objectContaining({ code: "EXISTS" }),
+          },
+        ]);
+        expect(await text(drivers[to]!, "/a.txt")).toBe("old");
+
+        const rename = await ops(from, {
+          op: "copy",
+          paths: ["/a.txt"],
+          dest: "/",
+          destMount: to,
+          conflict: "rename",
+        });
+        expect(rename.body.results[0].entry.path).toBe("/a (1).txt");
+        expect(await text(drivers[to]!, "/a (1).txt")).toBe("a");
+        expect(await text(drivers[to]!, "/a.txt")).toBe("old");
+
+        const overwrite = await ops(from, {
+          op: "move",
+          paths: ["/a.txt"],
+          dest: "/",
+          destMount: to,
+          conflict: "overwrite",
+        });
+        expect(overwrite.body.results[0].ok).toBe(true);
+        expect(await text(drivers[to]!, "/a.txt")).toBe("a");
+        expect(await has(drivers[from]!, "/a.txt")).toBe(false);
+      });
+
+      it("authorizes the source and the destination", async () => {
+        const { drivers, ops } = await crossSetup({
+          files: { "/a.txt": "a", "/secret.txt": "s" },
+          authorize: (mount, path) => {
+            if (mount === from && path === "/a.txt")
+              return { ...ALL_CAPS, copy: false, move: false };
+            if (mount === from && path === "/secret.txt")
+              return NONE;
+            if (mount === to && path === "/ro")
+              return READ_ONLY_CAPS;
+            return ALL_CAPS;
+          },
+        });
+        await drivers[to]!.remove("/a.txt");
+        await drivers[to]!.remove("/secret.txt");
+        await drivers[to]!.mkdir("/ro");
+        const src = await ops(from, {
+          op: "move",
+          paths: ["/a.txt", "/secret.txt"],
+          dest: "/",
+          destMount: to,
+        });
+        expect(src.body.results).toEqual([
+          {
+            path: "/a.txt",
+            ok: false,
+            error: expect.objectContaining({ code: "FORBIDDEN" }),
+          },
+          {
+            path: "/secret.txt",
+            ok: false,
+            error: expect.objectContaining({ code: "NOT_FOUND" }),
+          },
+        ]);
+        const dest = await ops(from, {
+          op: "copy",
+          paths: ["/a.txt"],
+          dest: "/ro",
+          destMount: to,
+        });
+        expect(dest.status).toBe(403);
+        expect(await drivers[to]!.list("/")).toEqual([
+          expect.objectContaining({ path: "/ro" }),
+        ]);
+        expect(await drivers[to]!.list("/ro")).toEqual([]);
+        expect(await text(drivers[from]!, "/a.txt")).toBe("a");
+      });
+
+      it("keeps the source and leaves no partial copy when a write fails", async () => {
+        let writes = 0;
+        const { drivers, ops } = await crossSetup({
+          files: { "/d/x.txt": "x", "/d/y.txt": "y", "/ok.txt": "ok" },
+          wrap: d => ({
+            ...d,
+            write: async (path, body, o) => {
+              if (path.startsWith("/in/d/") && ++writes === 2)
+                throw new FmError("UNSUPPORTED", "disk full");
+              return d.write(path, body, o);
+            },
+          }),
+        });
+        await drivers[to]!.remove("/d");
+        await drivers[to]!.remove("/ok.txt");
+        const res = await ops(from, {
+          op: "move",
+          paths: ["/d", "/ok.txt"],
+          dest: "/in",
+          destMount: to,
+        });
+        expect(res.body.results).toEqual([
+          {
+            path: "/d",
+            ok: false,
+            error: { code: "UNSUPPORTED", message: "disk full" },
+          },
+          expect.objectContaining({ path: "/ok.txt", ok: true }),
+        ]);
+        expect(await has(drivers[to]!, "/in/d")).toBe(false);
+        expect(await text(drivers[to]!, "/in/ok.txt")).toBe("ok");
+        expect(await text(drivers[from]!, "/d/x.txt")).toBe("x");
+        expect(await text(drivers[from]!, "/d/y.txt")).toBe("y");
+        expect(await has(drivers[from]!, "/ok.txt")).toBe(false);
+      });
+
+      it("fails with TOO_LARGE past archiveMaxEntries and writes nothing", async () => {
+        const { drivers, ops } = await crossSetup({
+          files: { "/d/1.txt": "1", "/d/2.txt": "2", "/d/3.txt": "3" },
+          archiveMaxEntries: 3,
+        });
+        await drivers[to]!.remove("/d");
+        const res = await ops(from, {
+          op: "move",
+          paths: ["/d"],
+          dest: "/",
+          destMount: to,
+        });
+        expect(res.body.results).toEqual([
+          {
+            path: "/d",
+            ok: false,
+            error: expect.objectContaining({ code: "TOO_LARGE" }),
+          },
+        ]);
+        expect(await has(drivers[to]!, "/d")).toBe(false);
+        expect(await text(drivers[from]!, "/d/3.txt")).toBe("3");
+      });
+
+      it("emits one event per item", async () => {
+        const { drivers, events, ops } = await crossSetup({
+          files: { "/a.txt": "a", "/b.txt": "b" },
+        });
+        await drivers[to]!.remove("/a.txt");
+        await ops(from, {
+          op: "copy",
+          paths: ["/a.txt", "/b.txt"],
+          dest: "/",
+          destMount: to,
+        });
+        expect(events).toEqual([
+          {
+            op: "copy",
+            mount: from,
+            path: "/a.txt",
+            to: "/a.txt",
+            toMount: to,
+            ok: true,
+          },
+          {
+            op: "copy",
+            mount: from,
+            path: "/b.txt",
+            toMount: to,
+            ok: false,
+            error: expect.objectContaining({ code: "EXISTS" }),
+          },
+        ]);
+      });
+    });
+  }
+
+  it("treats destMount equal to the route mount as a same-mount op", async () => {
+    const { drivers, events, ops } = await crossSetup({
+      files: { "/a.txt": "a" },
+    });
+    await drivers.mem!.mkdir("/in");
+    const res = await ops("mem", {
+      op: "move",
+      paths: ["/a.txt"],
+      dest: "/in",
+      destMount: "mem",
+    });
+    expect(res.body.results).toEqual([
+      expect.objectContaining({
+        path: "/a.txt",
+        ok: true,
+        entry: expect.objectContaining({ mount: "mem", path: "/in/a.txt" }),
+      }),
+    ]);
+    expect(await has(drivers.mem!, "/a.txt")).toBe(false);
+    expect(events).toEqual([
+      {
+        op: "move",
+        mount: "mem",
+        path: "/a.txt",
+        to: "/in/a.txt",
+        ok: true,
+      },
+    ]);
+  });
+
+  it("answers 404 for an unknown destination mount", async () => {
+    const { ops } = await crossSetup({
+      files: { "/a.txt": "a" },
+    });
+    expect((await ops("mem", {
+      op: "copy",
+      paths: ["/a.txt"],
+      dest: "/",
+      destMount: "nope",
+    })).status).toBe(404);
   });
 });
 

@@ -1,6 +1,6 @@
 # 20261103-0508-cross-mount-copy Cross-mount copy and move (content copy between drivers)
 
-- **status**: in_progress
+- **status**: completed
 - **priority**: P1
 - **owner**: bkd-l2/m6ycwh87
 - **createdAt**: 2026-11-03 05:08
@@ -23,3 +23,4 @@ Adding cross-mount copy and move
 ## Notes
 
 - 2026-11-03: requirement plan [20261103-1005-cross-mount-copy](../plan/20261103-1005-cross-mount-copy.md) (campaign [20261103-1005-p1-campaign](../plan/20261103-1005-p1-campaign.md)).
+- 2026-11-03: implemented on bkd/m6ycwh87: `destMount` on ops move / copy with streamed per-file copy in registry/fm/server/router.ts, `toMount` on change events, cross-mount paste, tree drop and "Copy contents" in registry/fm/react; router tests and an e2e paste flow.
