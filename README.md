@@ -125,7 +125,8 @@ runDriverContract("my-driver", async () => ({ driver: myDriver(), cleanup: async
 The Registry workflow (`.github/workflows/registry.yml`) deploys to GitHub Pages:
 a push to `main` updates `/next/r/`; pushing a `v*` tag publishes `/v{version}/r/`
 and moves `/r/` to it. One-time setup: enable GitHub Pages (Settings -> Pages ->
-Source: GitHub Actions).
+Source: GitHub Actions), then allow tag deploys (Settings -> Environments ->
+github-pages -> Deployment branches and tags -> add tag rule `v*`).
 
 Items are copied source, so upgrading a host means re-running `shadcn add` for its
 items (against `/r/` or a newer pinned version) and reviewing the diff.

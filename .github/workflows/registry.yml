@@ -1,6 +1,7 @@
 # Publishes the shadcn registry to GitHub Pages: main -> /next/r/, each v* tag -> /v{version}/r/,
 # highest v* tag -> /r/. Every run rebuilds the whole site from git.
 # Requires GitHub Pages enabled with source "GitHub Actions" (Settings -> Pages).
+# The github-pages environment must allow v* tags (Settings -> Environments -> github-pages -> add tag rule v*).
 name: Registry
 
 on:
