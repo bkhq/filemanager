@@ -1,6 +1,6 @@
 # 20261103-1005-publish-registry Publish the shadcn registry
 
-- **status**: implementing
+- **status**: completed
 - **createdAt**: 2026-11-03 10:05
 - **approvedAt**: 2026-11-03 10:12
 - **relatedTask**: 20261103-0508-publish-registry
@@ -37,3 +37,17 @@
 ## Alternatives
 
 - Serve from a CDN bucket: needs credentials and another service.
+
+## As built
+
+- `.github/workflows/registry.yml` runs on push to `main`, on `v*` tags and on `workflow_dispatch`. Jobs: `build` (assemble site), `deploy` (`github-pages` environment), `smoke` (deployed URL).
+- Layout: `main` -> `/next/r/`; each `v*` tag -> `/{tag}/r/` (e.g. `/v0.1.0/r/`); `/r/` is a copy of the highest tag (`git tag --sort=-v:refname`), omitted while no tag exists.
+- Earlier versions are kept by rebuilding: every run checks out with `fetch-depth: 0` and builds `main` plus every `v*` tag from git into one site (a `git worktree` per ref, `bun install --frozen-lockfile && bun run registry:build`). No previous artifact is reused.
+- Smoke: `scripts/registry-smoke.sh` takes `REGISTRY_URL` (base ending in `/r`, trailing slash trimmed) and skips the local server when set. It copies the value into an internal variable and unsets `REGISTRY_URL`, because the shadcn CLI reads `REGISTRY_URL` as its own default-registry override. The `smoke` job runs it against `<page_url>next/r` and, when a tag exists, `<page_url>r`.
+- Action pinning (verified): third-party actions are pinned by commit SHA (`oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0`); first-party actions by major tag (`actions/checkout@v7`, `actions/configure-pages@v6`, `actions/upload-pages-artifact@v5`, `actions/deploy-pages@v5`).
+- The same setup-bun SHA pin in `ci.yml` is deferred (out of scope).
+- README documents `https://bkhq.github.io/filemanager/r/{name}.json`, the pinned `/v{version}/r/` form, `/next/r/`, and upgrades.
+- `actionlint` is clean on `registry.yml`; `ci.yml` has a pre-existing SC2034 warning (out of scope).
+- Manual steps for the user (nothing was pushed or tagged):
+  1. Settings -> Pages -> Source: GitHub Actions.
+  2. Settings -> Environments -> `github-pages` -> Deployment branches and tags -> add tag rule `v*` (otherwise tag deploys are blocked by the environment's default-branch policy).
