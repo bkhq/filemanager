@@ -66,6 +66,7 @@ import { createFmClient } from "../client/client";
 import { fmKeys, useFmMutations, useListing, useMounts, useTrash } from "../client/hooks";
 import { createUploadQueue, xhrTransport } from "../client/upload";
 import { basename, dirname, joinPath } from "../core/path";
+import { acceptsEntry } from "./accept";
 import { DetailsPanel } from "./details-panel";
 import { ConfirmDeleteDialog, ManageDrivesDialog, NameDialog, UploadConflictDialog } from "./dialogs";
 import { filesFromDrop, filesFromInput } from "./drop";
@@ -76,7 +77,7 @@ import { IconButton } from "./icon-button";
 import { enLabels } from "./labels";
 import { groupMountsByDriver, parseHidden, visibleMounts } from "./mount-visibility";
 import { PreviewDialog } from "./preview-dialog";
-import { EMPTY_SELECTION, prune, select, step } from "./state";
+import { EMPTY_SELECTION, formatSize, prune, select, step } from "./state";
 import { TrashView } from "./trash-view";
 import { undoFor } from "./undo";
 import { UploadPanel } from "./upload-panel";
@@ -88,6 +89,16 @@ export interface FmSidebarOptions {
   hidden?: string[];
   /** `driver`: one section per driver kind. */
   group?: "none" | "driver";
+}
+
+export interface FmPickOptions {
+  /** Extensions (`.png`) and MIME types (`image/*`); empty accepts every file. */
+  accept?: string[];
+  multiple?: boolean;
+  /** Confirm is disabled while the selected files exceed this many bytes. */
+  maxTotalSize?: number;
+  onPick: (entries: FmEntry[]) => void;
+  onCancel?: () => void;
 }
 
 export interface FileManagerProps {
@@ -115,6 +126,11 @@ export interface FileManagerProps {
   features?: Partial<FmFeatures>;
   /** Sidebar drive visibility and grouping; users can hide more via "Manage drives". */
   sidebar?: FmSidebarOptions;
+  /**
+   * Pick mode, used by `FilePicker`: files are selected and confirmed instead of previewed.
+   * @internal
+   */
+  pick?: FmPickOptions;
 }
 
 type DialogState
@@ -220,8 +236,25 @@ export function FileManager(props: FileManagerProps) {
   const rawDir = listing.data?.pages[0]?.entry;
   const dir = useMemo(() => rawDir && maskEntry(rawDir, features), [rawDir, features]);
   const order = useMemo(() => entries.map(e => e.path), [entries]);
-  const selection = useMemo(() => prune(rawSelection, order), [rawSelection, order]);
   const byPath = useMemo(() => new Map(entries.map(e => [e.path, e])), [entries]);
+  const { pick } = props;
+  const pickable = (e: FmEntry) => e.kind === "file" && acceptsEntry(e, pick?.accept);
+  const selection = useMemo(() => {
+    const sel = prune(rawSelection, order);
+    if (!pick)
+      return sel;
+    // Only accepted files can be picked; single mode keeps the latest one.
+    const paths = [...sel.paths].filter((p) => {
+      const e = byPath.get(p);
+      return !!e && e.kind === "file" && acceptsEntry(e, pick.accept);
+    });
+    return {
+      paths: new Set(pick.multiple
+        ? paths
+        : paths.slice(-1)),
+      anchor: sel.anchor,
+    };
+  }, [rawSelection, order, pick, byPath]);
   const selected = useMemo(() => [...selection.paths].map(p => byPath.get(p)).filter((e): e is FmEntry => !!e), [selection, byPath]);
   const mutations = useFmMutations(client, mount ?? "");
   const canWrite = !!dir?.caps.write;
@@ -319,9 +352,16 @@ export function FileManager(props: FileManagerProps) {
       setDialog({ kind: "delete", paths });
   };
 
-  const open = (e: FmEntry) => (e.kind === "dir"
-    ? navigate(e.mount, e.path)
-    : setPreview(e));
+  const open = (e: FmEntry) => {
+    if (e.kind === "dir")
+      navigate(e.mount, e.path);
+    else if (!pick)
+      setPreview(e);
+    else if (pickable(e) && pick.multiple)
+      setRawSelection(s => select(s, e.path, "toggle", order));
+    else if (pickable(e))
+      pick.onPick([e]);
+  };
 
   const download = (targets: FmEntry[]) => {
     if (!mount || targets.length === 0)
@@ -382,7 +422,13 @@ export function FileManager(props: FileManagerProps) {
     e.target.value = "";
   };
 
-  const onSelect = (p: string, mode: FmSelectMode) => setRawSelection(s => select(s, p, mode, order));
+  const onSelect = (p: string, mode: FmSelectMode) => setRawSelection(s => select(s, p, pick
+    ? (pick.multiple
+        ? (mode === "single"
+            ? "toggle"
+            : mode)
+        : "single")
+    : mode, order));
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (inTrash || dialog || preview || (e.target as HTMLElement).closest("input, textarea, [contenteditable]"))
@@ -401,7 +447,9 @@ export function FileManager(props: FileManagerProps) {
         setRawSelection(s => step(prune(s, order), order, -1, e.shiftKey));
         break;
       case "Enter":
-        if (one)
+        if (pick && selection.anchor !== undefined && byPath.has(selection.anchor))
+          open(byPath.get(selection.anchor)!);
+        else if (one)
           open(one);
         break;
       case "Backspace":
@@ -833,6 +881,7 @@ export function FileManager(props: FileManagerProps) {
                     })}
                     hasMore={!!listing.hasNextPage && !listing.isFetchingNextPage}
                     onLoadMore={() => void listing.fetchNextPage()}
+                    disabled={pick && (e => e.kind === "file" && !acceptsEntry(e, pick.accept))}
                     empty={(
                       <div className="flex h-full min-h-40 items-center justify-center text-sm text-muted-foreground">
                         {listing.isPending
@@ -857,6 +906,21 @@ export function FileManager(props: FileManagerProps) {
             <span className="rounded-md bg-background px-3 py-1.5 text-sm shadow">{labels.dropHere}</span>
           </div>
         )}
+
+        {pick && (() => {
+          const total = selected.reduce((n, e) => n + e.size, 0);
+          const over = pick.maxTotalSize !== undefined && total > pick.maxTotalSize;
+          return (
+            <footer className="flex flex-wrap items-center gap-2 border-t px-3 py-2 text-sm" data-fm-pick-bar="">
+              <span>{labels.selected(selected.length)}</span>
+              <span className="text-muted-foreground tabular-nums">{labels.pickTotal(formatSize(total))}</span>
+              {over && <span role="alert" className="text-destructive">{labels.pickOverLimit(formatSize(pick.maxTotalSize!))}</span>}
+              <span className="flex-1" />
+              {pick.onCancel && <Button size="sm" variant="ghost" onClick={pick.onCancel}>{labels.cancel}</Button>}
+              <Button size="sm" disabled={selected.length === 0 || over} onClick={() => pick.onPick(selected)}>{labels.confirm}</Button>
+            </footer>
+          );
+        })()}
       </section>
 
       {detailsOpen && features.details && !inTrash && (selected.length === 1

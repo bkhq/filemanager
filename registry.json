@@ -195,6 +195,11 @@
       ],
       "files": [
         {
+          "path": "registry/fm/react/accept.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/accept.ts"
+        },
+        {
           "path": "registry/fm/react/details-panel.tsx",
           "type": "registry:file",
           "target": "~/src/fm/react/details-panel.tsx"
@@ -223,6 +228,11 @@
           "path": "registry/fm/react/file-manager.tsx",
           "type": "registry:file",
           "target": "~/src/fm/react/file-manager.tsx"
+        },
+        {
+          "path": "registry/fm/react/file-picker.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/file-picker.tsx"
         },
         {
           "path": "registry/fm/react/file-tree.tsx",
