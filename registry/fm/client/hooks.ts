@@ -113,22 +113,37 @@ export function useFileText(client: FmClient, mount: string, path: string, enabl
 /** Mutations that refresh every listing (and the trash) of the mount on success. */
 export function useFmMutations(client: FmClient, mount: string) {
   const qc = useQueryClient();
-  const invalidate = () => Promise.all([
+  const invalidateMount = (m: string) => Promise.all([
     qc.invalidateQueries({
-      queryKey: fmKeys.lists(client, mount),
+      queryKey: fmKeys.lists(client, m),
     }),
     qc.invalidateQueries({
-      queryKey: fmKeys.trash(client, mount),
+      queryKey: fmKeys.trash(client, m),
     }),
   ]);
+  const invalidate = () => invalidateMount(mount);
   return {
     mkdir: useMutation({
       mutationFn: (path: string) => client.mkdir(mount, path),
       onSuccess: invalidate,
     }),
+    /** Runs on this mount, or on `v.mount` (e.g. a cross-mount source); refreshes `destMount` too. */
     ops: useMutation({
-      mutationFn: (req: FmOpsRequest) => client.ops(mount, req),
-      onSuccess: invalidate,
+      mutationFn: (v: FmOpsRequest | { mount: string; req: FmOpsRequest }) => "req" in v
+        ? client.ops(v.mount, v.req)
+        : client.ops(mount, v),
+      onSuccess: async (_res, v) => {
+        const [m, req] = "req" in v
+          ? [v.mount, v.req]
+          : [mount, v];
+        const dest = "destMount" in req
+          ? req.destMount
+          : undefined;
+        await Promise.all([
+          invalidateMount(m),
+          dest && dest !== m && invalidateMount(dest),
+        ]);
+      },
     }),
     restore: useMutation({
       mutationFn: (ids: string[]) => client.restore(mount, ids),
