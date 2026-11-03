@@ -203,9 +203,10 @@ createFmRouter({
 // → Hono sub-app, host mounts it: app.route("/api/fm", fm.routes)
 ```
 
-- `FmChangeEvent` = `{ op, mount, path, to?, trashId?, ok, error? }`; `op` is
+- `FmChangeEvent` = `{ op, mount, path, to?, toMount?, trashId?, ok, error? }`; `op` is
   `write | mkdir | delete | rename | move | copy | restore | purge`, `error` is
-  `{ code, message }` when `ok` is false.
+  `{ code, message }` when `ok` is false. `toMount` is the destination mount id,
+  set only on cross-mount move / copy items.
 - Fired once per item after the operation, on success or failure; batch items
   in request order. A delete into trash carries the new `trashId`; restore and
   purge carry the `trashId` they acted on (`path` is the item's original path).
@@ -229,7 +230,7 @@ All under the host prefix, mount id in the path, entry path in the query
 | GET | `/m/:mount/read?path=&inline=&thumb=` | Range, ETag, presign 302 when allowed, `thumb` widths whitelist |
 | PUT | `/m/:mount/write?path=` | Small writes / editor save, `If-Match` |
 | POST | `/m/:mount/mkdir` | `{ path }` |
-| POST | `/m/:mount/ops` | Batch `{ op: move/copy/delete/rename, items, dest, conflict: "fail"/"rename"/"overwrite" }`; bounded size, per-item results |
+| POST | `/m/:mount/ops` | Batch `{ op: move/copy/delete/rename, items, dest, destMount?, conflict: "fail"/"rename"/"overwrite" }`; bounded size, per-item results. A `destMount` other than `:mount` streams content between the two drivers file by file: `copy`/`move` on the source and `write` on the destination are authorized, the walk is bounded by `archiveMaxEntries` / `archiveMaxBytes` before anything is written, a failed item removes its partial copy, and `move` deletes the source (to the trash when enabled) only after the whole copy landed. Such a copy runs inside one request, so on Workers it can hit the request-duration limit; the walk limits bound it |
 | GET | `/m/:mount/search?q=` | Driver search or fallback walk with limits |
 | POST | `/m/:mount/archive` | Streamed zip (fflate passthrough, caps from bithk) |
 | POST | `/m/:mount/uploads` | Create session → `{ mode: "put" / "chunked" / "s3-multipart", partSize, urls? }` |
