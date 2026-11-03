@@ -5,7 +5,7 @@ A generic file manager — Hono backend router + React UI — distributed as a
 code in with `shadcn add` and own it from then on.
 
 Storage backends are **drivers** behind one interface: `memory`, `local`
-(Bun) and `s3` (Bun + Cloudflare Workers) ship today.
+(Bun), `s3` (Bun + Cloudflare Workers) and `r2` (Workers binding) ship today.
 
 See [`docs/architecture.md`](docs/architecture.md) for the design.
 
@@ -31,7 +31,7 @@ bunx shadcn add @bkhq/fm-react                        # UI + client
 | --- | --- |
 | `fm-core` | zod schemas, errors, path helpers |
 | `fm-server` | Hono router (`createFmRouter`), `FmDriver` interface, zip streaming |
-| `fm-driver-memory` / `-local` / `-s3` | storage drivers (`local` is Bun-only) |
+| `fm-driver-memory` / `-local` / `-s3` / `-r2` | storage drivers (`local` is Bun-only, `r2` needs a Workers R2 binding) |
 | `fm-driver-contract` | `bun:test` suite a new driver must pass |
 | `fm-client` | typed fetch client, TanStack Query hooks, upload queue |
 | `fm-react` | `<FileManager />`: tree, list/grid, previews (image / video rotate, flip, zoom), uploads, trash, undo |
@@ -146,6 +146,48 @@ URLs. It requires both:
     "ExposeHeaders": ["ETag"]
   }]
   ```
+
+### Cloudflare Workers
+
+```bash
+bunx shadcn add @bkhq/fm-server @bkhq/fm-driver-r2
+```
+
+Pass the R2 binding to the driver (`FM_BUCKET` is an `r2_buckets` binding in `wrangler.jsonc`):
+
+```ts
+import { Hono } from "hono";
+import { r2Driver } from "@/fm/drivers/r2";
+import { createFmRouter } from "@/fm/server/router";
+
+interface Env { Bindings: { FM_BUCKET: R2Bucket } }
+
+const app = new Hono<Env>();
+
+app.route("/api/fm", createFmRouter<Env>({
+  mounts: c => [{ id: "r2", label: "R2 bucket", driver: r2Driver({ bucket: c.env.FM_BUCKET }), trash: true }],
+}));
+
+export default app;
+```
+
+`apps/fm-worker` is a complete example that also serves the built `fm-web` UI:
+
+```bash
+bun run --filter @bkhq/fm-web build
+cd apps/fm-worker && bunx wrangler dev        # local R2 emulation, no Cloudflare account needed
+bun run --filter @bkhq/fm-worker build        # wrangler deploy --dry-run --outdir dist
+```
+
+The R2 driver contract runs under `bun test` against miniflare's local R2, so
+development needs no real account.
+
+> [!WARNING]
+> `apps/fm-worker` mounts `/api/fm` with read, write and delete on the whole
+> bucket and no authentication (like `apps/fm-api`). Before any real deploy put
+> one of these in front of `/api/fm/*`: Cloudflare Access (verify the
+> `Cf-Access-Jwt-Assertion` header), a bearer-token middleware whose token is a
+> Wrangler secret, or `createFmRouter`'s `authorize` hook.
 
 ### Writing a driver
 

@@ -65,3 +65,18 @@ jobs:
           bun-version-file: .bun-version
       - run: bun install --frozen-lockfile
       - run: bun run registry:smoke
+
+  workers:
+    name: "Workers: R2 contract and worker build"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - run: bun test registry/fm/drivers/r2.test.ts
+      - run: bun run --filter @bkhq/fm-web build
+      - run: bun run --filter @bkhq/fm-worker build
+        env:
+          WRANGLER_SEND_METRICS: "false"
