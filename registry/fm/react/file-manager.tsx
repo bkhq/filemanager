@@ -18,6 +18,7 @@ import {
   CopyPlusIcon,
   DownloadIcon,
   FilePlusIcon,
+  FileSearchIcon,
   FolderPlusIcon,
   FolderUpIcon,
   InfoIcon,
@@ -72,6 +73,7 @@ import { FileTree } from "./file-tree";
 import { IconButton } from "./icon-button";
 import { enLabels } from "./labels";
 import { PreviewDialog } from "./preview-dialog";
+import { QuickOpen } from "./quick-open";
 import { EMPTY_SELECTION, prune, select, step } from "./state";
 import { TrashView } from "./trash-view";
 import { undoFor } from "./undo";
@@ -180,6 +182,7 @@ export function FileManager(props: FileManagerProps) {
   const [clipboard, setClipboard] = useState<FmClipboard>();
   const [preview, setPreview] = useState<FmEntry>();
   const [dialog, setDialog] = useState<DialogState>();
+  const [quickOpen, setQuickOpen] = useState(false);
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<{ message: string; undo?: () => void }>();
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -321,6 +324,15 @@ export function FileManager(props: FileManagerProps) {
     ? reveal
     : open;
 
+  /** Quick-open pick: a folder opens, a file previews within its folder. */
+  const pickQuickOpen = (e: FmEntry) => {
+    if (e.kind === "dir")
+      return navigate(e.mount, e.path);
+    navigate(e.mount, dirname(e.path));
+    setPreview(maskEntry(e, features));
+  };
+  const canQuickOpen = features.search && !inTrash && !!mount;
+
   const download = (targets: FmEntry[]) => {
     if (!mount || targets.length === 0)
       return;
@@ -383,9 +395,15 @@ export function FileManager(props: FileManagerProps) {
   const onSelect = (p: string, mode: FmSelectMode) => setRawSelection(s => select(s, p, mode, order));
 
   const onKeyDown = (e: KeyboardEvent) => {
+    const mod = e.metaKey || e.ctrlKey;
+    // Before the input check so it also works from the search box.
+    if (mod && e.key.toLowerCase() === "p" && canQuickOpen && !dialog && !preview && !quickOpen) {
+      e.preventDefault();
+      setQuickOpen(true);
+      return;
+    }
     if (inTrash || dialog || preview || (e.target as HTMLElement).closest("input, textarea, [contenteditable]"))
       return;
-    const mod = e.metaKey || e.ctrlKey;
     const one = selected.length === 1
       ? selected[0]
       : undefined;
@@ -658,6 +676,7 @@ export function FileManager(props: FileManagerProps) {
                   onChange={e => changeQuery(e.target.value)}
                   onKeyDown={e => e.key === "Escape" && changeQuery("")}
                 />
+                {canQuickOpen && <IconButton label={labels.quickOpen} onClick={() => setQuickOpen(true)}><FileSearchIcon /></IconButton>}
                 {query.trim() && (
                   <div className="flex shrink-0 items-center gap-0.5" role="group" aria-label={labels.search}>
                     {(["folder", "below"] as const).map(s => (
@@ -917,6 +936,17 @@ export function FileManager(props: FileManagerProps) {
               }
             : {})}
           onClose={() => setPreview(undefined)}
+        />
+      )}
+
+      {canQuickOpen && (
+        <QuickOpen
+          client={client}
+          mount={mount}
+          labels={labels}
+          open={quickOpen}
+          onOpenChange={setQuickOpen}
+          onPick={pickQuickOpen}
         />
       )}
 
