@@ -1397,6 +1397,26 @@ describe("cross-mount ops", () => {
       });
     }
 
+    it("rejects a move onto the uploads folder", async () => {
+      const { drivers, ops } = await crossSetup({
+        files: { "/x/.fm-uploads/f.txt": "f" },
+      });
+      const res = await ops("mem", {
+        op: "move",
+        paths: ["/x/.fm-uploads"],
+        dest: "/",
+      });
+      expect(res.body.results).toEqual([
+        {
+          path: "/x/.fm-uploads",
+          ok: false,
+          error: { code: "INVALID", message: "Reserved name: /.fm-uploads" },
+        },
+      ]);
+      expect(await text(drivers.mem!, "/x/.fm-uploads/f.txt")).toBe("f");
+      expect(await has(drivers.mem!, "/.fm-uploads/f.txt")).toBe(false);
+    });
+
     it("rejects a rename to the trash folder name", async () => {
       const { drivers, events, ops } = await crossSetup({
         files: { "/a/f.txt": "f" },
