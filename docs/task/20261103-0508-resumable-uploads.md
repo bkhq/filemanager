@@ -1,8 +1,8 @@
 # 20261103-0508-resumable-uploads Large and resumable uploads
 
-- **status**: pending
+- **status**: in_progress
 - **priority**: P1
-- **owner**: (unassigned)
+- **owner**: bkd-l2/wmhautbl
 - **createdAt**: 2026-11-03 05:08
 
 ## Description

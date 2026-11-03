@@ -1,8 +1,8 @@
 # 20261103-0508-cross-mount-copy Cross-mount copy and move (content copy between drivers)
 
-- **status**: pending
+- **status**: in_progress
 - **priority**: P1
-- **owner**: (unassigned)
+- **owner**: bkd-l2/m6ycwh87
 - **createdAt**: 2026-11-03 05:08
 
 ## Description
