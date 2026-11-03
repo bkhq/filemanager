@@ -1,11 +1,11 @@
 import type { Context, Env } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import type { FmAction, FmCaps, FmConflict, FmEntry, FmMountInfo, FmOpResult, FmTrashItem, FmUsage } from "../core/schema";
-import type { FmDriver, FmDriverEntry } from "./driver";
+import type { FmAction, FmCaps, FmConflict, FmEntry, FmMountInfo, FmOpResult, FmTrashItem, FmUploadMode, FmUploadSession, FmUsage } from "../core/schema";
+import type { FmDriver, FmDriverEntry, FmUploadPart, FmWriteOptions } from "./driver";
 import { Hono } from "hono";
 import { describeRoute, resolver, validator } from "hono-openapi";
 import { z } from "zod";
-import { FmError } from "../core/errors";
+import { FmError, isFmError } from "../core/errors";
 import { fuzzyRank, fuzzyScore } from "../core/fuzzy";
 import { assertName, basename, dirname, isWithin, joinPath, nextFreeName, normalizePath } from "../core/path";
 import {
@@ -24,9 +24,12 @@ import {
   sortKeySchema,
   trashIdsSchema,
   trashItemSchema,
+  uploadCreateSchema,
+  uploadSessionSchema,
   usageSchema,
 } from "../core/schema";
 import { zipStream } from "./archive";
+import { readAll } from "./driver";
 import { inlineType, mimeOf } from "./mime";
 import { dropTrashItem, getTrashItem, listTrash, moveToTrash, TRASH_DIR, trashedPath } from "./trash";
 
@@ -49,6 +52,12 @@ export interface FmLimits {
   maxListEntries: number;
   archiveMaxEntries: number;
   archiveMaxBytes: number;
+  /** Preferred part size for upload sessions; drivers may require larger parts. */
+  uploadPartSize: number;
+  /** Max total bytes of one upload session (`maxUploadBytes` limits a single write). */
+  maxSessionUploadBytes: number;
+  /** Lifetime of an upload session in milliseconds. */
+  uploadSessionTtlMs: number;
 }
 
 export const DEFAULT_LIMITS: FmLimits = {
@@ -56,6 +65,9 @@ export const DEFAULT_LIMITS: FmLimits = {
   maxListEntries: 10_000,
   archiveMaxEntries: 5000,
   archiveMaxBytes: 2 * 1024 * 1024 * 1024,
+  uploadPartSize: 8 * 1024 * 1024,
+  maxSessionUploadBytes: 10 * 1024 * 1024 * 1024,
+  uploadSessionTtlMs: 24 * 60 * 60 * 1000,
 };
 
 export interface FmRouterOptions<E extends Env> {
@@ -93,6 +105,105 @@ interface Target {
   mount: FmMount;
   path: string;
   caps: FmCaps;
+}
+
+/** Hidden per-mount folder: `<id>.json` holds an upload session, `<id>/<n>` its parts when the driver has no multipart. */
+const UPLOADS_DIR = "/.fm-uploads";
+
+interface UploadRecord {
+  id: string;
+  mount: string;
+  /** Final target, fixed at create time. */
+  path: string;
+  size: number;
+  partSize: number;
+  parts: number;
+  conflict: FmConflict;
+  mode: FmUploadMode;
+  /** Driver multipart upload id. */
+  uploadId?: string;
+  expiresAt: number;
+}
+
+const recordPath = (id: string) => `${UPLOADS_DIR}/${id}.json`;
+const partsDir = (id: string) => `${UPLOADS_DIR}/${id}`;
+
+/** Byte length of part `n`; the last part holds the remainder. */
+function partLength(rec: UploadRecord, n: number): number {
+  return n < rec.parts
+    ? rec.partSize
+    : rec.size - rec.partSize * (rec.parts - 1);
+}
+
+async function readRecord(d: FmDriver, id: string): Promise<UploadRecord> {
+  const res = await d.read(recordPath(id));
+  return JSON.parse(new TextDecoder().decode(await readAll(res.body))) as UploadRecord;
+}
+
+/** Discards the stored parts and the record of a session. */
+async function discardUpload(d: FmDriver, rec: UploadRecord): Promise<void> {
+  if (rec.uploadId)
+    await d.multipart?.abort(rec.path, rec.uploadId);
+  else
+    await d.remove(partsDir(rec.id)).catch(ignoreNotFound);
+  await d.remove(recordPath(rec.id)).catch(ignoreNotFound);
+}
+
+function ignoreNotFound(e: unknown) {
+  if (!isFmError(e, "NOT_FOUND"))
+    throw e;
+}
+
+/** Stored parts with a valid number and the expected length, sorted by `n`. */
+async function storedParts(d: FmDriver, rec: UploadRecord): Promise<FmUploadPart[]> {
+  let parts: FmUploadPart[];
+  if (rec.uploadId && d.multipart) {
+    parts = await d.multipart.listParts(rec.path, rec.uploadId);
+  }
+  else {
+    const entries = await d.list(partsDir(rec.id)).catch((e: unknown) => {
+      ignoreNotFound(e);
+      return [];
+    });
+    parts = entries
+      .filter(e => e.kind === "file" && /^\d+$/.test(e.name))
+      .map(e => ({
+        n: Number(e.name),
+        size: e.size,
+        etag: e.etag,
+      }));
+  }
+  return parts
+    .filter(p => p.n >= 1 && p.n <= rec.parts && p.size === partLength(rec, p.n))
+    .sort((a, b) => a.n - b.n);
+}
+
+/** Concatenates the fallback part files in order. */
+function joinParts(d: FmDriver, rec: UploadRecord): ReadableStream<Uint8Array> {
+  let n = 0;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      for (;;) {
+        if (!reader) {
+          if (n >= rec.parts) {
+            controller.close();
+            return;
+          }
+          reader = (await d.read(`${partsDir(rec.id)}/${++n}`)).body.getReader();
+        }
+        const { done, value } = await reader.read();
+        if (!done) {
+          controller.enqueue(value);
+          return;
+        }
+        reader = undefined;
+      }
+    },
+    cancel(reason) {
+      return reader?.cancel(reason);
+    },
+  });
 }
 
 const TAG = "Files";
@@ -184,8 +295,8 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
   const host = (c: unknown) => c as Context<E>;
 
   const hasTrash = (m: FmMount) => !!m.trash && mountCaps(m).delete;
-  /** Paths inside the trash folder are never exposed by regular routes (also on read-only views of the same storage). */
-  const hidden = (m: FmMount, path: string) => !!m.trash && isWithin(path, TRASH_DIR);
+  /** Paths inside the trash or uploads folder are never exposed by regular routes (also on read-only views of the same storage). */
+  const hidden = (m: FmMount, path: string) => isWithin(path, UPLOADS_DIR) || (!!m.trash && isWithin(path, TRASH_DIR));
 
   const findMount = async (c: unknown, mountId: string): Promise<FmMount> => {
     const mount = (await options.mounts(host(c))).find(m => m.id === mountId);
@@ -472,7 +583,8 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
       event.path = t.path;
       if (t.path === "/")
         throw new FmError("INVALID", "Invalid path");
-      const length = Number(c.req.header("content-length") ?? 0);
+      const contentLength = c.req.header("content-length");
+      const length = Number(contentLength ?? 0);
       if (length > limits.maxUploadBytes)
         throw new FmError("TOO_LARGE", `Upload exceeds ${limits.maxUploadBytes} bytes`);
       const ifMatch = c.req.header("if-match")?.replace(/^W\//, "").replace(/"/g, "");
@@ -488,6 +600,9 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
         ...(q.conflict === "fail"
           ? { exclusive: true }
           : {}),
+        ...(contentLength === undefined
+          ? {}
+          : { size: length }),
       });
       event.path = path;
       return c.json(toEntry(t, written));
@@ -854,6 +969,238 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
       });
     }
     return c.json({ results });
+  });
+
+  /** Loads a live session of `mountId`; unknown, foreign and expired ids answer 404. */
+  const loadUpload = async (c: unknown, mountId: string, id: string) => {
+    const mount = await findMount(c, mountId);
+    const rec = /^[\da-f-]{36}$/.test(id)
+      ? await readRecord(mount.driver, id).catch((e: unknown) => {
+          ignoreNotFound(e);
+          return undefined;
+        })
+      : undefined;
+    if (!rec || rec.mount !== mount.id || rec.expiresAt < Date.now())
+      throw new FmError("NOT_FOUND", "Upload not found");
+    return rec;
+  };
+
+  const toSession = async (d: FmDriver, rec: UploadRecord): Promise<FmUploadSession> => {
+    const session: FmUploadSession = {
+      id: rec.id,
+      mode: rec.mode,
+      path: rec.path,
+      size: rec.size,
+      partSize: rec.partSize,
+      parts: rec.parts,
+      received: (await storedParts(d, rec)).map(p => p.n),
+      expiresAt: rec.expiresAt,
+    };
+    const presign = d.multipart?.presignPart;
+    if (rec.mode === "s3-multipart" && rec.uploadId && presign) {
+      const expiresIn = Math.min(Math.ceil((rec.expiresAt - Date.now()) / 1000), 7 * 24 * 60 * 60);
+      session.urls = await Promise.all(Array.from({ length: rec.parts }, (_, i) => presign(rec.path, rec.uploadId!, i + 1, expiresIn)));
+    }
+    return session;
+  };
+
+  /** Drops up to 100 expired sessions; best effort. */
+  const sweepUploads = async (d: FmDriver) => {
+    const entries = await d.list(UPLOADS_DIR).catch(() => []);
+    const now = Date.now();
+    let dropped = 0;
+    for (const e of entries) {
+      if (dropped >= 100)
+        break;
+      if (e.kind !== "file" || !e.name.endsWith(".json"))
+        continue;
+      try {
+        const rec = await readRecord(d, e.name.slice(0, -".json".length));
+        if (rec.expiresAt < now) {
+          dropped++;
+          await discardUpload(d, rec);
+        }
+      }
+      catch {}
+    }
+  };
+
+  const uploadParam = z.object({
+    mount: z.string(),
+    id: z.string(),
+  });
+
+  app.post("/m/:mount/uploads", describeRoute({
+    tags: [TAG],
+    summary: "Start an upload session",
+    description: "Resumable upload of `size` bytes in `parts` parts. The target path is fixed now; `rename` picks a free name.",
+    responses: {
+      201: ok(uploadSessionSchema, "Upload session"),
+      413: err("Too large"),
+      ...ERRORS,
+    },
+  }), v("json", uploadCreateSchema), async (c) => {
+    const body = c.req.valid("json");
+    const t = await resolve(c, c.req.param("mount"), body.path, "write");
+    if (t.path === "/")
+      throw new FmError("INVALID", "Invalid path");
+    if (body.size > limits.maxSessionUploadBytes)
+      throw new FmError("TOO_LARGE", `Upload exceeds ${limits.maxSessionUploadBytes} bytes`);
+    const d = t.mount.driver;
+    await sweepUploads(d);
+    const target = await destination(d, dirname(t.path), basename(t.path), body.conflict);
+    if (body.conflict === "fail" && await exists(d, target))
+      throw new FmError("EXISTS", "Already exists");
+    if (target !== t.path)
+      await resolve(c, t.mount.id, target, "write");
+    const mp = d.multipart;
+    const partSize = Math.max(limits.uploadPartSize, mp?.minPartSize ?? 1, Math.ceil(body.size / (mp?.maxParts ?? 10000)));
+    const rec: UploadRecord = {
+      id: crypto.randomUUID(),
+      mount: t.mount.id,
+      path: target,
+      size: body.size,
+      partSize,
+      parts: Math.max(1, Math.ceil(body.size / partSize)),
+      conflict: body.conflict,
+      mode: mp?.presignPart
+        ? "s3-multipart"
+        : "chunked",
+      expiresAt: Date.now() + limits.uploadSessionTtlMs,
+    };
+    if (mp)
+      rec.uploadId = await mp.begin(target);
+    await d.write(recordPath(rec.id), new TextEncoder().encode(JSON.stringify(rec)));
+    return c.json(await toSession(d, rec), 201);
+  });
+
+  app.get("/m/:mount/uploads/:id", describeRoute({
+    tags: [TAG],
+    summary: "Upload session status",
+    description: "`received` lists the stored parts; `urls` are presigned again.",
+    responses: {
+      200: ok(uploadSessionSchema, "Upload session"),
+      ...ERRORS,
+    },
+  }), v("param", uploadParam), async (c) => {
+    const { mount, id } = c.req.valid("param");
+    const rec = await loadUpload(c, mount, id);
+    const t = await resolve(c, mount, rec.path, "write");
+    return c.json(await toSession(t.mount.driver, rec));
+  });
+
+  app.put("/m/:mount/uploads/:id/parts/:n", describeRoute({
+    tags: [TAG],
+    summary: "Upload one part",
+    description: "Raw request body of exactly the part length (`partSize`, the remainder for the last part). Replaces an earlier upload of the part. `chunked` sessions only.",
+    responses: {
+      200: ok(z.object({
+        n: z.number(),
+        size: z.number(),
+      }), "Stored part"),
+      413: err("Too large"),
+      ...ERRORS,
+    },
+  }), v("param", uploadParam.extend({
+    n: z.string(),
+  })), async (c) => {
+    const { mount, id } = c.req.valid("param");
+    const rec = await loadUpload(c, mount, id);
+    const t = await resolve(c, mount, rec.path, "write");
+    if (rec.mode !== "chunked")
+      throw new FmError("INVALID", "Parts go to the presigned URLs");
+    const n = Number(c.req.valid("param").n);
+    if (!Number.isInteger(n) || n < 1 || n > rec.parts)
+      throw new FmError("INVALID", `Invalid part number: ${c.req.valid("param").n}`);
+    const expected = partLength(rec, n);
+    const contentLength = c.req.header("content-length");
+    if (contentLength === undefined || Number(contentLength) !== expected)
+      throw new FmError("INVALID", `Part ${n} must be ${expected} bytes`);
+    const body = c.req.raw.body
+      ? limitStream(c.req.raw.body, expected)
+      : new Uint8Array();
+    const d = t.mount.driver;
+    if (rec.uploadId) {
+      if (!d.multipart?.uploadPart)
+        throw new FmError("UNSUPPORTED", "Driver cannot store parts");
+      await d.multipart.uploadPart(rec.path, rec.uploadId, n, body, expected);
+    }
+    else {
+      const path = `${partsDir(rec.id)}/${n}`;
+      const written = await d.write(path, body, { size: expected });
+      if (written.size !== expected) {
+        await d.remove(path).catch(() => {});
+        throw new FmError("INVALID", `Part ${n} must be ${expected} bytes`);
+      }
+    }
+    return c.json({ n, size: expected });
+  });
+
+  app.post("/m/:mount/uploads/:id/complete", describeRoute({
+    tags: [TAG],
+    summary: "Complete an upload session",
+    description: "Assembles all parts into the session path. On failure the session stays and `complete` may be retried.",
+    responses: {
+      200: ok(entrySchema, "Written entry"),
+      ...ERRORS,
+    },
+  }), v("param", uploadParam), async (c) => {
+    const { mount, id } = c.req.valid("param");
+    const rec = await loadUpload(c, mount, id);
+    const event: EventDraft = {
+      op: "write",
+      mount,
+      path: rec.path,
+    };
+    return track(c, event, async () => {
+      const t = await resolve(c, mount, rec.path, "write");
+      const d = t.mount.driver;
+      const opts: FmWriteOptions = {
+        size: rec.size,
+        ...(rec.conflict === "overwrite"
+          ? {}
+          : { exclusive: true }),
+      };
+      let written: FmDriverEntry;
+      try {
+        const parts = await storedParts(d, rec);
+        for (let n = 1; n <= rec.parts; n++) {
+          if (parts[n - 1]?.n !== n)
+            throw new FmError("INVALID", `Missing part ${n}`);
+        }
+        if (rec.uploadId && d.multipart) {
+          written = await d.multipart.complete(rec.path, rec.uploadId, parts, opts);
+        }
+        else {
+          written = await d.write(rec.path, joinParts(d, rec), opts);
+          await d.remove(partsDir(rec.id)).catch(() => {});
+        }
+      }
+      catch (e) {
+        if (isFmError(e, "NOT_FOUND"))
+          await discardUpload(d, rec).catch(() => {});
+        throw e;
+      }
+      await d.remove(recordPath(rec.id)).catch(() => {});
+      return c.json(toEntry(t, written));
+    });
+  });
+
+  app.delete("/m/:mount/uploads/:id", describeRoute({
+    tags: [TAG],
+    summary: "Abort an upload session",
+    responses: {
+      200: ok(z.object({
+        ok: z.literal(true),
+      }), "Aborted"),
+      ...ERRORS,
+    },
+  }), v("param", uploadParam), async (c) => {
+    const { mount, id } = c.req.valid("param");
+    const rec = await loadUpload(c, mount, id);
+    const t = await resolve(c, mount, rec.path, "write");
+    await discardUpload(t.mount.driver, rec);
+    return c.json({ ok: true });
   });
 
   return app;
