@@ -149,6 +149,77 @@ test("drags entries onto a folder row to move them", async ({ page }) => {
   await expect(row(page, "/e2e/inner/renamed.txt")).toBeVisible();
 });
 
+async function newFolderWithFile(page: Page, name: string, file: string) {
+  await page.getByRole("button", { name: "New folder" }).click();
+  await page.getByRole("dialog").getByRole("textbox").fill(name);
+  await page.getByRole("button", { name: "Create" }).click();
+  await row(page, `/${name}`).dblclick();
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles([
+    {
+      name: file,
+      mimeType: "text/plain",
+      buffer: Buffer.from(`content of ${file}`),
+    },
+  ]);
+  await expect(row(page, `/${name}/${file}`)).toBeVisible();
+  await page.getByRole("button", { name: "Up", exact: true }).click();
+}
+
+test("copies a folder from Local disk to Scratch with paste", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await newFolderWithFile(page, "xm-paste", "inside.txt");
+  await contextAction(page, "/xm-paste", "Copy");
+  await page.getByRole("tree").getByText("Scratch (memory)", { exact: true }).click();
+  await expect(row(page, "/README.md")).toBeVisible();
+  await fileList(page).click({
+    button: "right",
+    position: { x: 300, y: 300 },
+  });
+  await page.getByRole("menuitem", { name: "Paste" }).click();
+  await row(page, "/xm-paste").dblclick();
+  await expect(row(page, "/xm-paste/inside.txt")).toBeVisible();
+  await page.getByRole("tree").getByText("Local disk", { exact: true }).click();
+  await expect(row(page, "/xm-paste")).toBeVisible();
+});
+
+test("drops entries on the tree: moves within a mount, copies to another", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await newFolderWithFile(page, "xm-drop", "dropped.txt");
+  await page.getByRole("button", { name: "New folder" }).click();
+  await page.getByRole("dialog").getByRole("textbox").fill("xm-target");
+  await page.getByRole("button", { name: "Create" }).click();
+  const tree = page.getByRole("tree");
+  await row(page, "/xm-drop").dblclick();
+  await row(page, "/xm-drop/dropped.txt").dragTo(tree.getByRole("treeitem").filter({ hasText: /^xm-target$/ }));
+  await expect(row(page, "/xm-drop/dropped.txt")).toHaveCount(0);
+  await tree.getByRole("treeitem").filter({ hasText: /^xm-target$/ }).click();
+  await expect(row(page, "/xm-target/dropped.txt")).toBeVisible();
+
+  await row(page, "/xm-target/dropped.txt").dragTo(tree.getByRole("treeitem").filter({ hasText: /^Scratch \(memory\)$/ }));
+  await tree.getByText("Scratch (memory)", { exact: true }).click();
+  await expect(row(page, "/dropped.txt")).toBeVisible();
+  await tree.getByText("Local disk", { exact: true }).click();
+  await row(page, "/xm-target").dblclick();
+  await expect(row(page, "/xm-target/dropped.txt")).toBeVisible();
+});
+
+test("copies a text file's contents to the clipboard", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await openMount(page, "Local disk");
+  await row(page, "/notes").dblclick();
+  await contextAction(page, "/notes/todo.txt", "Copy contents");
+  await expect(page.getByRole("status").filter({ hasText: "Contents copied to the clipboard" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("- try rename\n- try drag and drop\n");
+  await row(page, "/notes/config.json").click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Copy contents" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Up", exact: true }).click();
+  await row(page, "/images").dblclick();
+  await row(page, "/images/dot.png").click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Download" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Copy contents" })).toHaveCount(0);
+});
+
 test("moves the selection to the trash, undoes, restores and purges", async ({ page }) => {
   await openMount(page, "Local disk");
   await row(page, "/e2e").dblclick();
