@@ -28,6 +28,7 @@ import {
   RefreshCwIcon,
   ScissorsIcon,
   SearchIcon,
+  SettingsIcon,
   Trash2Icon,
   UploadIcon,
   XIcon,
@@ -52,7 +53,9 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
@@ -64,13 +67,14 @@ import { fmKeys, useFmMutations, useListing, useMounts, useTrash } from "../clie
 import { createUploadQueue, xhrTransport } from "../client/upload";
 import { basename, dirname, joinPath } from "../core/path";
 import { DetailsPanel } from "./details-panel";
-import { ConfirmDeleteDialog, NameDialog, UploadConflictDialog } from "./dialogs";
+import { ConfirmDeleteDialog, ManageDrivesDialog, NameDialog, UploadConflictDialog } from "./dialogs";
 import { filesFromDrop, filesFromInput } from "./drop";
 import { maskEntry, resolveFeatures } from "./features";
 import { FileList } from "./file-list";
 import { FileTree } from "./file-tree";
 import { IconButton } from "./icon-button";
 import { enLabels } from "./labels";
+import { groupMountsByDriver, parseHidden, visibleMounts } from "./mount-visibility";
 import { PreviewDialog } from "./preview-dialog";
 import { EMPTY_SELECTION, prune, select, step } from "./state";
 import { TrashView } from "./trash-view";
@@ -78,6 +82,13 @@ import { undoFor } from "./undo";
 import { UploadPanel } from "./upload-panel";
 
 export type { FmActionContext, FmFileAction, FmPlugin } from "./plugins";
+
+export interface FmSidebarOptions {
+  /** Mount ids left out of the tree and the storage menu (still reachable via `initialMount`). */
+  hidden?: string[];
+  /** `driver`: one section per driver kind. */
+  group?: "none" | "driver";
+}
 
 export interface FileManagerProps {
   /** Router base URL (e.g. `/api/fm`); ignored when `client` is given. */
@@ -102,6 +113,8 @@ export interface FileManagerProps {
   readOnly?: boolean;
   /** Per-feature switches applied on top of `readOnly`, e.g. `{ delete: false }`. */
   features?: Partial<FmFeatures>;
+  /** Sidebar drive visibility and grouping; users can hide more via "Manage drives". */
+  sidebar?: FmSidebarOptions;
 }
 
 type DialogState
@@ -110,6 +123,7 @@ type DialogState
     | { kind: "delete"; paths: string[] }
     | { kind: "newFile" }
     | { kind: "emptyTrash" }
+    | { kind: "manageDrives" }
     | { kind: "uploadConflict"; files: FmUploadFile[]; clashes: Set<string> }
     | undefined;
 
@@ -141,6 +155,18 @@ function useStoredChoice<T extends string>(key: string, values: readonly T[], fa
   return [value, change] as const;
 }
 
+/** A list of strings persisted in localStorage as JSON. */
+function useStoredList(key: string) {
+  const [value, setValue] = useState(() => parseHidden(typeof localStorage !== "undefined"
+    ? localStorage.getItem(key)
+    : null));
+  const change = (v: string[]) => {
+    setValue(v);
+    localStorage.setItem(key, JSON.stringify(v));
+  };
+  return [value, change] as const;
+}
+
 const NARROW = 640;
 
 /** Width of an element, tracked with ResizeObserver (0 until measured). */
@@ -165,10 +191,13 @@ export function FileManager(props: FileManagerProps) {
   const pluginPreviewers = useMemo(() => (props.plugins ?? []).flatMap(p => p.previewers ?? []), [props.plugins]);
   const features = useMemo(() => resolveFeatures(props.readOnly, props.features), [props.readOnly, props.features]);
   const [location, setLocation] = useState({ mount: props.initialMount, path: props.initialPath ?? "/", trash: false });
-  const mount = location.mount ?? mounts.data?.[0]?.id;
+  const storageKey = props.storageKey ?? "fm";
+  const hostHidden = props.sidebar?.hidden ?? [];
+  const [userHidden, setUserHidden] = useStoredList(`${storageKey}:hidden`);
+  const mount = location.mount ?? (mounts.data && (visibleMounts(mounts.data, hostHidden, userHidden, undefined)[0] ?? mounts.data[0]))?.id;
+  const shownMounts = mounts.data && visibleMounts(mounts.data, hostHidden, userHidden, mount);
   const { path, trash: inTrash } = location;
   const [query, setQuery] = useState("");
-  const storageKey = props.storageKey ?? "fm";
   const [view, setView] = useStoredChoice(`${storageKey}:view`, ["list", "grid"], "list");
   const [layout, setLayout] = useStoredChoice(`${storageKey}:layout`, ["split", "single"], props.layout ?? "split");
   const [rootRef, width] = useWidth();
@@ -521,12 +550,12 @@ export function FileManager(props: FileManagerProps) {
     <div ref={rootRef} className={cn("relative flex h-full min-h-0 overflow-hidden rounded-lg border bg-background", props.className)}>
       {split && (
         <aside className="w-56 shrink-0 overflow-auto border-r">
-          {mounts.data && (
+          {shownMounts && (
             <FileTree
               client={client}
               mounts={features.trash
-                ? mounts.data
-                : mounts.data.map(m => ({ ...m, trash: false }))}
+                ? shownMounts
+                : shownMounts.map(m => ({ ...m, trash: false }))}
               mount={mount}
               path={path}
               inTrash={inTrash}
@@ -534,6 +563,10 @@ export function FileManager(props: FileManagerProps) {
               onOpenTrash={m => go(m, "/", true)}
               readOnlyLabel={labels.readOnly}
               trashLabel={labels.trash}
+              group={props.sidebar?.group}
+              groupLabel={labels.driverGroup}
+              manageLabel={labels.manageDrives}
+              onManage={() => setDialog({ kind: "manageDrives" })}
             />
           )}
         </aside>
@@ -556,7 +589,7 @@ export function FileManager(props: FileManagerProps) {
           <Breadcrumb className={cn("min-w-0 flex-1 px-1", narrow && "basis-[calc(100%-2.5rem)]")}>
             <BreadcrumbList className="flex-nowrap overflow-hidden">
               <BreadcrumbItem>
-                {!split && mounts.data
+                {!split && shownMounts
                   ? (
                       <DropdownMenu>
                         <DropdownMenuTrigger render={<button type="button" className="flex items-center gap-1 rounded-sm hover:text-foreground" aria-label={labels.storage} />}>
@@ -570,7 +603,14 @@ export function FileManager(props: FileManagerProps) {
                               : mount ?? ""}
                             onValueChange={v => navigate(v as string, "/")}
                           >
-                            {mounts.data.map(m => <DropdownMenuRadioItem key={m.id} value={m.id} closeOnClick>{m.label}</DropdownMenuRadioItem>)}
+                            {props.sidebar?.group === "driver"
+                              ? groupMountsByDriver(shownMounts).map(g => (
+                                  <DropdownMenuGroup key={g.driver}>
+                                    <DropdownMenuLabel>{labels.driverGroup(g.driver)}</DropdownMenuLabel>
+                                    {g.mounts.map(m => <DropdownMenuRadioItem key={m.id} value={m.id} closeOnClick>{m.label}</DropdownMenuRadioItem>)}
+                                  </DropdownMenuGroup>
+                                ))
+                              : shownMounts.map(m => <DropdownMenuRadioItem key={m.id} value={m.id} closeOnClick>{m.label}</DropdownMenuRadioItem>)}
                           </DropdownMenuRadioGroup>
                           {currentMount?.trash && features.trash && (
                             <>
@@ -581,6 +621,11 @@ export function FileManager(props: FileManagerProps) {
                               </DropdownMenuItem>
                             </>
                           )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setDialog({ kind: "manageDrives" })}>
+                            <SettingsIcon />
+                            {labels.manageDrives}
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     )
@@ -936,6 +981,16 @@ export function FileManager(props: FileManagerProps) {
               onError: e => setError(e.message),
             });
           }}
+        />
+      )}
+      {dialog?.kind === "manageDrives" && mounts.data && (
+        <ManageDrivesDialog
+          mounts={visibleMounts(mounts.data, hostHidden, [], undefined)}
+          hidden={userHidden}
+          current={mount}
+          labels={labels}
+          onChange={setUserHidden}
+          onClose={() => setDialog(undefined)}
         />
       )}
       {dialog?.kind === "uploadConflict" && mount && (

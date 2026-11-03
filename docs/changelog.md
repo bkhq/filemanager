@@ -87,3 +87,7 @@ Plan 20261103-0948-rename-dev-apps delivered: the workspace apps are `apps/fm-ap
 ## 2026-11-03 18:05 [progress]
 
 Campaign report: requirement plans written for the nine P1 tasks in this repository (change-events, recursive-search, quick-open, pick-mode, sidebar-drives, publish-registry, cross-mount-copy, resumable-uploads, workers-r2); campaign plan `20261103-1005-p1-campaign` partitions them into BKD L2 workstreams. Wave 1: A server-events, B search, C embedding-ui, D registry-publish (merge order D, A, B, C). Wave 2 after wave 1 merges: E transfer, F workers. Out of scope: bkd-pilot (other repo) and all P2 / P3 tasks. Found during investigation: `registry/fm/server/router.ts:152` JSDoc still says `createFileManager`; assigned to workstream A. All plans are drafts awaiting the dispatch confirmation.
+
+## 2026-11-03 [progress]
+
+Sidebar drives (20261103-1005-sidebar-drives): `<FileManager sidebar={{ hidden, group }}>` (`FmSidebarOptions`) hides mounts from the tree and the single-pane storage menu (still reachable via `initialMount`; the current mount is never hidden) and groups them by driver kind (`group: "driver"`). A "Manage drives" dialog lets users hide more, persisted at `${storageKey}:hidden`; host-hidden mounts are not listed. Logic in `react/mount-visibility.ts` (`visibleMounts`, `groupMountsByDriver`). Demo reads `?group=driver` and `?hidden=a,b`. Verified: `bun run check`, 22 Playwright e2e.
