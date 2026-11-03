@@ -111,3 +111,7 @@ Search delivered (20261103-1005-recursive-search, 20261103-1005-quick-open): rec
 ## 2026-11-03 [progress]
 
 Cross-mount copy and move delivered (20261103-1005-cross-mount-copy): `POST /m/:mount/ops` move / copy take `destMount`; another mount streams content between drivers file by file (source walk bounded by `archiveMaxEntries` / `archiveMaxBytes`, `copy|move` authorized on the source and `write` on the destination, a failed item removes its partial copy, `move` deletes the source, to the trash when enabled, only after the copy landed). Change events carry `toMount`. UI: paste into another mount, tree drop (same mount moves, another mount copies), "Copy contents" for text files up to 1 MiB (follows `features.download`). Cross-mount operations have no undo. Verified: `bun run check` (142 tests, 141 pass / 1 skip).
+
+## 2026-11-03 11:00 [progress]
+
+`POST /m/:mount/ops` rejects rename / move / copy items whose final target is a hidden path (e.g. `/.fm-trash`) with `INVALID` "Reserved name", before any write.
