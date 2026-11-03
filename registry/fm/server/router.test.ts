@@ -1336,4 +1336,86 @@ describe("cross-mount ops", () => {
       destMount: "nope",
     })).status).toBe(404);
   });
+
+  describe("hidden targets", () => {
+    const reserved = (path: string) => ({
+      path,
+      ok: false,
+      error: { code: "INVALID", message: "Reserved name: /.fm-trash" },
+    });
+
+    for (const op of ["move", "copy"] as const) {
+      it(`rejects a same-mount ${op} onto the trash folder`, async () => {
+        const { drivers, events, ops } = await crossSetup({
+          files: { "/x/.fm-trash/f.txt": "f" },
+          trash: true,
+        });
+        const res = await ops("mem", {
+          op,
+          paths: ["/x/.fm-trash"],
+          dest: "/",
+        });
+        expect(res.body.results).toEqual([
+          reserved("/x/.fm-trash"),
+        ]);
+        expect(await text(drivers.mem!, "/x/.fm-trash/f.txt")).toBe("f");
+        expect(await has(drivers.mem!, "/.fm-trash")).toBe(false);
+        expect(events).toEqual([
+          expect.objectContaining({
+            op,
+            mount: "mem",
+            path: "/x/.fm-trash",
+            ok: false,
+          }),
+        ]);
+      });
+
+      it(`rejects a cross-mount ${op} onto the trash folder`, async () => {
+        const { drivers, events, ops } = await crossSetup({
+          files: { "/x/.fm-trash/f.txt": "f" },
+          trash: true,
+        });
+        const res = await ops("mem", {
+          op,
+          paths: ["/x/.fm-trash"],
+          dest: "/",
+          destMount: "disk",
+        });
+        expect(res.body.results).toEqual([
+          reserved("/x/.fm-trash"),
+        ]);
+        expect(await text(drivers.mem!, "/x/.fm-trash/f.txt")).toBe("f");
+        expect(await has(drivers.disk!, "/.fm-trash")).toBe(false);
+        expect(events).toEqual([
+          expect.objectContaining({
+            op,
+            mount: "mem",
+            path: "/x/.fm-trash",
+            ok: false,
+          }),
+        ]);
+      });
+    }
+
+    it("rejects a rename to the trash folder name", async () => {
+      const { drivers, events, ops } = await crossSetup({
+        files: { "/a/f.txt": "f" },
+        trash: true,
+      });
+      const res = await ops("mem", { op: "rename", path: "/a", name: ".fm-trash" });
+      expect(res.body.results).toEqual([
+        reserved("/a"),
+      ]);
+      expect(await text(drivers.mem!, "/a/f.txt")).toBe("f");
+      expect(await has(drivers.mem!, "/.fm-trash")).toBe(false);
+      expect(events).toEqual([
+        expect.objectContaining({
+          op: "rename",
+          mount: "mem",
+          path: "/a",
+          ok: false,
+        }),
+      ]);
+    });
+  });
 });
