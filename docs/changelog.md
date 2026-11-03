@@ -51,3 +51,7 @@ Upload conflict detection must not trust a listing that is still loading or refe
 ## 2026-11-03 [progress]
 
 GitHub Actions CI (`.github/workflows/ci.yml`) on push to main and PRs: `bun run check` with the S3 contract against a RustFS service container (pinned by digest), Playwright e2e, and the registry install smoke test. First run green (98 unit tests incl. S3, 19 e2e).
+
+## 2026-11-03 05:08 [decision]
+
+Backlog written for hand-over: `docs/plan/20261103-0508-backlog-proposals.md` (draft) with twelve pending tasks (cross-mount copy, sidebar drive visibility, registry publishing, resumable uploads, Workers + R2, thumbnails, trash retention, recursive search, plugin follow-ups, UI polish, bkd pilot, managed store). Each needs its own approved plan before work starts.
