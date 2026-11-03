@@ -1,7 +1,8 @@
+import type { Env } from "hono";
 import type { FmCaps } from "../core/schema";
 import type { FmDriver } from "./driver";
-import type { FmMount } from "./router";
-import { describe, expect, it } from "bun:test";
+import type { FmChangeEvent, FmMount, FmRouterOptions } from "./router";
+import { describe, expect, it, spyOn } from "bun:test";
 import { unzipSync } from "fflate";
 import { Hono } from "hono";
 import { ALL_CAPS, READ_ONLY_CAPS } from "../core/schema";
@@ -17,7 +18,7 @@ const NONE: FmCaps = {
   copy: false,
 };
 
-function setup(opts: { files?: Record<string, string>; mounts?: FmMount[]; authorize?: (path: string) => FmCaps; maxUploadBytes?: number } = {}) {
+function setup(opts: { files?: Record<string, string>; mounts?: FmMount[]; authorize?: (path: string) => FmCaps; maxUploadBytes?: number; onEvent?: FmRouterOptions<Env>["onEvent"] } = {}) {
   const driver = memoryDriver({ files: opts.files ?? {} });
   const mounts = opts.mounts ?? [
     { id: "m", label: "Main", driver },
@@ -29,6 +30,9 @@ function setup(opts: { files?: Record<string, string>; mounts?: FmMount[]; autho
       ? {
           authorize: (_c, t) => opts.authorize!(t.path),
         }
+      : {}),
+    ...(opts.onEvent
+      ? { onEvent: opts.onEvent }
       : {}),
     limits: { maxUploadBytes: opts.maxUploadBytes ?? 1024, archiveMaxEntries: 10 },
   }));
@@ -708,5 +712,257 @@ describe("trash", () => {
       paths: ["/a.txt"],
     })).json()).results;
     expect(del[0].trashId).toBeUndefined();
+  });
+});
+
+describe("change events", () => {
+  function eventSetup(opts: { files?: Record<string, string>; trash?: boolean } = {}) {
+    const events: FmChangeEvent[] = [];
+    const driver = memoryDriver({ files: opts.files ?? {} });
+    const s = setup({
+      mounts: [
+        {
+          id: "m",
+          label: "Main",
+          driver,
+          ...(opts.trash
+            ? { trash: true }
+            : {}),
+        },
+      ],
+      onEvent: (_c, e) => {
+        events.push(e);
+      },
+    });
+    return { ...s, driver, events };
+  }
+
+  it("reports writes and mkdir", async () => {
+    const { req, json, events } = eventSetup({
+      files: { "/a.txt": "a" },
+    });
+    await req(`/m/m/write?path=${q("/a.txt")}&conflict=rename`, { method: "PUT", body: "x" });
+    expect((await req(`/m/m/write?path=${q("/a.txt")}&conflict=fail`, { method: "PUT", body: "x" })).status).toBe(409);
+    await json("POST", "/m/m/mkdir", { path: "/new" });
+    expect(events).toEqual([
+      {
+        op: "write",
+        mount: "m",
+        path: "/a (1).txt",
+        ok: true,
+      },
+      {
+        op: "write",
+        mount: "m",
+        path: "/a.txt",
+        ok: false,
+        error: {
+          code: "EXISTS",
+          message: expect.any(String),
+        },
+      },
+      {
+        op: "mkdir",
+        mount: "m",
+        path: "/new",
+        ok: true,
+      },
+    ]);
+  });
+
+  it("reports each delete item, including failures", async () => {
+    const { json, events } = eventSetup({
+      files: { "/a.txt": "a" },
+    });
+    await json("POST", "/m/m/ops", {
+      op: "delete",
+      paths: ["/a.txt", "/missing"],
+    });
+    expect(events).toEqual([
+      {
+        op: "delete",
+        mount: "m",
+        path: "/a.txt",
+        ok: true,
+      },
+      {
+        op: "delete",
+        mount: "m",
+        path: "/missing",
+        ok: false,
+        error: {
+          code: "NOT_FOUND",
+          message: expect.any(String),
+        },
+      },
+    ]);
+  });
+
+  it("reports rename, move and copy with their destinations", async () => {
+    const { json, events } = eventSetup({
+      files: { "/a.txt": "a", "/b.txt": "b", "/dst/b.txt": "old" },
+    });
+    await json("POST", "/m/m/ops", { op: "rename", path: "/a.txt", name: "c.txt" });
+    await json("POST", "/m/m/ops", {
+      op: "copy",
+      paths: ["/c.txt", "/b.txt"],
+      dest: "/dst",
+    });
+    await json("POST", "/m/m/ops", {
+      op: "move",
+      paths: ["/c.txt"],
+      dest: "/dst",
+      conflict: "rename",
+    });
+    await json("POST", "/m/m/ops", {
+      op: "move",
+      paths: ["/dst/b.txt"],
+      dest: "/dst",
+    });
+    expect(events).toEqual([
+      {
+        op: "rename",
+        mount: "m",
+        path: "/a.txt",
+        to: "/c.txt",
+        ok: true,
+      },
+      {
+        op: "copy",
+        mount: "m",
+        path: "/c.txt",
+        to: "/dst/c.txt",
+        ok: true,
+      },
+      {
+        op: "copy",
+        mount: "m",
+        path: "/b.txt",
+        ok: false,
+        error: {
+          code: "EXISTS",
+          message: expect.any(String),
+        },
+      },
+      {
+        op: "move",
+        mount: "m",
+        path: "/c.txt",
+        to: "/dst/c (1).txt",
+        ok: true,
+      },
+      {
+        op: "move",
+        mount: "m",
+        path: "/dst/b.txt",
+        to: "/dst/b.txt",
+        ok: true,
+      },
+    ]);
+  });
+
+  it("reports trash delete, restore and purge", async () => {
+    const { json, driver, events } = eventSetup({
+      files: { "/a.txt": "a", "/b.txt": "b", "/c.txt": "c" },
+      trash: true,
+    });
+    const del = (await (await json("POST", "/m/m/ops", {
+      op: "delete",
+      paths: ["/a.txt", "/b.txt", "/c.txt"],
+    })).json()).results;
+    const [a, b, c] = del.map((r: { trashId: string }) => r.trashId);
+    await driver.write("/a.txt", new TextEncoder().encode("new"));
+    await json("POST", "/m/m/trash/restore", {
+      ids: [a, "nope"],
+    });
+    await json("POST", "/m/m/trash/purge", {
+      ids: [b],
+    });
+    await json("POST", "/m/m/trash/purge", {});
+    expect(events).toEqual([
+      {
+        op: "delete",
+        mount: "m",
+        path: "/a.txt",
+        trashId: a,
+        ok: true,
+      },
+      {
+        op: "delete",
+        mount: "m",
+        path: "/b.txt",
+        trashId: b,
+        ok: true,
+      },
+      {
+        op: "delete",
+        mount: "m",
+        path: "/c.txt",
+        trashId: c,
+        ok: true,
+      },
+      {
+        op: "restore",
+        mount: "m",
+        path: "/a.txt",
+        to: "/a (1).txt",
+        trashId: a,
+        ok: true,
+      },
+      {
+        op: "restore",
+        mount: "m",
+        path: "nope",
+        trashId: "nope",
+        ok: false,
+        error: {
+          code: "NOT_FOUND",
+          message: expect.any(String),
+        },
+      },
+      {
+        op: "purge",
+        mount: "m",
+        path: "/b.txt",
+        trashId: b,
+        ok: true,
+      },
+      {
+        op: "purge",
+        mount: "m",
+        path: "/c.txt",
+        trashId: c,
+        ok: true,
+      },
+    ]);
+  });
+
+  it("ignores a throwing or rejecting hook", async () => {
+    const files = { "/a.txt": "a" };
+    const body = {
+      op: "delete",
+      paths: ["/a.txt", "/missing"],
+    };
+    const plain = await setup({ files }).json("POST", "/m/m/ops", body);
+    const expected = { status: plain.status, body: await plain.json() };
+    const spy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      for (const onEvent of [
+        () => {
+          throw new Error("sync");
+        },
+        async () => {
+          throw new Error("async");
+        },
+      ]) {
+        spy.mockClear();
+        const res = await setup({ files, onEvent }).json("POST", "/m/m/ops", body);
+        expect({ status: res.status, body: await res.json() }).toEqual(expected);
+        expect(spy).toHaveBeenCalledTimes(2);
+      }
+    }
+    finally {
+      spy.mockRestore();
+    }
   });
 });

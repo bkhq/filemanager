@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isFmError } from "../core/errors";
@@ -157,6 +157,70 @@ describe("localDriver gitIgnore search", () => {
     try {
       await writeFile(join(t.root, "a.txt"), "a");
       expect(await localDriver({ root: t.root, gitIgnore: true }).search!("/", "a", { limit: 10 })).toBeNull();
+    }
+    finally {
+      await t.cleanup();
+    }
+  });
+
+  it.skipIf(!hasGit)("does not run a core.fsmonitor command from the repo config", async () => {
+    const t = await tempRoot();
+    try {
+      const marker = join(t.base, "pwned");
+      const hook = join(t.base, "hook.sh");
+      await writeFile(hook, `#!/bin/sh\ntouch "${marker}"\n`);
+      await chmod(hook, 0o755);
+      await git(t.root, "init", "-q");
+      await writeFile(join(t.root, "a.txt"), "a");
+      await git(t.root, "add", ".");
+      await git(t.root, "commit", "-q", "-m", "init");
+      await git(t.root, "config", "core.fsmonitor", hook);
+
+      const found = await localDriver({ root: t.root, gitIgnore: true }).search!("/", "a", { limit: 10 });
+      expect(found?.map(e => e.path)).toEqual(["/a.txt"]);
+      expect(await Bun.file(marker).exists()).toBe(false);
+    }
+    finally {
+      await t.cleanup();
+    }
+  });
+
+  it.skipIf(!hasGit)("treats directory names as literal pathspecs", async () => {
+    const t = await tempRoot();
+    try {
+      await git(t.root, "init", "-q");
+      await mkdir(join(t.root, ":(top)"));
+      await writeFile(join(t.root, ":(top)", "inner.txt"), "i");
+      await writeFile(join(t.root, "outer.txt"), "o");
+
+      const found = await localDriver({ root: t.root, gitIgnore: true }).search!("/:(top)", "txt", { limit: 10 });
+      expect(found?.map(e => e.path)).toEqual(["/:(top)/inner.txt"]);
+    }
+    finally {
+      await t.cleanup();
+    }
+  });
+
+  it.skipIf(!hasGit)("makes .git paths read-only", async () => {
+    const t = await tempRoot();
+    try {
+      await git(t.root, "init", "-q");
+      await mkdir(join(t.root, "sub"));
+      await writeFile(join(t.root, "a.txt"), "a");
+      const driver = localDriver({ root: t.root, gitIgnore: true });
+      const body = new TextEncoder().encode("x");
+
+      expect(await code(driver.write("/.git/config", body))).toBe("FORBIDDEN");
+      expect(await code(driver.write("/.GIT/hooks/pre-commit", body))).toBe("FORBIDDEN");
+      expect(await code(driver.mkdir("/.git/hooks2"))).toBe("FORBIDDEN");
+      expect(await code(driver.move("/a.txt", "/sub/.git/x"))).toBe("FORBIDDEN");
+      expect(await code(driver.move("/.git", "/moved"))).toBe("FORBIDDEN");
+      expect(await code(driver.copy("/a.txt", "/.git/x"))).toBe("FORBIDDEN");
+      expect(await code(driver.copy("/.git", "/copied"))).toBe("FORBIDDEN");
+      expect(await code(driver.remove("/.git"))).toBe("FORBIDDEN");
+      expect(await Bun.file(join(t.root, ".git", "HEAD")).exists()).toBe(true);
+
+      expect(await code(localDriver({ root: t.root }).write("/.git/config", body))).toBeUndefined();
     }
     finally {
       await t.cleanup();
