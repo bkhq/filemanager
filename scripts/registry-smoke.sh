@@ -1,18 +1,28 @@
 #!/usr/bin/env bash
 # Installs every registry item into a scratch app with non-default aliases
 # (like a real host), then typechecks and builds it. Needs network access.
+# Set REGISTRY_URL (base ending in /r) to test a deployed registry instead.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 WORK=$ROOT/.tmp/registry-smoke
 PORT=${SMOKE_PORT:-4318}
 
-cd "$ROOT"
-bun run registry:build >/dev/null
-rm -rf "$WORK" && mkdir -p "$WORK/src"
+REGISTRY=${REGISTRY_URL:-}
+REGISTRY=${REGISTRY%/}
+# shadcn reads REGISTRY_URL as its own default registry; keep it away from the CLI.
+unset REGISTRY_URL
 
-bun -e "Bun.serve({ port: $PORT, fetch: r => new Response(Bun.file('$ROOT/public' + new URL(r.url).pathname)) })" &
-SERVER=$!
-trap 'kill $SERVER' EXIT
+cd "$ROOT"
+if [ -n "$REGISTRY" ]; then
+  echo "registry smoke: testing $REGISTRY"
+else
+  bun run registry:build >/dev/null
+  bun -e "Bun.serve({ port: $PORT, fetch: r => new Response(Bun.file('$ROOT/public' + new URL(r.url).pathname)) })" &
+  SERVER=$!
+  trap 'kill $SERVER' EXIT
+  REGISTRY=http://localhost:$PORT/r
+fi
+rm -rf "$WORK" && mkdir -p "$WORK/src"
 
 cd "$WORK"
 cat > package.json <<'JSON'
@@ -33,7 +43,7 @@ cat > components.json <<JSON
     "lib": "@/shared/lib",
     "hooks": "@/shared/hooks"
   },
-  "registries": { "@bkhq": "http://localhost:$PORT/r/{name}.json" }
+  "registries": { "@bkhq": "$REGISTRY/{name}.json" }
 }
 JSON
 cat > tsconfig.json <<'JSON'

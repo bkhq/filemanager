@@ -1,0 +1,103 @@
+# Publishes the shadcn registry to GitHub Pages: main -> /next/r/, each v* tag -> /v{version}/r/,
+# highest v* tag -> /r/. Every run rebuilds the whole site from git.
+# Requires GitHub Pages enabled with source "GitHub Actions" (Settings -> Pages).
+# The github-pages environment must allow v* tags (Settings -> Environments -> github-pages -> add tag rule v*).
+name: Registry
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+    outputs:
+      latest_tag: ${{ steps.site.outputs.latest_tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Assemble site
+        id: site
+        shell: bash
+        run: |
+          set -euo pipefail
+          site="$RUNNER_TEMP/site"
+          src="$RUNNER_TEMP/src"
+          rm -rf "$site" "$src"
+          mkdir -p "$site" "$src"
+
+          build_ref() { # <ref> <site subdir>
+            local dir="$src/$2"
+            git worktree add --detach "$dir" "$1"
+            (cd "$dir" && bun install --frozen-lockfile && bun run registry:build)
+            mkdir -p "$site/$2"
+            cp -R "$dir/public/r" "$site/$2/r"
+            git worktree remove --force "$dir"
+          }
+
+          main_ref=origin/main
+          if [ "${GITHUB_REF:-}" = refs/heads/main ]; then main_ref=HEAD; fi
+          build_ref "$main_ref" next
+
+          for tag in $(git tag --list 'v*'); do
+            build_ref "refs/tags/$tag" "$tag"
+          done
+
+          latest=$(git tag --list 'v*' --sort=-v:refname | head -1)
+          if [ -n "$latest" ]; then cp -R "$site/$latest/r" "$site/r"; fi
+          echo "latest_tag=$latest" >> "$GITHUB_OUTPUT"
+          echo "site=$site" >> "$GITHUB_OUTPUT"
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: ${{ steps.site.outputs.site }}
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
+
+  smoke:
+    name: Registry install smoke test (deployed)
+    needs: [build, deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - name: Smoke /next/r
+        run: bun run registry:smoke
+        env:
+          REGISTRY_URL: ${{ needs.deploy.outputs.page_url }}next/r
+      - name: Smoke /r
+        if: needs.build.outputs.latest_tag != ''
+        run: bun run registry:smoke
+        env:
+          REGISTRY_URL: ${{ needs.deploy.outputs.page_url }}r
