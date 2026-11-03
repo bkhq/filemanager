@@ -333,6 +333,59 @@ test("toggles between split and single layouts", async ({ page }) => {
   await expect(page.getByRole("tree")).toBeVisible();
 });
 
+test("hides a drive via Manage drives and remembers it", async ({ page }) => {
+  await page.goto("/");
+  const tree = page.getByRole("tree");
+  await expect(tree.getByText("Scratch (memory)", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Manage drives" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("checkbox", { name: "Local disk" })).toBeDisabled();
+  await dialog.getByRole("checkbox", { name: "Scratch (memory)" }).uncheck();
+  await page.keyboard.press("Escape");
+  await expect(tree.getByText("Scratch (memory)", { exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(tree.getByText("Local disk", { exact: true })).toBeVisible();
+  await expect(tree.getByText("Scratch (memory)", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Hide sidebar" }).click();
+  await page.getByRole("button", { name: "Storage" }).click();
+  await expect(page.getByRole("menuitemradio", { name: "Read-only view" })).toBeVisible();
+  await expect(page.getByRole("menuitemradio", { name: "Scratch (memory)" })).toHaveCount(0);
+  await page.getByRole("menuitem", { name: "Manage drives" }).click();
+  await page.getByRole("dialog").getByRole("checkbox", { name: "Scratch (memory)" }).check();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Storage" }).click();
+  await expect(page.getByRole("menuitemradio", { name: "Scratch (memory)" })).toBeVisible();
+});
+
+test("groups drives by driver kind", async ({ page }) => {
+  await page.goto("/?group=driver");
+  const tree = page.getByRole("tree");
+  await expect(tree.getByRole("treeitem", { name: "toggle Local", exact: true })).toBeVisible();
+  await expect(tree.getByRole("treeitem", { name: "toggle Memory", exact: true })).toBeVisible();
+  await expect(tree.getByRole("group", { name: "Local" })).toContainText("Local disk");
+  await expect(tree.getByRole("group", { name: "Local" })).toContainText("Read-only view");
+  await expect(tree.getByRole("group", { name: "Memory" })).toContainText("Scratch (memory)");
+  await page.getByRole("button", { name: "Hide sidebar" }).click();
+  await page.getByRole("button", { name: "Storage" }).click();
+  await expect(page.getByRole("menu").getByRole("group", { name: "Memory" }).getByRole("menuitemradio", { name: "Scratch (memory)" })).toBeVisible();
+});
+
+test("leaves host-hidden drives out of the tree, menu and Manage drives", async ({ page }) => {
+  await page.goto("/?hidden=readonly");
+  const tree = page.getByRole("tree");
+  await expect(tree.getByText("Local disk", { exact: true })).toBeVisible();
+  await expect(tree.getByText("Read-only view", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Manage drives" }).click();
+  await expect(page.getByRole("dialog").getByRole("checkbox")).toHaveCount(2);
+  await expect(page.getByRole("dialog").getByText("Read-only view")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Hide sidebar" }).click();
+  await page.getByRole("button", { name: "Storage" }).click();
+  await expect(page.getByRole("menuitemradio", { name: "Local disk" })).toBeVisible();
+  await expect(page.getByRole("menuitemradio", { name: "Read-only view" })).toHaveCount(0);
+});
+
 test.describe("on a phone", () => {
   test.use({
     viewport: { width: 390, height: 844 },
@@ -352,5 +405,56 @@ test.describe("on a phone", () => {
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Details" }).click();
     await expect(page.getByRole("complementary", { name: "Details" })).toContainText("2 files, 0 folders");
+  });
+});
+
+test.describe("file picker", () => {
+  const output = (page: Page) => page.getByTestId("fm-picked");
+  const pickBar = (page: Page) => page.locator("[data-fm-pick-bar]");
+
+  // Earlier tests move /README.md away; put it back.
+  test.beforeEach(async ({ page }) => {
+    const res = await page.request.put("/api/fm/m/local/write?path=%2FREADME.md&conflict=overwrite", { data: "# Local root\n" });
+    expect(res.ok()).toBe(true);
+  });
+
+  test("picks one file with a double-click", async ({ page }) => {
+    await page.goto("/?pick");
+    await row(page, "/README.md").dblclick();
+    await expect(output(page)).toHaveText("/README.md");
+  });
+
+  test("picks several files with multiple", async ({ page }) => {
+    await page.goto("/?pick&multiple");
+    await row(page, "/notes").dblclick();
+    await row(page, "/notes/todo.txt").click();
+    await row(page, "/notes/config.json").click();
+    await expect(pickBar(page)).toContainText("2 selected");
+    await pickBar(page).getByRole("button", { name: "Confirm" }).click();
+    await expect(output(page)).toContainText("/notes/todo.txt");
+    await expect(output(page)).toContainText("/notes/config.json");
+  });
+
+  test("disables files outside accept", async ({ page }) => {
+    await page.goto("/?pick&accept=.png");
+    await expect(row(page, "/README.md")).toHaveAttribute("aria-disabled", "true");
+    // Playwright waits for aria-disabled elements to become enabled; force the click.
+    await row(page, "/README.md").click({ force: true });
+    await expect(row(page, "/README.md")).toHaveAttribute("aria-selected", "false");
+    await expect(pickBar(page).getByRole("button", { name: "Confirm" })).toBeDisabled();
+    await row(page, "/images").dblclick();
+    await row(page, "/images/dot.png").click();
+    await expect(row(page, "/images/dot.png")).toHaveAttribute("aria-selected", "true");
+    await pickBar(page).getByRole("button", { name: "Confirm" }).click();
+    await expect(output(page)).toHaveText("/images/dot.png");
+  });
+
+  test("blocks confirm over the size cap", async ({ page }) => {
+    await page.goto("/?pick&multiple&max=10");
+    await row(page, "/README.md").click();
+    await expect(pickBar(page)).toContainText("Selection exceeds the 10 B limit");
+    await expect(pickBar(page).getByRole("button", { name: "Confirm" })).toBeDisabled();
+    await pickBar(page).getByRole("button", { name: "Cancel" }).click();
+    await expect(output(page)).toHaveText("cancelled");
   });
 });

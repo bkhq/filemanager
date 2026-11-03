@@ -63,6 +63,8 @@ export interface FileListProps {
   hasMore: boolean;
   onLoadMore: () => void;
   empty: ReactNode;
+  /** Entries shown dimmed with `aria-disabled` (e.g. not pickable). */
+  disabled?: ((entry: FmEntry) => boolean) | undefined;
 }
 
 function modeOf(e: MouseEvent): FmSelectMode {
@@ -77,11 +79,16 @@ function useEntryHandlers(p: FileListProps, entry: FmEntry) {
   const [over, setOver] = useState(false);
   const selected = p.selection.paths.has(entry.path);
   const isDir = entry.kind === "dir";
+  const disabled = !!p.disabled?.(entry);
   return {
     over,
     selected,
     props: {
       "data-path": entry.path,
+      "aria-disabled": disabled || undefined,
+      "title": disabled
+        ? p.labels.pickUnavailable
+        : undefined,
       "draggable": entry.caps.move,
       "onClick": (e: MouseEvent) => {
         e.stopPropagation();
@@ -133,6 +140,7 @@ function ListRow({ p, entry, top }: { p: FileListProps; entry: FmEntry; top: num
         "absolute inset-x-0 flex h-9 cursor-default items-center gap-3 rounded-md px-3 text-sm select-none hover:bg-muted/60",
         h.selected && "bg-accent text-accent-foreground hover:bg-accent",
         h.over && "ring-2 ring-primary",
+        h.props["aria-disabled"] && "opacity-50",
       )}
       style={{ transform: `translateY(${top}px)` }}
     >
@@ -164,6 +172,7 @@ function GridCell({ p, entry }: { p: FileListProps; entry: FmEntry }) {
         "flex h-full cursor-default flex-col items-center gap-2 rounded-lg p-2 text-xs select-none hover:bg-muted/60",
         h.selected && "bg-accent text-accent-foreground hover:bg-accent",
         h.over && "ring-2 ring-primary",
+        h.props["aria-disabled"] && "opacity-50",
       )}
     >
       <div className="flex h-20 w-full items-center justify-center overflow-hidden rounded-md">

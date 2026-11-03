@@ -28,6 +28,7 @@ import {
   RefreshCwIcon,
   ScissorsIcon,
   SearchIcon,
+  SettingsIcon,
   Trash2Icon,
   UploadIcon,
   XIcon,
@@ -52,7 +53,9 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
@@ -63,21 +66,40 @@ import { createFmClient } from "../client/client";
 import { fmKeys, useFmMutations, useListing, useMounts, useTrash } from "../client/hooks";
 import { createUploadQueue, xhrTransport } from "../client/upload";
 import { basename, dirname, joinPath } from "../core/path";
+import { acceptsEntry } from "./accept";
 import { DetailsPanel } from "./details-panel";
-import { ConfirmDeleteDialog, NameDialog, UploadConflictDialog } from "./dialogs";
+import { ConfirmDeleteDialog, ManageDrivesDialog, NameDialog, UploadConflictDialog } from "./dialogs";
 import { filesFromDrop, filesFromInput } from "./drop";
 import { maskEntry, resolveFeatures } from "./features";
 import { FileList } from "./file-list";
 import { FileTree } from "./file-tree";
 import { IconButton } from "./icon-button";
 import { enLabels } from "./labels";
+import { groupMountsByDriver, parseHidden, visibleMounts } from "./mount-visibility";
 import { PreviewDialog } from "./preview-dialog";
-import { EMPTY_SELECTION, prune, select, step } from "./state";
+import { EMPTY_SELECTION, formatSize, prune, select, step } from "./state";
 import { TrashView } from "./trash-view";
 import { undoFor } from "./undo";
 import { UploadPanel } from "./upload-panel";
 
 export type { FmActionContext, FmFileAction, FmPlugin } from "./plugins";
+
+export interface FmSidebarOptions {
+  /** Mount ids left out of the tree and the storage menu (still reachable via `initialMount`). */
+  hidden?: string[];
+  /** `driver`: one section per driver kind. */
+  group?: "none" | "driver";
+}
+
+export interface FmPickOptions {
+  /** Extensions (`.png`) and MIME types (`image/*`); empty accepts every file. */
+  accept?: string[];
+  multiple?: boolean;
+  /** Confirm is disabled while the selected files exceed this many bytes. */
+  maxTotalSize?: number;
+  onPick: (entries: FmEntry[]) => void;
+  onCancel?: () => void;
+}
 
 export interface FileManagerProps {
   /** Router base URL (e.g. `/api/fm`); ignored when `client` is given. */
@@ -102,6 +124,13 @@ export interface FileManagerProps {
   readOnly?: boolean;
   /** Per-feature switches applied on top of `readOnly`, e.g. `{ delete: false }`. */
   features?: Partial<FmFeatures>;
+  /** Sidebar drive visibility and grouping; users can hide more via "Manage drives". */
+  sidebar?: FmSidebarOptions;
+  /**
+   * Pick mode, used by `FilePicker`: files are selected and confirmed instead of previewed.
+   * @internal
+   */
+  pick?: FmPickOptions;
 }
 
 type DialogState
@@ -110,6 +139,7 @@ type DialogState
     | { kind: "delete"; paths: string[] }
     | { kind: "newFile" }
     | { kind: "emptyTrash" }
+    | { kind: "manageDrives" }
     | { kind: "uploadConflict"; files: FmUploadFile[]; clashes: Set<string> }
     | undefined;
 
@@ -141,6 +171,18 @@ function useStoredChoice<T extends string>(key: string, values: readonly T[], fa
   return [value, change] as const;
 }
 
+/** A list of strings persisted in localStorage as JSON. */
+function useStoredList(key: string) {
+  const [value, setValue] = useState(() => parseHidden(typeof localStorage !== "undefined"
+    ? localStorage.getItem(key)
+    : null));
+  const change = (v: string[]) => {
+    setValue(v);
+    localStorage.setItem(key, JSON.stringify(v));
+  };
+  return [value, change] as const;
+}
+
 const NARROW = 640;
 
 /** Width of an element, tracked with ResizeObserver (0 until measured). */
@@ -165,10 +207,13 @@ export function FileManager(props: FileManagerProps) {
   const pluginPreviewers = useMemo(() => (props.plugins ?? []).flatMap(p => p.previewers ?? []), [props.plugins]);
   const features = useMemo(() => resolveFeatures(props.readOnly, props.features), [props.readOnly, props.features]);
   const [location, setLocation] = useState({ mount: props.initialMount, path: props.initialPath ?? "/", trash: false });
-  const mount = location.mount ?? mounts.data?.[0]?.id;
+  const storageKey = props.storageKey ?? "fm";
+  const hostHidden = props.sidebar?.hidden ?? [];
+  const [userHidden, setUserHidden] = useStoredList(`${storageKey}:hidden`);
+  const mount = location.mount ?? (mounts.data && (visibleMounts(mounts.data, hostHidden, userHidden, undefined)[0] ?? mounts.data[0]))?.id;
+  const shownMounts = mounts.data && visibleMounts(mounts.data, hostHidden, userHidden, mount);
   const { path, trash: inTrash } = location;
   const [query, setQuery] = useState("");
-  const storageKey = props.storageKey ?? "fm";
   const [view, setView] = useStoredChoice(`${storageKey}:view`, ["list", "grid"], "list");
   const [layout, setLayout] = useStoredChoice(`${storageKey}:layout`, ["split", "single"], props.layout ?? "split");
   const [rootRef, width] = useWidth();
@@ -191,8 +236,25 @@ export function FileManager(props: FileManagerProps) {
   const rawDir = listing.data?.pages[0]?.entry;
   const dir = useMemo(() => rawDir && maskEntry(rawDir, features), [rawDir, features]);
   const order = useMemo(() => entries.map(e => e.path), [entries]);
-  const selection = useMemo(() => prune(rawSelection, order), [rawSelection, order]);
   const byPath = useMemo(() => new Map(entries.map(e => [e.path, e])), [entries]);
+  const { pick } = props;
+  const pickable = (e: FmEntry) => e.kind === "file" && acceptsEntry(e, pick?.accept);
+  const selection = useMemo(() => {
+    const sel = prune(rawSelection, order);
+    if (!pick)
+      return sel;
+    // Only accepted files can be picked; single mode keeps the latest one.
+    const paths = [...sel.paths].filter((p) => {
+      const e = byPath.get(p);
+      return !!e && e.kind === "file" && acceptsEntry(e, pick.accept);
+    });
+    return {
+      paths: new Set(pick.multiple
+        ? paths
+        : paths.slice(-1)),
+      anchor: sel.anchor,
+    };
+  }, [rawSelection, order, pick, byPath]);
   const selected = useMemo(() => [...selection.paths].map(p => byPath.get(p)).filter((e): e is FmEntry => !!e), [selection, byPath]);
   const mutations = useFmMutations(client, mount ?? "");
   const canWrite = !!dir?.caps.write;
@@ -290,9 +352,16 @@ export function FileManager(props: FileManagerProps) {
       setDialog({ kind: "delete", paths });
   };
 
-  const open = (e: FmEntry) => (e.kind === "dir"
-    ? navigate(e.mount, e.path)
-    : setPreview(e));
+  const open = (e: FmEntry) => {
+    if (e.kind === "dir")
+      navigate(e.mount, e.path);
+    else if (!pick)
+      setPreview(e);
+    else if (pickable(e) && pick.multiple)
+      setRawSelection(s => select(s, e.path, "toggle", order));
+    else if (pickable(e))
+      pick.onPick([e]);
+  };
 
   const download = (targets: FmEntry[]) => {
     if (!mount || targets.length === 0)
@@ -353,7 +422,13 @@ export function FileManager(props: FileManagerProps) {
     e.target.value = "";
   };
 
-  const onSelect = (p: string, mode: FmSelectMode) => setRawSelection(s => select(s, p, mode, order));
+  const onSelect = (p: string, mode: FmSelectMode) => setRawSelection(s => select(s, p, pick
+    ? (pick.multiple
+        ? (mode === "single"
+            ? "toggle"
+            : mode)
+        : "single")
+    : mode, order));
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (inTrash || dialog || preview || (e.target as HTMLElement).closest("input, textarea, [contenteditable]"))
@@ -372,7 +447,9 @@ export function FileManager(props: FileManagerProps) {
         setRawSelection(s => step(prune(s, order), order, -1, e.shiftKey));
         break;
       case "Enter":
-        if (one)
+        if (pick && selection.anchor !== undefined && byPath.has(selection.anchor))
+          open(byPath.get(selection.anchor)!);
+        else if (one)
           open(one);
         break;
       case "Backspace":
@@ -521,12 +598,12 @@ export function FileManager(props: FileManagerProps) {
     <div ref={rootRef} className={cn("relative flex h-full min-h-0 overflow-hidden rounded-lg border bg-background", props.className)}>
       {split && (
         <aside className="w-56 shrink-0 overflow-auto border-r">
-          {mounts.data && (
+          {shownMounts && (
             <FileTree
               client={client}
               mounts={features.trash
-                ? mounts.data
-                : mounts.data.map(m => ({ ...m, trash: false }))}
+                ? shownMounts
+                : shownMounts.map(m => ({ ...m, trash: false }))}
               mount={mount}
               path={path}
               inTrash={inTrash}
@@ -534,6 +611,10 @@ export function FileManager(props: FileManagerProps) {
               onOpenTrash={m => go(m, "/", true)}
               readOnlyLabel={labels.readOnly}
               trashLabel={labels.trash}
+              group={props.sidebar?.group}
+              groupLabel={labels.driverGroup}
+              manageLabel={labels.manageDrives}
+              onManage={() => setDialog({ kind: "manageDrives" })}
             />
           )}
         </aside>
@@ -556,7 +637,7 @@ export function FileManager(props: FileManagerProps) {
           <Breadcrumb className={cn("min-w-0 flex-1 px-1", narrow && "basis-[calc(100%-2.5rem)]")}>
             <BreadcrumbList className="flex-nowrap overflow-hidden">
               <BreadcrumbItem>
-                {!split && mounts.data
+                {!split && shownMounts
                   ? (
                       <DropdownMenu>
                         <DropdownMenuTrigger render={<button type="button" className="flex items-center gap-1 rounded-sm hover:text-foreground" aria-label={labels.storage} />}>
@@ -570,7 +651,14 @@ export function FileManager(props: FileManagerProps) {
                               : mount ?? ""}
                             onValueChange={v => navigate(v as string, "/")}
                           >
-                            {mounts.data.map(m => <DropdownMenuRadioItem key={m.id} value={m.id} closeOnClick>{m.label}</DropdownMenuRadioItem>)}
+                            {props.sidebar?.group === "driver"
+                              ? groupMountsByDriver(shownMounts).map(g => (
+                                  <DropdownMenuGroup key={g.driver}>
+                                    <DropdownMenuLabel>{labels.driverGroup(g.driver)}</DropdownMenuLabel>
+                                    {g.mounts.map(m => <DropdownMenuRadioItem key={m.id} value={m.id} closeOnClick>{m.label}</DropdownMenuRadioItem>)}
+                                  </DropdownMenuGroup>
+                                ))
+                              : shownMounts.map(m => <DropdownMenuRadioItem key={m.id} value={m.id} closeOnClick>{m.label}</DropdownMenuRadioItem>)}
                           </DropdownMenuRadioGroup>
                           {currentMount?.trash && features.trash && (
                             <>
@@ -581,6 +669,11 @@ export function FileManager(props: FileManagerProps) {
                               </DropdownMenuItem>
                             </>
                           )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setDialog({ kind: "manageDrives" })}>
+                            <SettingsIcon />
+                            {labels.manageDrives}
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     )
@@ -788,6 +881,7 @@ export function FileManager(props: FileManagerProps) {
                     })}
                     hasMore={!!listing.hasNextPage && !listing.isFetchingNextPage}
                     onLoadMore={() => void listing.fetchNextPage()}
+                    disabled={pick && (e => e.kind === "file" && !acceptsEntry(e, pick.accept))}
                     empty={(
                       <div className="flex h-full min-h-40 items-center justify-center text-sm text-muted-foreground">
                         {listing.isPending
@@ -812,6 +906,21 @@ export function FileManager(props: FileManagerProps) {
             <span className="rounded-md bg-background px-3 py-1.5 text-sm shadow">{labels.dropHere}</span>
           </div>
         )}
+
+        {pick && (() => {
+          const total = selected.reduce((n, e) => n + e.size, 0);
+          const over = pick.maxTotalSize !== undefined && total > pick.maxTotalSize;
+          return (
+            <footer className="flex flex-wrap items-center gap-2 border-t px-3 py-2 text-sm" data-fm-pick-bar="">
+              <span>{labels.selected(selected.length)}</span>
+              <span className="text-muted-foreground tabular-nums">{labels.pickTotal(formatSize(total))}</span>
+              {over && <span role="alert" className="text-destructive">{labels.pickOverLimit(formatSize(pick.maxTotalSize!))}</span>}
+              <span className="flex-1" />
+              {pick.onCancel && <Button size="sm" variant="ghost" onClick={pick.onCancel}>{labels.cancel}</Button>}
+              <Button size="sm" disabled={selected.length === 0 || over} onClick={() => pick.onPick(selected)}>{labels.confirm}</Button>
+            </footer>
+          );
+        })()}
       </section>
 
       {detailsOpen && features.details && !inTrash && (selected.length === 1
@@ -936,6 +1045,16 @@ export function FileManager(props: FileManagerProps) {
               onError: e => setError(e.message),
             });
           }}
+        />
+      )}
+      {dialog?.kind === "manageDrives" && mounts.data && (
+        <ManageDrivesDialog
+          mounts={visibleMounts(mounts.data, hostHidden, [], undefined)}
+          hidden={userHidden}
+          current={mount}
+          labels={labels}
+          onChange={setUserHidden}
+          onClose={() => setDialog(undefined)}
         />
       )}
       {dialog?.kind === "uploadConflict" && mount && (

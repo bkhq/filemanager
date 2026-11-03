@@ -94,4 +94,12 @@ Change event hook delivered (20261103-1005-change-events): `onEvent` / `FmChange
 
 ## 2026-11-03 [progress]
 
-Registry publishing delivered (20261103-1005-publish-registry): `.github/workflows/registry.yml` deploys the registry to GitHub Pages (`main` -> `/next/r/`, each `v*` tag -> `/v{version}/r/`, highest tag -> `/r/`; every run rebuilds all tags from git) and smoke-tests the deployed URL; `scripts/registry-smoke.sh` accepts `REGISTRY_URL` to test a deployed registry; README uses `https://bkhq.github.io/filemanager/r/{name}.json` and the pinned `/v{version}/r/` form. Manual: enable Pages (source GitHub Actions) and allow tag `v*` on the `github-pages` environment. Verified: `bun run check`, registry smoke, actionlint.
+Sidebar drives (20261103-1005-sidebar-drives): `<FileManager sidebar={{ hidden, group }}>` (`FmSidebarOptions`) hides mounts from the tree and the single-pane storage menu (still reachable via `initialMount`; the current mount is never hidden) and groups them by driver kind (`group: "driver"`). A "Manage drives" dialog lets users hide more, persisted at `${storageKey}:hidden`; host-hidden mounts are not listed. Logic in `react/mount-visibility.ts` (`visibleMounts`, `groupMountsByDriver`). Demo reads `?group=driver` and `?hidden=a,b`. Verified: `bun run check`, 22 Playwright e2e.
+
+## 2026-11-03 [progress]
+
+Pick mode (20261103-1005-pick-mode): `<FilePicker accept multiple maxTotalSize mounts onPick onCancel>` built on `FileManager` (view-only features, single layout, internal `pick` prop / `FmPickOptions`). Files outside `accept` (extensions and MIME globs, `acceptsEntry` in `react/accept.ts`) render disabled; folders stay navigable; a confirm bar shows count and total size and blocks Confirm over `maxTotalSize`. `mounts` filters the offered mounts through sidebar host-hidden. Demo reads `?pick`, `?accept=`, `?multiple`, `?max=`. Verified: `bun run check`, 26 Playwright e2e.
+
+## 2026-11-03 [progress]
+
+Registry publishing delivered (20261103-1005-publish-registry): `.github/workflows/registry.yml` deploys the registry to GitHub Pages (`main` -> `/next/r/`, each `v*` tag -> `/v{version}/r/`, highest tag -> `/r/`; every run rebuilds all tags from git) and smoke-tests the deployed URL; `scripts/registry-smoke.sh` accepts `REGISTRY_URL` to test a deployed registry; README uses `https://bkhq.github.io/filemanager/r/{name}.json` and the pinned `/v{version}/r/` form. Manual: enable Pages (source GitHub Actions) and allow tag `v*` on the `github-pages` environment. `oven-sh/setup-bun` is pinned by commit SHA in registry.yml (v2.2.0). Verified: `bun run check`, registry smoke, actionlint.

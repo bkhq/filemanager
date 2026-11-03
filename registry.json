@@ -195,6 +195,11 @@
       ],
       "files": [
         {
+          "path": "registry/fm/react/accept.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/accept.ts"
+        },
+        {
           "path": "registry/fm/react/details-panel.tsx",
           "type": "registry:file",
           "target": "~/src/fm/react/details-panel.tsx"
@@ -225,6 +230,11 @@
           "target": "~/src/fm/react/file-manager.tsx"
         },
         {
+          "path": "registry/fm/react/file-picker.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/file-picker.tsx"
+        },
+        {
           "path": "registry/fm/react/file-tree.tsx",
           "type": "registry:file",
           "target": "~/src/fm/react/file-tree.tsx"
@@ -243,6 +253,11 @@
           "path": "registry/fm/react/media-stage.tsx",
           "type": "registry:file",
           "target": "~/src/fm/react/media-stage.tsx"
+        },
+        {
+          "path": "registry/fm/react/mount-visibility.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/mount-visibility.ts"
         },
         {
           "path": "registry/fm/react/plugins.ts",
