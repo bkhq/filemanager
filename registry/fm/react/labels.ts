@@ -99,6 +99,10 @@ export const enLabels = {
   zoomOut: "Zoom out",
   fitToScreen: "Fit to screen",
   sheetTruncated: (shown: number, total: number) => `Showing the first ${shown} of ${total} rows`,
+  confirm: "Confirm",
+  pickTotal: (size: string) => `Total ${size}`,
+  pickOverLimit: (max: string) => `Selection exceeds the ${max} limit`,
+  pickUnavailable: "This file type cannot be selected",
 };
 
 export type FmLabels = typeof enLabels;
@@ -198,4 +202,8 @@ export const zhLabels: FmLabels = {
   zoomOut: "缩小",
   fitToScreen: "适应窗口",
   sheetTruncated: (shown, total) => `仅显示前 ${shown} 行，共 ${total} 行`,
+  confirm: "确定",
+  pickTotal: size => `共 ${size}`,
+  pickOverLimit: max => `所选文件超过 ${max} 上限`,
+  pickUnavailable: "无法选择此类型的文件",
 };

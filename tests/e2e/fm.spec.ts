@@ -407,3 +407,54 @@ test.describe("on a phone", () => {
     await expect(page.getByRole("complementary", { name: "Details" })).toContainText("2 files, 0 folders");
   });
 });
+
+test.describe("file picker", () => {
+  const output = (page: Page) => page.getByTestId("fm-picked");
+  const pickBar = (page: Page) => page.locator("[data-fm-pick-bar]");
+
+  // Earlier tests move /README.md away; put it back.
+  test.beforeEach(async ({ page }) => {
+    const res = await page.request.put("/api/fm/m/local/write?path=%2FREADME.md&conflict=overwrite", { data: "# Local root\n" });
+    expect(res.ok()).toBe(true);
+  });
+
+  test("picks one file with a double-click", async ({ page }) => {
+    await page.goto("/?pick");
+    await row(page, "/README.md").dblclick();
+    await expect(output(page)).toHaveText("/README.md");
+  });
+
+  test("picks several files with multiple", async ({ page }) => {
+    await page.goto("/?pick&multiple");
+    await row(page, "/notes").dblclick();
+    await row(page, "/notes/todo.txt").click();
+    await row(page, "/notes/config.json").click();
+    await expect(pickBar(page)).toContainText("2 selected");
+    await pickBar(page).getByRole("button", { name: "Confirm" }).click();
+    await expect(output(page)).toContainText("/notes/todo.txt");
+    await expect(output(page)).toContainText("/notes/config.json");
+  });
+
+  test("disables files outside accept", async ({ page }) => {
+    await page.goto("/?pick&accept=.png");
+    await expect(row(page, "/README.md")).toHaveAttribute("aria-disabled", "true");
+    // Playwright waits for aria-disabled elements to become enabled; force the click.
+    await row(page, "/README.md").click({ force: true });
+    await expect(row(page, "/README.md")).toHaveAttribute("aria-selected", "false");
+    await expect(pickBar(page).getByRole("button", { name: "Confirm" })).toBeDisabled();
+    await row(page, "/images").dblclick();
+    await row(page, "/images/dot.png").click();
+    await expect(row(page, "/images/dot.png")).toHaveAttribute("aria-selected", "true");
+    await pickBar(page).getByRole("button", { name: "Confirm" }).click();
+    await expect(output(page)).toHaveText("/images/dot.png");
+  });
+
+  test("blocks confirm over the size cap", async ({ page }) => {
+    await page.goto("/?pick&multiple&max=10");
+    await row(page, "/README.md").click();
+    await expect(pickBar(page)).toContainText("Selection exceeds the 10 B limit");
+    await expect(pickBar(page).getByRole("button", { name: "Confirm" })).toBeDisabled();
+    await pickBar(page).getByRole("button", { name: "Cancel" }).click();
+    await expect(output(page)).toHaveText("cancelled");
+  });
+});
