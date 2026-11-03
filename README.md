@@ -49,6 +49,8 @@ app.route("/api/fm", createFmRouter({
   mounts: () => [{ id: "files", label: "Files", driver: localDriver({ root: "/data/files" }) }],
   // Optional host policy for a path and everything below it; no `read` answers 404.
   authorize: (c, { path }) => READ_ONLY_CAPS,
+  // Optional: one event per mutated item (write, delete, rename, ...), success or failure.
+  onEvent: (c, e) => console.log(e.op, e.mount, e.path, e.ok),
 }));
 ```
 
