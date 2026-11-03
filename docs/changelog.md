@@ -91,3 +91,7 @@ Campaign report: requirement plans written for the nine P1 tasks in this reposit
 ## 2026-11-03 10:17 [progress]
 
 Change event hook delivered (20261103-1005-change-events): `onEvent` / `FmChangeEvent` on the router, fired per item for write, mkdir, delete (incl. trash), rename, move, copy, restore, purge; awaited, hook errors logged and ignored; documented in architecture §3.3 and README; verified by `bun run check`.
+
+## 2026-11-03 [progress]
+
+Registry publishing delivered (20261103-1005-publish-registry): `.github/workflows/registry.yml` deploys the registry to GitHub Pages (`main` -> `/next/r/`, each `v*` tag -> `/v{version}/r/`, highest tag -> `/r/`; every run rebuilds all tags from git) and smoke-tests the deployed URL; `scripts/registry-smoke.sh` accepts `REGISTRY_URL` to test a deployed registry; README uses `https://bkhq.github.io/filemanager/r/{name}.json` and the pinned `/v{version}/r/` form. Manual: enable Pages (source GitHub Actions) and allow tag `v*` on the `github-pages` environment. Verified: `bun run check`, registry smoke, actionlint.
