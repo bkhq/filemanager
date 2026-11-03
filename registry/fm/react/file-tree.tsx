@@ -2,10 +2,11 @@ import type { ReactNode } from "react";
 import type { FmClient } from "../client/client";
 import type { FmMountInfo } from "../core/schema";
 import { cn } from "cn";
-import { ChevronRightIcon, FolderIcon, HardDriveIcon, LockIcon, Trash2Icon } from "lucide-react";
+import { ChevronRightIcon, FolderIcon, HardDriveIcon, LockIcon, SettingsIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import { useListing } from "../client/hooks";
 import { basename, isWithin } from "../core/path";
+import { groupMountsByDriver } from "./mount-visibility";
 
 interface TreeProps {
   client: FmClient;
@@ -85,14 +86,14 @@ function Node({ t, mount, path, depth }: { t: TreeProps; mount: string; path: st
   );
 }
 
-function MountNode({ t, info, readOnlyLabel, trashLabel }: { t: TreeProps; info: FmMountInfo; readOnlyLabel: string; trashLabel: string }) {
+function MountNode({ t, info, depth, readOnlyLabel, trashLabel }: { t: TreeProps; info: FmMountInfo; depth: number; readOnlyLabel: string; trashLabel: string }) {
   const [open, setOpen] = useState(t.mount === info.id);
   const readOnly = !info.caps.write;
   return (
     <>
       <Row
         active={t.mount === info.id && !t.inTrash && t.path === "/"}
-        depth={0}
+        depth={depth}
         expanded={open}
         onToggle={() => setOpen(!open)}
         onClick={() => {
@@ -107,11 +108,11 @@ function MountNode({ t, info, readOnlyLabel, trashLabel }: { t: TreeProps; info:
           ? { title: readOnlyLabel }
           : {})}
       />
-      {open && <Children t={t} mount={info.id} path="/" depth={1} />}
+      {open && <Children t={t} mount={info.id} path="/" depth={depth + 1} />}
       {open && info.trash && (
         <Row
           active={t.mount === info.id && t.inTrash}
-          depth={1}
+          depth={depth + 1}
           expanded={false}
           onClick={() => t.onOpenTrash(info.id)}
           icon={<Trash2Icon className="size-4 shrink-0 text-muted-foreground" />}
@@ -122,11 +123,54 @@ function MountNode({ t, info, readOnlyLabel, trashLabel }: { t: TreeProps; info:
   );
 }
 
-/** Sidebar tree: mounts at the top level, folders loaded lazily on expand. */
-export function FileTree(props: TreeProps & { mounts: FmMountInfo[]; readOnlyLabel: string; trashLabel: string }) {
+function GroupNode({ label, children }: { label: string; children: ReactNode }) {
+  const [open, setOpen] = useState(true);
   return (
-    <div role="tree" className="flex flex-col gap-px p-2">
-      {props.mounts.map(m => <MountNode key={m.id} t={props} info={m} readOnlyLabel={props.readOnlyLabel} trashLabel={props.trashLabel} />)}
-    </div>
+    <>
+      <Row
+        active={false}
+        depth={0}
+        expanded={open}
+        onToggle={() => setOpen(!open)}
+        onClick={() => setOpen(!open)}
+        icon={null}
+        label={label}
+      />
+      {open && <div role="group" aria-label={label} className="flex flex-col gap-px">{children}</div>}
+    </>
+  );
+}
+
+/** Sidebar tree: mounts at the top level (or under driver sections), folders loaded lazily on expand. */
+export function FileTree(props: TreeProps & {
+  mounts: FmMountInfo[];
+  readOnlyLabel: string;
+  trashLabel: string;
+  group?: "none" | "driver" | undefined;
+  groupLabel: (driver: string) => string;
+  manageLabel: string;
+  onManage: () => void;
+}) {
+  const node = (m: FmMountInfo, depth: number) => <MountNode key={m.id} t={props} info={m} depth={depth} readOnlyLabel={props.readOnlyLabel} trashLabel={props.trashLabel} />;
+  return (
+    <>
+      <div role="tree" className="flex flex-col gap-px p-2">
+        {props.group === "driver"
+          ? groupMountsByDriver(props.mounts).map(g => (
+              <GroupNode key={g.driver} label={props.groupLabel(g.driver)}>
+                {g.mounts.map(m => node(m, 1))}
+              </GroupNode>
+            ))
+          : props.mounts.map(m => node(m, 0))}
+      </div>
+      <button
+        type="button"
+        className="mx-2 mb-2 flex h-7 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        onClick={props.onManage}
+      >
+        <SettingsIcon className="size-4" />
+        {props.manageLabel}
+      </button>
+    </>
   );
 }
