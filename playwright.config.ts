@@ -30,6 +30,7 @@ export default defineConfig({
       PORT: String(PORT),
       FM_ROOT: ".tmp/e2e-root",
       FM_STATIC: "apps/fm-web/dist",
+      FM_UPLOAD_PART_SIZE: String(4 * 1024 * 1024),
     },
   },
 });
