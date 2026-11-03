@@ -32,6 +32,12 @@ export interface FmWriteOptions {
   exclusive?: boolean;
 }
 
+export interface FmSearchOptions {
+  /** Max entries to return. */
+  limit: number;
+  signal?: AbortSignal;
+}
+
 /**
  * A storage backend. Paths are normalized (`/a/b`) and mount-relative; the
  * router validates them before calling in. Errors are `FmError`s.
@@ -41,6 +47,7 @@ export interface FmWriteOptions {
  * - `move` / `copy` fail with EXISTS when `to` exists and NOT_FOUND when `from` does not.
  * - `remove` deletes directories recursively.
  * - `list` returns direct children in any order.
+ * - `search` is optional; without it the router walks the tree with `list`.
  */
 export interface FmDriver {
   readonly name: string;
@@ -54,6 +61,12 @@ export interface FmDriver {
   move: (from: string, to: string) => Promise<FmDriverEntry>;
   copy: (from: string, to: string) => Promise<FmDriverEntry>;
   remove: (path: string) => Promise<void>;
+  /**
+   * Entries below `dir` (any depth, `dir` itself excluded) whose name contains
+   * `q` case-insensitively, at most `limit`. `null` means the driver cannot
+   * search here and the router should walk instead.
+   */
+  search?: (dir: string, q: string, opts: FmSearchOptions) => Promise<FmDriverEntry[] | null>;
 }
 
 export async function readAll(body: ReadableStream<Uint8Array> | Uint8Array): Promise<Uint8Array<ArrayBuffer>> {

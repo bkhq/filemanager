@@ -18,6 +18,11 @@
           "target": "~/src/fm/core/errors.ts"
         },
         {
+          "path": "registry/fm/core/fuzzy.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/core/fuzzy.ts"
+        },
+        {
           "path": "registry/fm/core/path.ts",
           "type": "registry:file",
           "target": "~/src/fm/core/path.ts"

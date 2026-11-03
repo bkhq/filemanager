@@ -21,6 +21,12 @@ export const fmKeys = {
       order,
       q,
     ] as const,
+  search: (client: FmClient, mount: string, path: string, q: string) => [
+    ...fmKeys.lists(client, mount),
+    "search",
+    path,
+    q,
+  ] as const,
   trash: (client: FmClient, mount: string) => [
     ...fmKeys.all(client),
     "trash",
@@ -64,6 +70,17 @@ export function useListing(client: FmClient, mount: string | undefined, path: st
       q,
     }),
     getNextPageParam: last => last.cursor,
+  });
+}
+
+/** Name matches at any depth below `path`. */
+export function useSearch(client: FmClient, mount: string | undefined, path: string, q: string, enabled = true) {
+  return useQuery({
+    queryKey: fmKeys.search(client, mount ?? "", path, q),
+    queryFn: () => client.search(mount!, path, q),
+    enabled: enabled && !!mount && !!q.trim(),
+    // Keep results on screen while the next query loads.
+    placeholderData: keepPreviousData,
   });
 }
 

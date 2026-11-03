@@ -366,6 +366,141 @@ describe("usage", () => {
   });
 });
 
+describe("search", () => {
+  const names = (body: { items: { path: string }[] }) => body.items.map(e => e.path);
+
+  it("finds matches in nested folders, excluding the folder itself", async () => {
+    const { req } = setup({
+      files: {
+        "/a/Report.txt": "r",
+        "/a/b/c/report-2.md": "r",
+        "/a/b/other.txt": "o",
+        "/report.txt": "outside",
+      },
+    });
+    const res = await req(`/m/m/search?path=/a&q=${q("REPORT")}`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(names(body)).toEqual(["/a/Report.txt", "/a/b/c/report-2.md"]);
+    expect(body.truncated).toBe(false);
+    expect(body.items[1]).toMatchObject({ mount: "m", name: "report-2.md", kind: "file" });
+  });
+
+  it("skips the trash", async () => {
+    const driver = memoryDriver({
+      files: { "/keep-needle.txt": "k", "/d/gone-needle.txt": "g" },
+    });
+    const { req, json } = setup({
+      mounts: [
+        {
+          id: "m",
+          label: "Main",
+          driver,
+          trash: true,
+        },
+      ],
+    });
+    await json("POST", "/m/m/ops", {
+      op: "delete",
+      paths: ["/d/gone-needle.txt"],
+    });
+    const body = await (await req("/m/m/search?path=/&q=needle")).json();
+    expect(names(body)).toEqual(["/keep-needle.txt"]);
+  });
+
+  it("hides unauthorized subtrees and gives each hit its own caps", async () => {
+    const { req } = setup({
+      files: {
+        "/secret/x-needle.txt": "x",
+        "/secret/deep/y-needle.txt": "y",
+        "/pub/z-needle.txt": "z",
+        "/w-needle.txt": "w",
+      },
+      authorize: p => (p.startsWith("/secret")
+        ? NONE
+        : (p.startsWith("/pub")
+            ? READ_ONLY_CAPS
+            : { ...READ_ONLY_CAPS, write: true })),
+    });
+    const body = await (await req("/m/m/search?path=/&q=needle")).json();
+    expect(names(body)).toEqual(["/w-needle.txt", "/pub/z-needle.txt"]);
+    expect(body.items[0].caps.write).toBe(true);
+    expect(body.items[1].caps).toEqual(READ_ONLY_CAPS);
+  });
+
+  it("flags truncated results at the visit budget and the hit limit", async () => {
+    const files = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`/many/${i}.txt`, "x"]));
+    const big = setup({ files });
+    const budget = await (await big.req("/m/m/search?path=/many&q=nomatch")).json();
+    expect(budget).toEqual({ items: [], truncated: true });
+
+    const { req } = setup({
+      files: { "/a1.txt": "a", "/a2.txt": "a", "/a3.txt": "a" },
+    });
+    const cut = await (await req("/m/m/search?path=/&q=a&limit=2")).json();
+    expect(cut.items).toHaveLength(2);
+    expect(cut.truncated).toBe(true);
+    const all = await (await req("/m/m/search?path=/&q=a&limit=3")).json();
+    expect(all.items).toHaveLength(3);
+    expect(all.truncated).toBe(false);
+  });
+
+  it("prefers the driver search and falls back to the walk on null", async () => {
+    const base = memoryDriver({
+      files: { "/d/needle.txt": "n" },
+    });
+    const calls: string[] = [];
+    let answer: "sentinel" | "null" = "sentinel";
+    const driver: FmDriver = {
+      ...base,
+      list: async (path) => {
+        calls.push(path);
+        return base.list(path);
+      },
+      search: async (_dir, _q, opts) => {
+        expect(opts.limit).toBe(5);
+        expect(opts.signal).toBeInstanceOf(AbortSignal);
+        return answer === "null"
+          ? null
+          : [
+              {
+                path: "/sentinel.bin",
+                name: "sentinel.bin",
+                kind: "file",
+                size: 1,
+                mtime: 0,
+                etag: "s",
+              },
+            ];
+      },
+    };
+    const { req } = setup({
+      mounts: [
+        { id: "m", label: "M", driver },
+      ],
+    });
+    const fromDriver = await (await req("/m/m/search?path=/&q=needle&limit=5")).json();
+    expect(names(fromDriver)).toEqual(["/sentinel.bin"]);
+    expect(fromDriver.truncated).toBe(false);
+    expect(calls).toEqual([]);
+
+    answer = "null";
+    const walked = await (await req("/m/m/search?path=/&q=needle&limit=5")).json();
+    expect(names(walked)).toEqual(["/d/needle.txt"]);
+    expect(calls.length).toBeGreaterThan(0);
+  });
+
+  it("refuses files and empty queries", async () => {
+    const { req } = setup({
+      files: { "/a.txt": "a" },
+    });
+    const res = await req(`/m/m/search?path=${q("/a.txt")}&q=a`);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("NOT_A_DIR");
+    expect((await req("/m/m/search?path=/&q=%20")).status).toBe(422);
+  });
+});
+
 describe("trash", () => {
   function trashSetup(authorize?: (path: string) => FmCaps) {
     const driver = memoryDriver({
