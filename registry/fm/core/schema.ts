@@ -171,3 +171,32 @@ export const errorBodySchema = z.object({
   }),
 });
 export type FmErrorBody = z.infer<typeof errorBodySchema>;
+
+/** `chunked`: the client PUTs parts to the router; `s3-multipart`: to presigned `urls`. */
+export const uploadModeSchema = z.enum(["chunked", "s3-multipart"]);
+export type FmUploadMode = z.infer<typeof uploadModeSchema>;
+
+export const uploadCreateSchema = z.object({
+  path: z.string().min(2),
+  size: z.number().int().nonnegative(),
+  conflict: conflictSchema.default("rename"),
+});
+export type FmUploadCreate = z.input<typeof uploadCreateSchema>;
+
+export const uploadSessionSchema = z.object({
+  id: z.string(),
+  mode: uploadModeSchema,
+  /** Target path; for conflict `rename` the free name chosen at create time. */
+  path: z.string(),
+  size: z.number(),
+  partSize: z.number(),
+  /** Part count. */
+  parts: z.number(),
+  /** Part numbers already stored. */
+  received: z.array(z.number()),
+  /** `s3-multipart` only; `urls[i]` is part `i + 1`. */
+  urls: z.array(z.string()).optional(),
+  /** Epoch milliseconds. */
+  expiresAt: z.number(),
+});
+export type FmUploadSession = z.infer<typeof uploadSessionSchema>;
