@@ -75,12 +75,12 @@ registry/
   fm/client/      typed fetch client, TanStack Query hooks, upload engine
   fm/react/       UI on shadcn/ui (base-nova) + Tailwind
 registry.json     shadcn registry manifest. Shipped: fm-core, fm-server, fm-driver-contract, fm-driver-memory,
-                  fm-driver-local, fm-driver-s3, fm-client, fm-react. Planned: fm-driver-r2, fm-managed.
+                  fm-driver-local, fm-driver-s3, fm-driver-r2, fm-client, fm-react. Planned: fm-managed.
                   Items depend on each other via `@bkhq/<item>` registryDependencies.
 apps/
   fm-api/         Bun + Hono host consuming registry/ via path aliases (dev + e2e)
   fm-web/         React + Vite host consuming registry/ via path aliases
-  fm-worker/      Cloudflare Workers host (wrangler) running the same router with r2 / s3
+  fm-worker/      Cloudflare Workers host (wrangler): the same router with an r2 mount, serves fm-web assets
 public/r/         `shadcn build` output served as the registry
 ```
 
@@ -96,10 +96,12 @@ Dependency direction: `core` ← `server` ← `drivers` / `managed`; `core` ← 
 - `core`, `server`, `client`, `managed` service: Web-standard APIs only
   (`Request` / `Response` / `ReadableStream` / `crypto.subtle` / `fetch`), no
   `Bun.*`, no `node:*`. Checked by a lint rule (`no-restricted-imports` /
-  globals) plus a Workers build of `fm-worker` in CI.
+  globals) plus a Workers build of `fm-worker` in CI (job `workers`:
+  `wrangler deploy --dry-run` of `apps/fm-worker`, next to the R2 contract).
 - `drivers/local.ts` is Bun-only (`node:fs`). `drivers/s3.ts` signs with
   SigV4 over `fetch` so it runs on both. `drivers/r2.ts` uses the Workers R2
-  binding.
+  binding through a structural `FmR2Bucket` type instead of depending on
+  `@cloudflare/workers-types`, so hosts pass `env.BUCKET` as is.
 - `managed` takes a Drizzle SQLite database; Bun passes `bun:sqlite`, Workers
   passes D1. No interactive transactions are relied on (D1 has none): writes
   use `db.batch` / single statements with conditional updates.
