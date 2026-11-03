@@ -1,4 +1,4 @@
-import type { FmOpsRequest, FmSortKey } from "../core/schema";
+import type { FmOpsRequest, FmSearchMode, FmSortKey } from "../core/schema";
 import type { FmClient } from "./client";
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -21,6 +21,13 @@ export const fmKeys = {
       order,
       q,
     ] as const,
+  search: (client: FmClient, mount: string, path: string, q: string, mode: FmSearchMode = "substring") => [
+    ...fmKeys.lists(client, mount),
+    "search",
+    path,
+    q,
+    mode,
+  ] as const,
   trash: (client: FmClient, mount: string) => [
     ...fmKeys.all(client),
     "trash",
@@ -64,6 +71,17 @@ export function useListing(client: FmClient, mount: string | undefined, path: st
       q,
     }),
     getNextPageParam: last => last.cursor,
+  });
+}
+
+/** Name matches at any depth below `path`. */
+export function useSearch(client: FmClient, mount: string | undefined, path: string, q: string, enabled = true, mode: FmSearchMode = "substring") {
+  return useQuery({
+    queryKey: fmKeys.search(client, mount ?? "", path, q, mode),
+    queryFn: () => client.search(mount!, path, q, { mode }),
+    enabled: enabled && !!mount && !!q.trim(),
+    // Keep results on screen while the next query loads.
+    placeholderData: keepPreviousData,
   });
 }
 

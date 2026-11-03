@@ -1,4 +1,4 @@
-import type { FmConflict, FmEntry, FmListResult, FmMountInfo, FmOpsRequest, FmOpsResult, FmSortKey, FmTrashItem, FmUsage } from "../core/schema";
+import type { FmConflict, FmEntry, FmListResult, FmMountInfo, FmOpsRequest, FmOpsResult, FmSearchMode, FmSearchResult, FmSortKey, FmTrashItem, FmUsage } from "../core/schema";
 
 export class FmApiError extends Error {
   readonly status: number;
@@ -27,6 +27,11 @@ export interface FmListParams {
   order?: "asc" | "desc";
   /** Case-insensitive name filter. */
   q?: string | undefined;
+}
+
+export interface FmSearchParams {
+  limit?: number;
+  mode?: FmSearchMode;
 }
 
 export interface FmWriteParams {
@@ -90,6 +95,13 @@ export function createFmClient(opts: FmClientOptions) {
       sort: p.sort,
       order: p.order,
       q: p.q || undefined,
+    })),
+    /** Name matches at any depth below `path`. */
+    search: (mount: string, path: string, q: string, p: FmSearchParams = {}) => json<FmSearchResult>(url(`${m(mount)}/search`, {
+      path,
+      q,
+      limit: p.limit?.toString(),
+      mode: p.mode,
     })),
     /** URL for `<img src>` / `<a href>`; `download` forces an attachment. */
     readUrl: (mount: string, path: string, o: { download?: boolean; version?: string } = {}) =>
