@@ -333,6 +333,59 @@ test("toggles between split and single layouts", async ({ page }) => {
   await expect(page.getByRole("tree")).toBeVisible();
 });
 
+test("hides a drive via Manage drives and remembers it", async ({ page }) => {
+  await page.goto("/");
+  const tree = page.getByRole("tree");
+  await expect(tree.getByText("Scratch (memory)", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Manage drives" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("checkbox", { name: "Local disk" })).toBeDisabled();
+  await dialog.getByRole("checkbox", { name: "Scratch (memory)" }).uncheck();
+  await page.keyboard.press("Escape");
+  await expect(tree.getByText("Scratch (memory)", { exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(tree.getByText("Local disk", { exact: true })).toBeVisible();
+  await expect(tree.getByText("Scratch (memory)", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Hide sidebar" }).click();
+  await page.getByRole("button", { name: "Storage" }).click();
+  await expect(page.getByRole("menuitemradio", { name: "Read-only view" })).toBeVisible();
+  await expect(page.getByRole("menuitemradio", { name: "Scratch (memory)" })).toHaveCount(0);
+  await page.getByRole("menuitem", { name: "Manage drives" }).click();
+  await page.getByRole("dialog").getByRole("checkbox", { name: "Scratch (memory)" }).check();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Storage" }).click();
+  await expect(page.getByRole("menuitemradio", { name: "Scratch (memory)" })).toBeVisible();
+});
+
+test("groups drives by driver kind", async ({ page }) => {
+  await page.goto("/?group=driver");
+  const tree = page.getByRole("tree");
+  await expect(tree.getByRole("treeitem", { name: "toggle Local", exact: true })).toBeVisible();
+  await expect(tree.getByRole("treeitem", { name: "toggle Memory", exact: true })).toBeVisible();
+  await expect(tree.getByRole("group", { name: "Local" })).toContainText("Local disk");
+  await expect(tree.getByRole("group", { name: "Local" })).toContainText("Read-only view");
+  await expect(tree.getByRole("group", { name: "Memory" })).toContainText("Scratch (memory)");
+  await page.getByRole("button", { name: "Hide sidebar" }).click();
+  await page.getByRole("button", { name: "Storage" }).click();
+  await expect(page.getByRole("menu").getByRole("group", { name: "Memory" }).getByRole("menuitemradio", { name: "Scratch (memory)" })).toBeVisible();
+});
+
+test("leaves host-hidden drives out of the tree, menu and Manage drives", async ({ page }) => {
+  await page.goto("/?hidden=readonly");
+  const tree = page.getByRole("tree");
+  await expect(tree.getByText("Local disk", { exact: true })).toBeVisible();
+  await expect(tree.getByText("Read-only view", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Manage drives" }).click();
+  await expect(page.getByRole("dialog").getByRole("checkbox")).toHaveCount(2);
+  await expect(page.getByRole("dialog").getByText("Read-only view")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Hide sidebar" }).click();
+  await page.getByRole("button", { name: "Storage" }).click();
+  await expect(page.getByRole("menuitemradio", { name: "Local disk" })).toBeVisible();
+  await expect(page.getByRole("menuitemradio", { name: "Read-only view" })).toHaveCount(0);
+});
+
 test.describe("on a phone", () => {
   test.use({
     viewport: { width: 390, height: 844 },
