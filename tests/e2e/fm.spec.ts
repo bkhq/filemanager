@@ -208,6 +208,20 @@ test("searches everywhere below the current folder", async ({ page }) => {
   await expect(row(page, "/notes/todo.txt")).toHaveAttribute("aria-selected", "true");
 });
 
+test("quick open finds a nested file with Ctrl+P", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await row(page, "/sheets").click();
+  await page.keyboard.press("Control+P");
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("combobox", { name: "Quick open" }).fill("ports");
+  await expect(dialog.getByRole("option", { name: /ports\.csv/ }).first()).toBeVisible();
+  await expect(dialog.getByRole("option").first()).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Enter");
+  await expect(dialog.getByRole("heading", { name: "ports.csv" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(page.getByRole("navigation").getByText("sheets", { exact: true })).toBeVisible();
+});
+
 test("asks what to do with uploads that already exist", async ({ page }) => {
   await openMount(page, "Local disk");
   await row(page, "/e2e").dblclick();
