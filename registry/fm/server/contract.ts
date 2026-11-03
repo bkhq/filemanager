@@ -112,6 +112,8 @@ export function runDriverContract(label: string, make: () => Promise<DriverFixtu
       expect(await text(d, "/dst/sub/g.txt")).toBe("g");
       await d.move("/dst/f.txt", "/f2.txt");
       expect(await text(d, "/f2.txt")).toBe("f");
+      await d.move("/f2.txt", "/deep/er/f3.txt");
+      expect(await text(d, "/deep/er/f3.txt")).toBe("f");
     });
 
     it("copies directories and keeps the source", async () => {

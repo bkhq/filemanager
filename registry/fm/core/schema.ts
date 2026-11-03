@@ -69,6 +69,8 @@ export const mountInfoSchema = z.object({
   label: z.string(),
   driver: z.string(),
   caps: capsSchema,
+  /** Deletes go to a restorable trash. */
+  trash: z.boolean(),
 });
 export type MountInfo = z.infer<typeof mountInfoSchema>;
 
@@ -92,6 +94,8 @@ export const opsRequestSchema = z.discriminatedUnion("op", [
   z.object({
     op: z.literal("delete"),
     paths: z.array(z.string()).min(1).max(200),
+    /** Skip the trash even when the mount has one. */
+    permanent: z.boolean().default(false),
   }),
   z.object({
     op: z.literal("rename"),
@@ -111,6 +115,8 @@ export const opResultSchema = z.object({
   path: z.string(),
   ok: z.boolean(),
   entry: entrySchema.optional(),
+  /** Set when a delete went to the trash. */
+  trashId: z.string().optional(),
   error: z.object({
     code: z.string(),
     message: z.string(),
@@ -122,6 +128,30 @@ export const opsResultSchema = z.object({
   results: z.array(opResultSchema),
 });
 export type OpsResult = z.infer<typeof opsResultSchema>;
+
+export const trashItemSchema = z.object({
+  id: z.string(),
+  /** Original path. */
+  path: z.string(),
+  name: z.string(),
+  kind: entryKindSchema,
+  size: z.number().int().nonnegative(),
+  deletedAt: z.string(),
+});
+export type TrashItem = z.infer<typeof trashItemSchema>;
+
+export const trashIdsSchema = z.object({
+  ids: z.array(z.string()).min(1).max(200),
+});
+
+export const usageSchema = z.object({
+  bytes: z.number().int().nonnegative(),
+  files: z.number().int().nonnegative(),
+  dirs: z.number().int().nonnegative(),
+  /** The walk stopped at the entry limit; numbers are lower bounds. */
+  truncated: z.boolean(),
+});
+export type Usage = z.infer<typeof usageSchema>;
 
 export const errorBodySchema = z.object({
   error: z.object({

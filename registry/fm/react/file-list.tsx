@@ -32,7 +32,7 @@ const ICONS: Record<FileKind, typeof FileIcon> = {
   other: FileIcon,
 };
 
-export function EntryIcon({ entry, className }: { entry: Entry; className?: string }) {
+export function EntryIcon({ entry, className }: { entry: Pick<Entry, "kind" | "name" | "mime">; className?: string }) {
   const kind = kindOf(entry);
   const Icon = ICONS[kind];
   return (

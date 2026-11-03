@@ -1,6 +1,6 @@
 import type { Context, Env } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import type { Action, Caps, Conflict, Entry, MountInfo, OpResult } from "../core/schema";
+import type { Action, Caps, Conflict, Entry, MountInfo, OpResult, TrashItem, Usage } from "../core/schema";
 import type { Driver, DriverEntry } from "./driver";
 import { Hono } from "hono";
 import { describeRoute, resolver, validator } from "hono-openapi";
@@ -19,15 +19,24 @@ import {
   opsResultSchema,
   READ_ONLY_CAPS,
   sortKeySchema,
+  trashIdsSchema,
+  trashItemSchema,
+  usageSchema,
 } from "../core/schema";
 import { zipStream } from "./archive";
 import { inlineType, mimeOf } from "./mime";
+import { dropTrashItem, getTrashItem, listTrash, moveToTrash, TRASH_DIR, trashedPath } from "./trash";
 
 export interface Mount {
   id: string;
   label: string;
   driver: Driver;
   readOnly?: boolean;
+  /**
+   * Deletes move into a hidden `/.fm-trash` folder on the same driver. On a
+   * read-only mount this only hides that folder.
+   */
+  trash?: boolean;
 }
 
 export interface Limits {
@@ -56,6 +65,8 @@ export interface FileManagerOptions<E extends Env> {
   authorize?: (c: Context<E>, target: { mount: Mount; path: string }) => Caps | Promise<Caps>;
   limits?: Partial<Limits>;
 }
+
+type ItemOutcome = Pick<OpResult, "entry" | "trashId">;
 
 interface Target {
   mount: Mount;
@@ -151,11 +162,22 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
   // Route handlers see a narrowed env type; the host hooks get the declared one.
   const host = (c: unknown) => c as Context<E>;
 
-  const resolve = async (c: unknown, mountId: string, rawPath: string, action?: Action): Promise<Target> => {
+  const hasTrash = (m: Mount) => !!m.trash && mountCaps(m).delete;
+  /** Paths inside the trash folder are never exposed by regular routes (also on read-only views of the same storage). */
+  const hidden = (m: Mount, path: string) => !!m.trash && isWithin(path, TRASH_DIR);
+
+  const findMount = async (c: unknown, mountId: string): Promise<Mount> => {
     const mount = (await options.mounts(host(c))).find(m => m.id === mountId);
     if (!mount)
       throw new FmError("NOT_FOUND", "Mount not found");
+    return mount;
+  };
+
+  const resolve = async (c: unknown, mountId: string, rawPath: string, action?: Action): Promise<Target> => {
+    const mount = await findMount(c, mountId);
     const path = normalizePath(rawPath);
+    if (hidden(mount, path))
+      throw new FmError("NOT_FOUND", "Not found");
     const granted = options.authorize
       ? await options.authorize(host(c), { mount, path })
       : ALL_CAPS;
@@ -184,6 +206,26 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
       etag: e.etag,
       caps: t.caps,
     };
+  };
+
+  /** Runs one item of a batch; file-manager errors become a failed result, others reach the host. */
+  const settle = async (results: OpResult[], path: string, fn: () => Promise<ItemOutcome>) => {
+    try {
+      results.push({
+        path,
+        ok: true,
+        ...await fn(),
+      });
+    }
+    catch (e) {
+      if (!(e instanceof FmError))
+        throw e;
+      results.push({
+        path,
+        ok: false,
+        error: { code: e.code, message: e.message },
+      });
+    }
   };
 
   const exists = (d: Driver, path: string) => d.stat(path).then(() => true, () => false);
@@ -232,6 +274,7 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
           label: mount.label,
           driver: mount.driver.name,
           caps,
+          trash: hasTrash(mount),
         });
       }
     }
@@ -263,13 +306,16 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
     limit: z.coerce.number().int().min(1).max(1000).default(200),
     sort: sortKeySchema.default("name"),
     order: z.enum(["asc", "desc"]).default("asc"),
+    q: z.string().max(255).optional(),
   })), async (c) => {
     const q = c.req.valid("query");
     const t = await resolve(c, c.req.param("mount"), q.path);
     const self = await t.mount.driver.stat(t.path);
     if (self.kind !== "dir")
       throw new FmError("NOT_A_DIR", "Not a directory");
-    const all = await t.mount.driver.list(t.path);
+    const needle = q.q?.trim().toLocaleLowerCase();
+    const all = (await t.mount.driver.list(t.path))
+      .filter(e => !hidden(t.mount, e.path) && (!needle || e.name.toLocaleLowerCase().includes(needle)));
     if (all.length > limits.maxListEntries)
       throw new FmError("TOO_LARGE", `Directory has more than ${limits.maxListEntries} entries`);
     const dir = q.order === "asc"
@@ -414,27 +460,7 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
     const req = c.req.valid("json");
     const mountId = c.req.param("mount");
     const results: OpResult[] = [];
-    const run = async (path: string, fn: () => Promise<Entry | undefined>) => {
-      try {
-        const entry = await fn();
-        results.push({
-          path,
-          ok: true,
-          ...(entry
-            ? { entry }
-            : {}),
-        });
-      }
-      catch (e) {
-        if (!(e instanceof FmError))
-          throw e;
-        results.push({
-          path,
-          ok: false,
-          error: { code: e.code, message: e.message },
-        });
-      }
-    };
+    const run = (path: string, fn: () => Promise<ItemOutcome>) => settle(results, path, fn);
 
     if (req.op === "delete") {
       for (const p of req.paths) {
@@ -442,8 +468,10 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
           const t = await resolve(c, mountId, p, "delete");
           if (t.path === "/")
             throw new FmError("INVALID", "Cannot delete the root");
+          if (hasTrash(t.mount) && !req.permanent)
+            return { trashId: await moveToTrash(t.mount.driver, t.path) };
           await t.mount.driver.remove(t.path);
-          return undefined;
+          return {};
         });
       }
     }
@@ -454,7 +482,9 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
           throw new FmError("INVALID", "Cannot rename the root");
         assertName(req.name);
         const to = await resolve(c, mountId, joinPath(dirname(t.path), req.name), "write");
-        return toEntry(t, await t.mount.driver.move(t.path, to.path));
+        return {
+          entry: toEntry(t, await t.mount.driver.move(t.path, to.path)),
+        };
       });
     }
     else {
@@ -467,8 +497,11 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
             throw new FmError("INVALID", "Cannot move or copy a directory into itself");
           let to = await destination(d, dest.path, basename(src.path), req.conflict);
           if (to === src.path) {
-            if (req.op === "move")
-              return toEntry(dest, await d.stat(to));
+            if (req.op === "move") {
+              return {
+                entry: toEntry(dest, await d.stat(to)),
+              };
+            }
             to = await destination(d, dest.path, basename(src.path), "rename");
           }
           if (req.conflict === "overwrite" && await exists(d, to)) {
@@ -478,7 +511,9 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
           const moved = req.op === "move"
             ? await d.move(src.path, to)
             : await d.copy(src.path, to);
-          return toEntry(dest, moved);
+          return {
+            entry: toEntry(dest, moved),
+          };
         });
       }
     }
@@ -511,7 +546,7 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
     const body = await zipStream(first.mount.driver, targets.map(t => t.path), {
       maxEntries: limits.archiveMaxEntries,
       maxBytes: limits.archiveMaxBytes,
-    });
+    }, p => hidden(first.mount, p));
     const name = `${targets.length === 1
       ? (basename(first.path) || first.mount.label)
       : first.mount.label}.zip`;
@@ -521,6 +556,128 @@ export function createFileManager<E extends Env = Env>(options: FileManagerOptio
         "Content-Disposition": contentDisposition("attachment", name),
       },
     });
+  });
+
+  app.get("/m/:mount/usage", describeRoute({
+    tags: [TAG],
+    summary: "Total size of a folder",
+    description: "Walks at most `archiveMaxEntries` entries; `truncated` marks a partial result.",
+    responses: {
+      200: ok(usageSchema, "Usage"),
+      ...ERRORS,
+    },
+  }), v("query", pathQuery), async (c) => {
+    const t = await resolve(c, c.req.param("mount"), c.req.valid("query").path);
+    const d = t.mount.driver;
+    const usage: Usage = {
+      bytes: 0,
+      files: 0,
+      dirs: 0,
+      truncated: false,
+    };
+    const root = await d.stat(t.path);
+    if (root.kind === "file")
+      return c.json({ ...usage, bytes: root.size, files: 1 });
+    const queue = [t.path];
+    let seen = 0;
+    while (queue.length > 0 && !usage.truncated) {
+      for (const e of await d.list(queue.shift()!)) {
+        if (hidden(t.mount, e.path))
+          continue;
+        if (++seen > limits.archiveMaxEntries) {
+          usage.truncated = true;
+          break;
+        }
+        if (e.kind === "dir") {
+          usage.dirs++;
+          queue.push(e.path);
+        }
+        else {
+          usage.files++;
+          usage.bytes += e.size;
+        }
+      }
+    }
+    return c.json(usage);
+  });
+
+  const trashMount = async (c: unknown, mountId: string) => {
+    const mount = await findMount(c, mountId);
+    if (!hasTrash(mount))
+      throw new FmError("UNSUPPORTED", "This mount has no trash");
+    return mount;
+  };
+
+  app.get("/m/:mount/trash", describeRoute({
+    tags: [TAG],
+    summary: "List the trash",
+    description: "Newest first; only items whose original path the caller may read.",
+    responses: {
+      200: ok(z.object({
+        items: z.array(trashItemSchema),
+      }), "Trash items"),
+      405: err("Mount has no trash"),
+      ...ERRORS,
+    },
+  }), async (c) => {
+    const mount = await trashMount(c, c.req.param("mount"));
+    const items: TrashItem[] = [];
+    for (const item of await listTrash(mount.driver)) {
+      if (await resolve(c, mount.id, item.path).then(() => true, () => false))
+        items.push(item);
+    }
+    return c.json({ items });
+  });
+
+  app.post("/m/:mount/trash/restore", describeRoute({
+    tags: [TAG],
+    summary: "Restore trash items",
+    description: "Moves items back to their original path; a name clash picks a free name.",
+    responses: {
+      200: ok(opsResultSchema, "Per-item results"),
+      405: err("Mount has no trash"),
+      ...ERRORS,
+    },
+  }), v("json", trashIdsSchema), async (c) => {
+    const mount = await trashMount(c, c.req.param("mount"));
+    const d = mount.driver;
+    const results: OpResult[] = [];
+    for (const id of c.req.valid("json").ids) {
+      await settle(results, id, async () => {
+        const item = await getTrashItem(d, id);
+        const t = await resolve(c, mount.id, item.path, "write");
+        const to = await destination(d, dirname(t.path), item.name, "rename");
+        const entry = toEntry(t, await d.move(trashedPath(item), to));
+        await dropTrashItem(d, id);
+        return { entry };
+      });
+    }
+    return c.json({ results });
+  });
+
+  app.post("/m/:mount/trash/purge", describeRoute({
+    tags: [TAG],
+    summary: "Delete trash items permanently",
+    description: "Without `ids`, empties every item the caller may delete.",
+    responses: {
+      200: ok(opsResultSchema, "Per-item results"),
+      405: err("Mount has no trash"),
+      ...ERRORS,
+    },
+  }), v("json", trashIdsSchema.partial()), async (c) => {
+    const mount = await trashMount(c, c.req.param("mount"));
+    const d = mount.driver;
+    const ids = c.req.valid("json").ids ?? (await listTrash(d)).map(i => i.id);
+    const results: OpResult[] = [];
+    for (const id of ids) {
+      await settle(results, id, async () => {
+        const item = await getTrashItem(d, id);
+        await resolve(c, mount.id, item.path, "delete");
+        await dropTrashItem(d, id);
+        return {};
+      });
+    }
+    return c.json({ results });
   });
 
   return app;

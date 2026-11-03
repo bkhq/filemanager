@@ -1,3 +1,4 @@
+import type { Conflict } from "../core/schema";
 import type { FmClient } from "./client";
 import { createStore } from "zustand/vanilla";
 import { FmApiError } from "./client";
@@ -10,6 +11,8 @@ export interface UploadTask {
   /** Requested target path; the server may pick a free name. */
   path: string;
   name: string;
+  /** What the server does when `path` exists. */
+  conflict: Conflict;
   size: number;
   loaded: number;
   status: UploadStatus;
@@ -20,6 +23,8 @@ export interface UploadFile {
   file: Blob & { name: string };
   /** Path below the target directory, e.g. `photos/a.jpg` for folder uploads. */
   relativePath?: string;
+  /** Defaults to `rename` (keep both). */
+  conflict?: Conflict;
 }
 
 export type Transport = (task: UploadTask, file: Blob, onProgress: (loaded: number) => void, signal: AbortSignal) => Promise<void>;
@@ -35,7 +40,7 @@ export interface UploadState {
 export function xhrTransport(client: FmClient): Transport {
   return (task, file, onProgress, signal) => new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("PUT", client.writeUrl(task.mount, task.path, "rename"));
+    xhr.open("PUT", client.writeUrl(task.mount, task.path, task.conflict));
     for (const [k, v] of Object.entries(client.headers()))
       xhr.setRequestHeader(k, v);
     xhr.upload.onprogress = e => onProgress(e.loaded);
@@ -125,7 +130,7 @@ export function createUploadQueue(opts: UploadQueueOptions) {
     return {
       tasks: [],
       enqueue: (mount, dir, list) => {
-        const added = list.map(({ file, relativePath }): UploadTask => {
+        const added = list.map(({ file, relativePath, conflict }): UploadTask => {
           const id = `u${++seq}`;
           files.set(id, file);
           const rel = (relativePath || file.name).replace(/^\/+/, "");
@@ -136,6 +141,7 @@ export function createUploadQueue(opts: UploadQueueOptions) {
               ? ""
               : dir}/${rel}`,
             name: file.name,
+            conflict: conflict ?? "rename",
             size: file.size,
             loaded: 0,
             status: "queued",

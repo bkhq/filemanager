@@ -54,7 +54,16 @@ Render the UI inside a `QueryClientProvider`:
 import { FileManager } from "@/fm/react/file-manager";
 
 <FileManager baseUrl="/api/fm" />;
+
+// View only: browse, preview, search, download.
+<FileManager baseUrl="/api/fm" readOnly />;
+
+// Per-feature switches on top of the preset (see `src/fm/react/features.ts`).
+<FileManager baseUrl="/api/fm" features={{ delete: false, upload: false }} />;
 ```
+
+`readOnly` / `features` only hide UI actions. Enforce access on the server with
+`readOnly` mounts or `authorize`.
 
 ### Writing a driver
 

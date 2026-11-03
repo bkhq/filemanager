@@ -1,4 +1,4 @@
-import type { Conflict, Entry, ListResult, MountInfo, OpsRequest, OpsResult, SortKey } from "../core/schema";
+import type { Conflict, Entry, ListResult, MountInfo, OpsRequest, OpsResult, SortKey, TrashItem, Usage } from "../core/schema";
 
 export class FmApiError extends Error {
   readonly status: number;
@@ -25,6 +25,8 @@ export interface ListParams {
   limit?: number;
   sort?: SortKey;
   order?: "asc" | "desc";
+  /** Case-insensitive name filter. */
+  q?: string | undefined;
 }
 
 export interface WriteParams {
@@ -87,6 +89,7 @@ export function createFmClient(opts: FmClientOptions) {
       limit: p.limit?.toString(),
       sort: p.sort,
       order: p.order,
+      q: p.q || undefined,
     })),
     /** URL for `<img src>` / `<a href>`; `download` forces an attachment. */
     readUrl: (mount: string, path: string, o: { download?: boolean; version?: string } = {}) =>
@@ -115,5 +118,12 @@ export function createFmClient(opts: FmClientOptions) {
     }),
     mkdir: (mount: string, path: string) => post<Entry>(url(`${m(mount)}/mkdir`), { path }),
     ops: (mount: string, req: OpsRequest) => post<OpsResult>(url(`${m(mount)}/ops`), req),
+    usage: (mount: string, path: string) => json<Usage>(url(`${m(mount)}/usage`, { path })),
+    trash: (mount: string) => json<{ items: TrashItem[] }>(url(`${m(mount)}/trash`)).then(r => r.items),
+    restore: (mount: string, ids: string[]) => post<OpsResult>(url(`${m(mount)}/trash/restore`), { ids }),
+    /** Without `ids`, empties the trash. */
+    purge: (mount: string, ids?: string[]) => post<OpsResult>(url(`${m(mount)}/trash/purge`), ids
+      ? { ids }
+      : {}),
   };
 }

@@ -59,8 +59,9 @@ export function NameDialog({ title, initial, submitLabel, labels, onSubmit, onCl
   );
 }
 
-export function ConfirmDeleteDialog({ count, labels, onConfirm, onClose }: {
+export function ConfirmDeleteDialog({ count, title, labels, onConfirm, onClose }: {
   count: number;
+  title?: string;
   labels: Labels;
   onConfirm: () => void;
   onClose: () => void;
@@ -69,12 +70,38 @@ export function ConfirmDeleteDialog({ count, labels, onConfirm, onClose }: {
     <AlertDialog open onOpenChange={open => !open && onClose()}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{labels.confirmDelete(count)}</AlertDialogTitle>
+          <AlertDialogTitle>{title ?? labels.confirmDelete(count)}</AlertDialogTitle>
           <AlertDialogDescription>{labels.confirmDeleteHint}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>{labels.cancel}</AlertDialogCancel>
           <AlertDialogAction variant="destructive" onClick={onConfirm}>{labels.delete}</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+export type UploadChoice = "overwrite" | "rename" | "skip";
+
+/** Asked once per batch when uploads clash with existing names. */
+export function UploadConflictDialog({ count, labels, onChoose, onClose }: {
+  count: number;
+  labels: Labels;
+  onChoose: (choice: UploadChoice) => void;
+  onClose: () => void;
+}) {
+  return (
+    <AlertDialog open onOpenChange={open => !open && onClose()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{labels.uploadConflict(count)}</AlertDialogTitle>
+          <AlertDialogDescription>{labels.uploadConflictHint}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => onChoose("skip")}>{labels.skip}</AlertDialogCancel>
+          <AlertDialogAction variant="outline" onClick={() => onChoose("rename")}>{labels.keepBoth}</AlertDialogAction>
+          <AlertDialogAction onClick={() => onChoose("overwrite")}>{labels.replace}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

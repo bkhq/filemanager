@@ -1,8 +1,9 @@
 import type { FmClient } from "../client/client";
 import type { Entry } from "../core/schema";
 import type { Labels } from "./labels";
+import { cn } from "cn";
 import { DownloadIcon } from "lucide-react";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { kindOf } from "./state";
 
@@ -12,16 +13,27 @@ export interface PreviewProps {
   labels: Labels;
   /** Slot in the preview header; portal toolbar actions into it. */
   actions?: HTMLElement | null;
+  /** Editors report unsaved changes so closing or navigating can ask first. */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 const MAX_TEXT_BYTES = 2 * 1024 * 1024;
 
 const TextPreview = lazy(() => import("./text-preview").then(m => ({ default: m.TextPreview })));
 
+/** Fits the image; a click toggles actual size (scrollable). */
 export function ImagePreview({ entry, client }: PreviewProps) {
+  const [zoomed, setZoomed] = useState(false);
   return (
-    <div className="flex h-full items-center justify-center overflow-auto bg-muted/30 p-4">
-      <img src={client.readUrl(entry.mount, entry.path, { version: entry.etag })} alt={entry.name} className="max-h-full max-w-full object-contain" />
+    <div className="flex h-full overflow-auto bg-muted/30 p-4">
+      <img
+        src={client.readUrl(entry.mount, entry.path, { version: entry.etag })}
+        alt={entry.name}
+        className={cn("m-auto", zoomed
+          ? "max-w-none cursor-zoom-out"
+          : "max-h-full max-w-full cursor-zoom-in object-contain")}
+        onClick={() => setZoomed(!zoomed)}
+      />
     </div>
   );
 }

@@ -32,3 +32,4 @@ Each plan is a single line linking to its detail file. All detailed information 
 ## Plans
 
 - [x] [**20261102-1157-p0-foundation P0 foundation**](20261102-1157-p0-foundation.md) `2026-11-02`
+- [x] [**20261102-1908-drive-parity Drive-parity batch**](20261102-1908-drive-parity.md) `2026-11-02`

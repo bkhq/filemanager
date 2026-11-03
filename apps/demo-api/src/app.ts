@@ -14,6 +14,7 @@ export function createApp(config: Config) {
       id: "local",
       label: "Local disk",
       driver: localDriver({ root: config.root }),
+      trash: true,
     },
     {
       id: "scratch",
@@ -21,12 +22,14 @@ export function createApp(config: Config) {
       driver: memoryDriver({
         files: Object.fromEntries(Object.entries(SEED).map(([k, v]) => [`/${k}`, v])),
       }),
+      trash: true,
     },
     {
       id: "readonly",
       label: "Read-only view",
       driver: localDriver({ root: config.root }),
       readOnly: true,
+      trash: true,
     },
   ];
   if (config.s3) {
@@ -34,6 +37,7 @@ export function createApp(config: Config) {
       id: "s3",
       label: "S3 bucket",
       driver: s3Driver(config.s3),
+      trash: true,
     });
   }
 

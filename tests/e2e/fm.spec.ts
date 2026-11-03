@@ -119,7 +119,7 @@ test("drags entries onto a folder row to move them", async ({ page }) => {
   await expect(row(page, "/e2e/inner/renamed.txt")).toBeVisible();
 });
 
-test("deletes the selection with the keyboard after confirming", async ({ page }) => {
+test("moves the selection to the trash, undoes, restores and purges", async ({ page }) => {
   await openMount(page, "Local disk");
   await row(page, "/e2e").dblclick();
   await row(page, "/e2e/README.md").click();
@@ -128,10 +128,140 @@ test("deletes the selection with the keyboard after confirming", async ({ page }
   });
   await expect(page.getByText("2 selected")).toBeVisible();
   await page.keyboard.press("Delete");
-  await expect(page.getByRole("alertdialog")).toContainText("Delete 2 items?");
-  await page.getByRole("alertdialog").getByRole("button", { name: "Delete" }).click();
   await expect(row(page, "/e2e/README.md")).toHaveCount(0);
+  await expect(page.getByRole("status").filter({ hasText: "2 items moved to trash" })).toBeVisible();
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(row(page, "/e2e/README.md")).toBeVisible();
+  await expect(row(page, "/e2e/hello.txt")).toBeVisible();
+
+  await row(page, "/e2e/README.md").click();
+  await row(page, "/e2e/hello.txt").click({
+    modifiers: ["Shift"],
+  });
+  await page.keyboard.press("Delete");
   await expect(row(page, "/e2e/hello.txt")).toHaveCount(0);
+
+  await page.getByRole("tree").getByText("Trash", { exact: true }).first().click();
+  const trashRow = (name: string) => page.locator("[data-trash-id]").filter({ hasText: name });
+  await expect(trashRow("hello.txt")).toBeVisible();
+  await trashRow("hello.txt").getByRole("button", { name: "Restore" }).click();
+  await expect(trashRow("hello.txt")).toHaveCount(0);
+  await trashRow("README.md").getByRole("button", { name: "Delete forever" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Delete" }).click();
+  await expect(page.getByText("Trash is empty")).toBeVisible();
+
+  await page.getByRole("tree").getByText("e2e", { exact: true }).click();
+  await expect(row(page, "/e2e/hello.txt")).toBeVisible();
+});
+
+test("filters the current folder by name", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await page.getByRole("searchbox", { name: "Search in this folder" }).fill("NOT");
+  await expect(row(page, "/notes")).toBeVisible();
+  await expect(row(page, "/docs")).toHaveCount(0);
+  await page.getByRole("searchbox").fill("zzz");
+  await expect(page.getByText("No matching items")).toBeVisible();
+});
+
+test("asks what to do with uploads that already exist", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await row(page, "/e2e").dblclick();
+  const pick = (text: string) => page.locator("input[type=file]:not([webkitdirectory])").setInputFiles([
+    {
+      name: "hello.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from(text),
+    },
+  ]);
+  await pick("replaced");
+  await expect(page.getByRole("alertdialog")).toContainText("1 item already exists");
+  await page.getByRole("button", { name: "Replace" }).click();
+  await expect.poll(async () => (await page.request.get("/api/fm/m/local/read?path=/e2e/hello.txt")).text()).toBe("replaced");
+
+  await pick("both");
+  await page.getByRole("button", { name: "Keep both" }).click();
+  await expect(row(page, "/e2e/hello (1).txt")).toBeVisible();
+
+  await pick("skipped");
+  await page.getByRole("button", { name: "Skip" }).click();
+  await expect(row(page, "/e2e/hello (2).txt")).toHaveCount(0);
+});
+
+test("shows details with the folder size", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await row(page, "/images").click();
+  await page.getByRole("button", { name: "Details" }).click();
+  const panel = page.getByRole("complementary", { name: "Details" });
+  await expect(panel).toContainText("Folder");
+  await expect(panel).toContainText("1 files, 0 folders");
+  await row(page, "/notes").click();
+  await expect(panel).toContainText("2 files, 0 folders");
+});
+
+test("creates a text file, duplicates it and undoes the copy", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await row(page, "/e2e").dblclick();
+  await page.getByRole("button", { name: "New text file" }).click();
+  await page.getByRole("dialog").getByRole("textbox").fill("note.txt");
+  await page.getByRole("button", { name: "Create" }).click();
+  await expect(page.getByRole("dialog").getByRole("heading", { name: "note.txt" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await contextAction(page, "/e2e/note.txt", "Make a copy");
+  await expect(row(page, "/e2e/note (1).txt")).toBeVisible();
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(row(page, "/e2e/note (1).txt")).toHaveCount(0);
+
+  await contextAction(page, "/e2e/note.txt", "Rename");
+  await page.getByRole("dialog").getByRole("textbox").fill("memo.txt");
+  await page.keyboard.press("Enter");
+  await expect(row(page, "/e2e/memo.txt")).toBeVisible();
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(row(page, "/e2e/note.txt")).toBeVisible();
+});
+
+test("steps through previews and guards unsaved edits", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await row(page, "/notes").dblclick();
+  await row(page, "/notes/config.json").dblclick();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Next" }).click();
+  await expect(dialog.getByRole("heading", { name: "todo.txt" })).toBeVisible();
+  await dialog.locator(".cm-content").click();
+  await page.keyboard.type("draft");
+  await dialog.getByRole("button", { name: "Previous" }).click();
+  await expect(page.getByRole("alertdialog")).toContainText("Discard unsaved changes?");
+  await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog.getByRole("heading", { name: "todo.txt" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Previous" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Discard" }).click();
+  await expect(dialog.getByRole("heading", { name: "config.json" })).toBeVisible();
+});
+
+test("view-only mode hides every changing action", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await page.getByLabel("View only").check();
+  await expect(page.getByRole("searchbox")).toBeVisible();
+  for (const name of ["New folder", "New text file", "Upload files"])
+    await expect(page.getByRole("button", { name })).toHaveCount(0);
+  await expect(page.getByRole("tree").getByText("Trash", { exact: true })).toHaveCount(0);
+  await row(page, "/notes").click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Download" })).toBeVisible();
+  for (const name of [
+    "Rename",
+    "Delete",
+    "Copy",
+    "Cut",
+    "Make a copy",
+  ])
+    await expect(page.getByRole("menuitem", { name, exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Delete");
+  await expect(row(page, "/notes")).toBeVisible();
+  await row(page, "/notes").dblclick();
+  await row(page, "/notes/todo.txt").dblclick();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Read-only")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Save" })).toHaveCount(0);
 });
 
 test("hides write actions on a read-only mount", async ({ page }) => {

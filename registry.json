@@ -62,6 +62,11 @@
           "path": "registry/fm/server/router.ts",
           "type": "registry:file",
           "target": "~/src/fm/server/router.ts"
+        },
+        {
+          "path": "registry/fm/server/trash.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/server/trash.ts"
         }
       ]
     },
@@ -190,6 +195,11 @@
       ],
       "files": [
         {
+          "path": "registry/fm/react/details-panel.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/details-panel.tsx"
+        },
+        {
           "path": "registry/fm/react/dialogs.tsx",
           "type": "registry:file",
           "target": "~/src/fm/react/dialogs.tsx"
@@ -198,6 +208,11 @@
           "path": "registry/fm/react/drop.ts",
           "type": "registry:file",
           "target": "~/src/fm/react/drop.ts"
+        },
+        {
+          "path": "registry/fm/react/features.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/features.ts"
         },
         {
           "path": "registry/fm/react/file-list.tsx",
@@ -225,14 +240,19 @@
           "target": "~/src/fm/react/labels.ts"
         },
         {
-          "path": "registry/fm/react/previewers.tsx",
+          "path": "registry/fm/react/preview-dialog.tsx",
           "type": "registry:file",
-          "target": "~/src/fm/react/previewers.tsx"
+          "target": "~/src/fm/react/preview-dialog.tsx"
         },
         {
           "path": "registry/fm/react/preview-registry.ts",
           "type": "registry:file",
           "target": "~/src/fm/react/preview-registry.ts"
+        },
+        {
+          "path": "registry/fm/react/previewers.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/previewers.tsx"
         },
         {
           "path": "registry/fm/react/state.ts",
@@ -243,6 +263,16 @@
           "path": "registry/fm/react/text-preview.tsx",
           "type": "registry:file",
           "target": "~/src/fm/react/text-preview.tsx"
+        },
+        {
+          "path": "registry/fm/react/trash-view.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/trash-view.tsx"
+        },
+        {
+          "path": "registry/fm/react/undo.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/undo.ts"
         },
         {
           "path": "registry/fm/react/upload-panel.tsx",

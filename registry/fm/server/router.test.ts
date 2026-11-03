@@ -134,6 +134,15 @@ describe("list", () => {
     expect(bySize.items.map((e: { name: string }) => e.name)).toEqual(["z", "a2.txt", "b.txt", "a10.txt"]);
   });
 
+  it("filters by name", async () => {
+    const { req } = setup({
+      files: { "/Report.pdf": "r", "/notes/a.txt": "a", "/b.txt": "b" },
+    });
+    const body = await (await req("/m/m/list?path=/&q=RE")).json();
+    expect(body.items.map((e: { name: string }) => e.name)).toEqual(["Report.pdf"]);
+    expect(body.total).toBe(1);
+  });
+
   it("refuses to list a file", async () => {
     const { req } = setup({
       files: { "/a.txt": "a" },
@@ -337,5 +346,125 @@ describe("archive", () => {
     const files = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`/many/${i}.txt`, "x"]));
     const { req } = setup({ files });
     expect((await req("/m/m/archive?path=/many")).status).toBe(413);
+  });
+});
+
+describe("usage", () => {
+  it("sums a folder and flags truncated walks", async () => {
+    const { req } = setup({
+      files: { "/d/a.txt": "aa", "/d/s/b.txt": "bbb", "/c.txt": "c" },
+    });
+    expect(await (await req("/m/m/usage?path=/d")).json()).toEqual({
+      bytes: 5,
+      files: 2,
+      dirs: 1,
+      truncated: false,
+    });
+    const files = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`/many/${i}.txt`, "x"]));
+    const big = setup({ files });
+    expect((await (await big.req("/m/m/usage?path=/many")).json()).truncated).toBe(true);
+  });
+});
+
+describe("trash", () => {
+  function trashSetup(authorize?: (path: string) => Caps) {
+    const driver = memoryDriver({
+      files: { "/a.txt": "a", "/d/b.txt": "b", "/locked/c.txt": "c" },
+    });
+    return {
+      ...setup({
+        mounts: [
+          {
+            id: "m",
+            label: "Main",
+            driver,
+            trash: true,
+          },
+        ],
+        ...(authorize
+          ? { authorize }
+          : {}),
+      }),
+      driver,
+    };
+  }
+
+  it("moves deleted entries to a hidden trash and restores them", async () => {
+    const { req, json, driver } = trashSetup();
+    expect((await (await req("/mounts")).json()).mounts[0].trash).toBe(true);
+    const del = (await (await json("POST", "/m/m/ops", {
+      op: "delete",
+      paths: ["/a.txt", "/d"],
+    })).json()).results;
+    expect(del.every((r: { ok: boolean; trashId?: string }) => r.ok && r.trashId)).toBe(true);
+    await expect(driver.stat("/a.txt")).rejects.toThrow();
+
+    const root = await (await req("/m/m/list?path=/")).json();
+    expect(root.items.map((e: { name: string }) => e.name)).toEqual(["locked"]);
+    expect((await req(`/m/m/list?path=${q("/.fm-trash")}`)).status).toBe(404);
+
+    const { items } = await (await req("/m/m/trash")).json();
+    expect(items.map((i: { path: string }) => i.path).sort()).toEqual(["/a.txt", "/d"]);
+    expect(items.find((i: { path: string }) => i.path === "/d")).toMatchObject({ name: "d", kind: "dir", size: 0 });
+
+    await driver.write("/a.txt", new TextEncoder().encode("new"));
+    const restored = (await (await json("POST", "/m/m/trash/restore", {
+      ids: [del[0].trashId, del[1].trashId],
+    })).json()).results;
+    expect(restored.map((r: { entry: { path: string } }) => r.entry.path)).toEqual(["/a (1).txt", "/d"]);
+    expect((await driver.stat("/d/b.txt")).size).toBe(1);
+    expect((await (await req("/m/m/trash")).json()).items).toEqual([]);
+  });
+
+  it("purges selected items or everything, and deletes permanently on request", async () => {
+    const { req, json, driver } = trashSetup();
+    const del = (await (await json("POST", "/m/m/ops", {
+      op: "delete",
+      paths: ["/a.txt", "/d"],
+    })).json()).results;
+    expect((await (await json("POST", "/m/m/trash/purge", {
+      ids: [del[0].trashId],
+    })).json()).results[0].ok).toBe(true);
+    expect((await (await req("/m/m/trash")).json()).items).toHaveLength(1);
+    await json("POST", "/m/m/trash/purge", {});
+    expect((await (await req("/m/m/trash")).json()).items).toEqual([]);
+
+    const perm = (await (await json("POST", "/m/m/ops", {
+      op: "delete",
+      paths: ["/locked/c.txt"],
+      permanent: true,
+    })).json()).results;
+    expect(perm[0].trashId).toBeUndefined();
+    expect(await driver.list("/.fm-trash")).toEqual([]);
+  });
+
+  it("authorizes trash items against their original path", async () => {
+    const { req, json } = trashSetup(p => (p.startsWith("/locked")
+      ? READ_ONLY_CAPS
+      : (p.startsWith("/.fm-trash")
+          ? NONE
+          : { ...READ_ONLY_CAPS, write: true, delete: true })));
+    const del = (await (await json("POST", "/m/m/ops", {
+      op: "delete",
+      paths: ["/a.txt"],
+    })).json()).results;
+    expect(del[0].ok).toBe(true);
+    expect((await (await req("/m/m/trash")).json()).items).toHaveLength(1);
+    const unknown = (await (await json("POST", "/m/m/trash/restore", {
+      ids: ["nope"],
+    })).json()).results;
+    expect(unknown[0].error.code).toBe("NOT_FOUND");
+  });
+
+  it("is unavailable on mounts without trash", async () => {
+    const { req, json } = setup({
+      files: { "/a.txt": "a" },
+    });
+    expect((await req("/m/m/trash")).status).toBe(405);
+    const del = (await (await json("POST", "/m/m/ops", {
+      op: "delete",
+      paths: ["/a.txt"],
+    })).json()).results;
+    expect(del[0].trashId).toBeUndefined();
   });
 });

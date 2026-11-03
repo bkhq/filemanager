@@ -200,7 +200,8 @@ All under the host prefix, mount id in the path, entry path in the query
 | --- | --- | --- |
 | GET | `/mounts` | Mounts visible to caller + driver caps |
 | GET | `/m/:mount/stat?path=` | |
-| GET | `/m/:mount/list?path=&cursor=&limit=&sort=&dir=` | Cursor paging, dirs first |
+| GET | `/m/:mount/list?path=&cursor=&limit=&sort=&dir=&q=` | Cursor paging, dirs first, `q` = name filter of direct children |
+| GET | `/m/:mount/usage?path=` | Folder size `{ bytes, files, dirs, truncated }`, walk capped by `archiveMaxEntries` |
 | GET | `/m/:mount/read?path=&inline=&thumb=` | Range, ETag, presign 302 when allowed, `thumb` widths whitelist |
 | PUT | `/m/:mount/write?path=` | Small writes / editor save, `If-Match` |
 | POST | `/m/:mount/mkdir` | `{ path }` |
@@ -210,7 +211,7 @@ All under the host prefix, mount id in the path, entry path in the query
 | POST | `/m/:mount/uploads` | Create session → `{ mode: "put" / "chunked" / "s3-multipart", partSize, urls? }` |
 | PUT | `/m/:mount/uploads/:id/parts/:n` | Chunk (non-presigned modes) |
 | POST | `/m/:mount/uploads/:id/complete` | Optional sha256 for dedupe/verify |
-| GET/POST | `/m/:mount/trash`, `/trash/restore`, `/trash/purge` | When `caps.trash` |
+| GET/POST | `/m/:mount/trash`, `/trash/restore`, `/trash/purge` | When the mount sets `trash: true`. Implemented in the router on top of any driver: `/.fm-trash/<id>/<name>` + `<id>.json`, hidden from every other route; items are authorized against their original path. A driver-native `TrashApi` (managed store) can replace it later |
 | GET/POST | `/m/:mount/versions?path=`, `/versions/restore` | When `caps.versions` |
 | GET | `/m/:mount/watch?path=` (SSE) | When `caps.watch` (local via fs.watch; Bun only) |
 

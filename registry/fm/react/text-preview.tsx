@@ -27,7 +27,7 @@ function useLanguage(name: string): Extension[] {
 const isDark = () => typeof document !== "undefined" && document.documentElement.classList.contains("dark");
 
 /** Text / code viewer; editable with optimistic concurrency when the entry allows writes. */
-export function TextPreview({ entry, client, labels, actions }: PreviewProps) {
+export function TextPreview({ entry, client, labels, actions, onDirtyChange }: PreviewProps) {
   const query = useFileText(client, entry.mount, entry.path);
   const { save } = useFmMutations(client, entry.mount);
   const language = useLanguage(entry.name);
@@ -39,6 +39,10 @@ export function TextPreview({ entry, client, labels, actions }: PreviewProps) {
   const text = draft ?? base?.text ?? "";
   const dirty = draft !== undefined && draft !== base?.text;
   const conflict = save.error instanceof FmApiError && save.error.status === 412;
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   const onSave = () => {
     save.mutate({ path: entry.path, text, etag: etag ?? base!.etag }, {

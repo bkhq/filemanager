@@ -17,7 +17,7 @@ interface Item {
 }
 
 /** Walks `paths` and fails before any byte is sent when the archive would exceed the limits. */
-async function collect(driver: Driver, paths: string[], limits: ArchiveLimits): Promise<Item[]> {
+async function collect(driver: Driver, paths: string[], limits: ArchiveLimits, skip: (path: string) => boolean): Promise<Item[]> {
   const items: Item[] = [];
   let bytes = 0;
   const visit = async (path: string, name: string): Promise<void> => {
@@ -42,8 +42,10 @@ async function collect(driver: Driver, paths: string[], limits: ArchiveLimits): 
       dir: true,
       mtime: e.mtime,
     });
-    for (const child of await driver.list(path))
-      await visit(child.path, `${name}/${child.name}`);
+    for (const child of await driver.list(path)) {
+      if (!skip(child.path))
+        await visit(child.path, `${name}/${child.name}`);
+    }
   };
   for (const p of paths)
     await visit(p, basename(p) || "root");
@@ -51,8 +53,8 @@ async function collect(driver: Driver, paths: string[], limits: ArchiveLimits): 
 }
 
 /** Streams an uncompressed zip of `paths`; reads one file at a time with backpressure. */
-export async function zipStream(driver: Driver, paths: string[], limits: ArchiveLimits): Promise<ReadableStream<Uint8Array>> {
-  const items = await collect(driver, paths, limits);
+export async function zipStream(driver: Driver, paths: string[], limits: ArchiveLimits, skip: (path: string) => boolean = () => false): Promise<ReadableStream<Uint8Array>> {
+  const items = await collect(driver, paths, limits, skip);
   let index = 0;
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   let current: ZipPassThrough | undefined;

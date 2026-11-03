@@ -34,3 +34,4 @@ Each task is a single line linking to its detail file. All detailed information 
 ## Tasks
 
 - [x] [**20261102-1157-p0-foundation P0 foundation: registry scaffold, core, server, local provider, React UI, demo**](20261102-1157-p0-foundation.md) `P1`
+- [x] [**20261102-1908-drive-parity Drive-parity batch: trash, search, upload conflicts, undo, details, previews**](20261102-1908-drive-parity.md) `P1`
