@@ -197,12 +197,20 @@ createFmRouter({
     { id: "drive", label: "My files", driver: managed({ db, owner: ctx.user.id, blobs: s3(...) }) },
   ],
   authorize: async (ctx, action, target) => boolean | FmCaps, // host policy (Zanzibar, project roles…)
-  audit?: (ctx, event) => void,
+  onEvent?: (ctx, event: FmChangeEvent) => void | Promise<void>,
   limits: { maxUploadBytes, maxEditBytes, archiveMaxBytes, archiveMaxEntries },
 });
 // → Hono sub-app, host mounts it: app.route("/api/fm", fm.routes)
 ```
 
+- `FmChangeEvent` = `{ op, mount, path, to?, trashId?, ok, error? }`; `op` is
+  `write | mkdir | delete | rename | move | copy | restore | purge`, `error` is
+  `{ code, message }` when `ok` is false.
+- Fired once per item after the operation, on success or failure; batch items
+  in request order. A delete into trash carries the new `trashId`; restore and
+  purge carry the `trashId` they acted on (`path` is the item's original path).
+- The hook is awaited, so hosts can write audit rows transactionally; an error
+  it throws is logged and never changes the response.
 - Effective caps = `driver.caps ∩ authorize(...)`; returned on every `FmEntry`.
 - Fail-closed: unknown mount or denied read → `404` (bithk ADR-003 behaviour).
 - Unknown/unsafe MIME for inline (`html`, `svg`, `js`) → served as attachment / octet-stream (bithk rule).
