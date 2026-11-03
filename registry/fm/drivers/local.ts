@@ -1,6 +1,6 @@
 import type { Stats } from "node:fs";
-import type { FmDriver, FmDriverEntry, FmSearchOptions } from "../server/driver";
-import { cp, link, lstat, mkdir, readdir, realpath, rename, rm, stat, unlink } from "node:fs/promises";
+import type { FmDriver, FmDriverEntry, FmMultipart, FmSearchOptions, FmUploadPart, FmWriteOptions } from "../server/driver";
+import { cp, link, lstat, mkdir, open, readdir, realpath, rename, rm, stat, unlink } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import process from "node:process";
 import { FmError } from "../core/errors";
@@ -23,7 +23,12 @@ export interface FmLocalDriverOptions {
    * copy / remove on any path with a `.git` segment throw FORBIDDEN.
    */
   gitIgnore?: boolean;
+  /** Directory for in-progress multipart parts (default `<root>/.fm-uploads/parts`; the router hides `/.fm-uploads`). */
+  uploadDir?: string;
 }
+
+const UPLOAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PART_FILE = /^([1-9]\d*)\.part$/;
 
 const ERRNO: Record<string, ConstructorParameters<typeof FmError>[0]> = {
   ENOENT: "NOT_FOUND",
@@ -84,6 +89,9 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
     }
   };
 
+  const etagOf = (st: Stats & { mtimeNs?: bigint }) =>
+    `${Number(st.size).toString(36)}-${(st.mtimeNs ?? BigInt(Math.trunc(Number(st.mtimeMs) * 1e6))).toString(36)}`;
+
   const toEntry = (path: string, st: Stats & { mtimeNs?: bigint }): FmDriverEntry => ({
     path,
     name: path === "/"
@@ -96,7 +104,7 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
       ? 0
       : Number(st.size),
     mtime: Number(st.mtimeMs),
-    etag: `${Number(st.size).toString(36)}-${(st.mtimeNs ?? BigInt(Math.trunc(Number(st.mtimeMs) * 1e6))).toString(36)}`,
+    etag: etagOf(st),
   });
 
   const statAbs = async (path: string, a: string) => {
@@ -210,6 +218,138 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
     }
   };
 
+  /** Applies the `write` target checks and creates parents; returns the absolute target. */
+  const prepareWrite = async (path: string, o: FmWriteOptions) => {
+    const a = await abs(path);
+    const current = await stat(a, { bigint: true }).catch(() => undefined);
+    if (current?.isDirectory())
+      throw new FmError("IS_A_DIR", `Is a directory: ${path}`);
+    if (current && o.exclusive)
+      throw new FmError("EXISTS", `Already exists: ${path}`);
+    if (o.ifMatch !== undefined && (!current || toEntry(path, current as unknown as Stats).etag !== o.ifMatch))
+      throw new FmError("ETAG_MISMATCH", "File changed since it was read");
+    await mkdir(resolve(a, ".."), { recursive: true }).catch(e => mapError(e, path));
+    return a;
+  };
+
+  /** Fills a temp file next to `a`, then moves it into place (hard link when exclusive). */
+  const commitWrite = async (path: string, a: string, o: FmWriteOptions, fill: (tmp: string) => Promise<unknown>) => {
+    const tmp = join(resolve(a, ".."), `.${basename(path)}.fm-${crypto.randomUUID()}`);
+    try {
+      await fill(tmp);
+      if (o.exclusive) {
+        await link(tmp, a).catch(e => mapError(e, path));
+        await unlink(tmp);
+      }
+      else {
+        await rename(tmp, a);
+      }
+    }
+    catch (err) {
+      await rm(tmp, { force: true });
+      throw err;
+    }
+    return statAbs(path, a);
+  };
+
+  const uploadDir = resolve(opts.uploadDir ?? join(root, ".fm-uploads", "parts"));
+
+  /** Directory of upload `id` for `path`; NOT_FOUND for a malformed id, unknown upload or other path. */
+  const uploadOf = async (path: string, id: string) => {
+    if (!UPLOAD_ID.test(id))
+      throw new FmError("NOT_FOUND", `Unknown upload: ${id}`);
+    const dir = join(uploadDir, id);
+    const meta = await Bun.file(join(dir, "meta.json")).json().catch(() => undefined) as { path?: unknown } | undefined;
+    if (meta?.path !== path)
+      throw new FmError("NOT_FOUND", `Unknown upload: ${id}`);
+    return dir;
+  };
+
+  const partsOf = async (dir: string): Promise<FmUploadPart[]> => {
+    const out: FmUploadPart[] = [];
+    for (const name of await readdir(dir)) {
+      const m = PART_FILE.exec(name);
+      if (!m)
+        continue;
+      const st = await stat(join(dir, name), { bigint: true }) as unknown as Stats & { mtimeNs: bigint };
+      out.push({
+        n: Number(m[1]),
+        size: Number(st.size),
+        etag: etagOf(st),
+      });
+    }
+    return out.sort((a, b) => a.n - b.n);
+  };
+
+  const multipart: FmMultipart = {
+    async begin(path) {
+      writable(path);
+      const id = crypto.randomUUID();
+      const dir = join(uploadDir, id);
+      await mkdir(dir, { recursive: true });
+      await Bun.write(join(dir, "meta.json"), JSON.stringify({ path }));
+      return id;
+    },
+    async uploadPart(path, uploadId, n, body, size) {
+      writable(path);
+      const dir = await uploadOf(path, uploadId);
+      if (!Number.isInteger(n) || n < 1)
+        throw new FmError("INVALID", `Invalid part number: ${n}`);
+      const tmp = join(dir, `${n}.part.tmp`);
+      const file = join(dir, `${n}.part`);
+      try {
+        const written = body instanceof Uint8Array
+          ? await Bun.write(tmp, body)
+          : await Bun.write(tmp, new Response(body));
+        if (written !== size)
+          throw new FmError("INVALID", `Part ${n} is ${written} bytes, expected ${size}`);
+        await rename(tmp, file);
+      }
+      catch (err) {
+        await rm(tmp, { force: true });
+        throw err;
+      }
+      const st = await stat(file, { bigint: true }) as unknown as Stats & { mtimeNs: bigint };
+      return {
+        n,
+        size,
+        etag: etagOf(st),
+      };
+    },
+    async listParts(path, uploadId) {
+      return partsOf(await uploadOf(path, uploadId));
+    },
+    async complete(path, uploadId, parts, o = {}) {
+      writable(path);
+      const dir = await uploadOf(path, uploadId);
+      const stored = new Map((await partsOf(dir)).map(p => [p.n, p]));
+      parts.forEach((p, i) => {
+        if (p.n !== i + 1 || stored.get(p.n)?.size !== p.size)
+          throw new FmError("INVALID", `Missing or unknown part ${i + 1}`);
+      });
+      const a = await prepareWrite(path, o);
+      const entry = await commitWrite(path, a, o, async (tmp) => {
+        const fh = await open(tmp, "w");
+        try {
+          for (const p of parts) {
+            for await (const chunk of Bun.file(join(dir, `${p.n}.part`)).stream())
+              await fh.write(chunk);
+          }
+        }
+        finally {
+          await fh.close();
+        }
+      });
+      await rm(dir, { recursive: true, force: true });
+      return entry;
+    },
+    async abort(_path, uploadId) {
+      if (!UPLOAD_ID.test(uploadId))
+        throw new FmError("NOT_FOUND", `Unknown upload: ${uploadId}`);
+      await rm(join(uploadDir, uploadId), { recursive: true, force: true });
+    },
+  };
+
   return {
     name: "local",
     caps: opts.readOnly ? READ_ONLY_CAPS : ALL_CAPS,
@@ -264,34 +404,10 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
     },
     async write(path, body, o = {}) {
       writable(path);
-      const a = await abs(path);
-      const current = await stat(a, { bigint: true }).catch(() => undefined);
-      if (current?.isDirectory())
-        throw new FmError("IS_A_DIR", `Is a directory: ${path}`);
-      if (current && o.exclusive)
-        throw new FmError("EXISTS", `Already exists: ${path}`);
-      if (o.ifMatch !== undefined && (!current || toEntry(path, current as unknown as Stats).etag !== o.ifMatch))
-        throw new FmError("ETAG_MISMATCH", "File changed since it was read");
-      await mkdir(resolve(a, ".."), { recursive: true }).catch(e => mapError(e, path));
-      const tmp = join(resolve(a, ".."), `.${basename(path)}.fm-${crypto.randomUUID()}`);
-      try {
-        if (body instanceof Uint8Array)
-          await Bun.write(tmp, body);
-        else
-          await Bun.write(tmp, new Response(body));
-        if (o.exclusive) {
-          await link(tmp, a).catch(e => mapError(e, path));
-          await unlink(tmp);
-        }
-        else {
-          await rename(tmp, a);
-        }
-      }
-      catch (err) {
-        await rm(tmp, { force: true });
-        throw err;
-      }
-      return statAbs(path, a);
+      const a = await prepareWrite(path, o);
+      return commitWrite(path, a, o, tmp => body instanceof Uint8Array
+        ? Bun.write(tmp, body)
+        : Bun.write(tmp, new Response(body)));
     },
     async mkdir(path) {
       writable(path);
@@ -333,5 +449,8 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
     ...(opts.gitIgnore
       ? { search }
       : {}),
+    ...(opts.readOnly
+      ? {}
+      : { multipart }),
   };
 }

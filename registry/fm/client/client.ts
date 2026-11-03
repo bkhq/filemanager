@@ -1,4 +1,4 @@
-import type { FmConflict, FmEntry, FmListResult, FmMountInfo, FmOpsRequest, FmOpsResult, FmSearchMode, FmSearchResult, FmSortKey, FmTrashItem, FmUsage } from "../core/schema";
+import type { FmConflict, FmEntry, FmListResult, FmMountInfo, FmOpsRequest, FmOpsResult, FmSearchMode, FmSearchResult, FmSortKey, FmTrashItem, FmUploadCreate, FmUploadSession, FmUsage } from "../core/schema";
 
 export class FmApiError extends Error {
   readonly status: number;
@@ -137,5 +137,14 @@ export function createFmClient(opts: FmClientOptions) {
     purge: (mount: string, ids?: string[]) => post<FmOpsResult>(url(`${m(mount)}/trash/purge`), ids
       ? { ids }
       : {}),
+    /** Starts a resumable upload session. */
+    createUpload: (mount: string, body: FmUploadCreate) => post<FmUploadSession>(url(`${m(mount)}/uploads`), body),
+    getUpload: (mount: string, id: string) => json<FmUploadSession>(url(`${m(mount)}/uploads/${encodeURIComponent(id)}`)),
+    /** URL for PUTting part `n` (from 1) of a `chunked` session. */
+    uploadPartUrl: (mount: string, id: string, n: number) => url(`${m(mount)}/uploads/${encodeURIComponent(id)}/parts/${n}`),
+    completeUpload: (mount: string, id: string) => json<FmEntry>(url(`${m(mount)}/uploads/${encodeURIComponent(id)}/complete`), { method: "POST" }),
+    abortUpload: async (mount: string, id: string) => {
+      await request(url(`${m(mount)}/uploads/${encodeURIComponent(id)}`), { method: "DELETE" });
+    },
   };
 }

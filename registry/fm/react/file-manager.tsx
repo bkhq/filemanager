@@ -276,6 +276,7 @@ export function FileManager(props: FileManagerProps) {
   onUploadedRef.current = () => void mutations.invalidate();
   const [queue] = useState(() => createUploadQueue({
     transport: xhrTransport(client),
+    client,
     onUploaded: () => onUploadedRef.current(),
   }));
 

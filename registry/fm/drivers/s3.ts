@@ -1,4 +1,4 @@
-import type { FmDriver, FmDriverEntry } from "../server/driver";
+import type { FmDriver, FmDriverEntry, FmMultipart, FmUploadPart, FmWriteOptions } from "../server/driver";
 import { AwsClient } from "aws4fetch";
 import { FmError } from "../core/errors";
 import { basename, isWithin } from "../core/path";
@@ -19,6 +19,13 @@ export interface FmS3DriverOptions {
   readOnly?: boolean;
   /** Max objects touched by one recursive copy / move / delete (default 1000). */
   maxObjects?: number;
+  /**
+   * Expose presigned part URLs so browsers upload multipart parts straight to the bucket
+   * (default false; parts then go through the server). Requires an endpoint reachable from
+   * the browser (not an internal one like `http://rustfs:9000`) and bucket CORS allowing
+   * `PUT` from the app origin and exposing the `ETag` header.
+   */
+  presignUploads?: boolean;
 }
 
 interface ListedObject {
@@ -88,6 +95,39 @@ export function parseList(xml: string): ListPage {
   };
 }
 
+interface PartsPage {
+  parts: FmUploadPart[];
+  next?: number;
+}
+
+/** Parses a ListParts response. */
+export function parseParts(xml: string): PartsPage {
+  const parts = blocks(xml, "Part").map(b => ({
+    n: Number(tag(b, "PartNumber") ?? 0),
+    size: Number(tag(b, "Size") ?? 0),
+    etag: xmlText(tag(b, "ETag") ?? "").replace(/"/g, ""),
+  }));
+  const next = tag(xml, "IsTruncated") === "true"
+    ? Number(tag(xml, "NextPartNumberMarker") ?? 0)
+    : 0;
+  return {
+    parts,
+    ...(next
+      ? { next }
+      : {}),
+  };
+}
+
+/** Maps an S3 `<Error>` code to an FmError where one fits. */
+function s3Error(what: string, status: number, xml: string): Error {
+  const code = tag(xml, "Code");
+  if (code === "NoSuchUpload")
+    return new FmError("NOT_FOUND", `Upload not found: ${what}`);
+  if (code === "InvalidPart" || code === "InvalidPartOrder" || code === "EntityTooSmall")
+    return new FmError("INVALID", `${code}: ${xmlText(tag(xml, "Message") ?? "")}`);
+  return new Error(`S3 ${what} failed: ${status} ${xml}`);
+}
+
 const encodeKey = (key: string) => key.split("/").map(encodeURIComponent).join("/");
 
 /** S3-compatible object storage driver (AWS S3, R2, MinIO …). Runs on Bun and Workers. */
@@ -111,11 +151,12 @@ export function s3Driver(opts: FmS3DriverOptions): FmDriver {
     : `${fileKey(path)}/`);
   const pathOf = (key: string) => `/${key.slice(prefix.length).replace(/\/$/, "")}`;
 
-  const send = async (method: string, key: string, init: { headers?: Record<string, string>; body?: Uint8Array<ArrayBuffer>; query?: string } = {}) => {
-    const url = `${base}/${encodeKey(key)}${init.query
-      ? `?${init.query}`
-      : ""}`;
-    const res = await client.fetch(url, {
+  const objectUrl = (key: string, query?: string) => `${base}/${encodeKey(key)}${query
+    ? `?${query}`
+    : ""}`;
+
+  const send = async (method: string, key: string, init: { headers?: Record<string, string>; body?: Uint8Array<ArrayBuffer> | ReadableStream<Uint8Array>; query?: string } = {}) => {
+    const req: RequestInit = {
       method,
       ...(init.headers
         ? { headers: init.headers }
@@ -123,13 +164,18 @@ export function s3Driver(opts: FmS3DriverOptions): FmDriver {
       ...(init.body
         ? { body: init.body }
         : {}),
-    });
+    };
+    const url = objectUrl(key, init.query);
+    // A stream can only be sent once, so skip aws4fetch's retries for it.
+    const res = init.body instanceof ReadableStream
+      ? await fetch(await client.sign(url, req))
+      : await client.fetch(url, req);
     if (res.status === 404 && method !== "GET") {
       await res.body?.cancel();
       throw new FmError("NOT_FOUND", `Not found: ${key}`);
     }
     if (!res.ok && res.status !== 206 && res.status !== 404)
-      throw new Error(`S3 ${method} ${key} failed: ${res.status} ${await res.text()}`);
+      throw s3Error(`${method} ${key}`, res.status, await res.text());
     return res;
   };
 
@@ -233,6 +279,115 @@ export function s3Driver(opts: FmS3DriverOptions): FmDriver {
       await Promise.all(items.slice(i, i + 8).map(fn));
   };
 
+  /** Rejects a write to `path` that `write` / `complete` must refuse. */
+  const checkTarget = async (path: string, o: FmWriteOptions) => {
+    const current = await head(fileKey(path));
+    if (!current && await isDir(path))
+      throw new FmError("IS_A_DIR", `Is a directory: ${path}`);
+    if (current && o.exclusive)
+      throw new FmError("EXISTS", `Already exists: ${path}`);
+    if (o.ifMatch !== undefined && current?.etag !== o.ifMatch)
+      throw new FmError("ETAG_MISMATCH", "File changed since it was read");
+  };
+
+  const uploadQuery = (uploadId: string, extra: Record<string, string> = {}) =>
+    new URLSearchParams({ ...extra, uploadId }).toString();
+
+  const multipart: FmMultipart = {
+    minPartSize: 5 * 1024 * 1024,
+    maxParts: 10000,
+    async begin(path) {
+      const res = await send("POST", fileKey(path), { query: "uploads" });
+      const id = tag(await res.text(), "UploadId");
+      if (!id)
+        throw new Error(`S3 CreateMultipartUpload returned no UploadId for ${path}`);
+      return xmlText(id);
+    },
+    async uploadPart(path, uploadId, n, body, size) {
+      if (body instanceof Uint8Array && body.byteLength !== size)
+        throw new FmError("INVALID", `Part ${n} is ${body.byteLength} bytes, expected ${size}`);
+      const res = await send("PUT", fileKey(path), {
+        query: uploadQuery(uploadId, {
+          partNumber: String(n),
+        }),
+        headers: {
+          "content-length": String(size),
+        },
+        body: body instanceof Uint8Array
+          ? await readAll(body)
+          : body,
+      });
+      await res.text();
+      return {
+        n,
+        size,
+        etag: (res.headers.get("etag") ?? "").replace(/"/g, ""),
+      };
+    },
+    async listParts(path, uploadId) {
+      const out: FmUploadPart[] = [];
+      let marker: number | undefined;
+      do {
+        const res = await send("GET", fileKey(path), {
+          query: uploadQuery(uploadId, marker
+            ? {
+                "part-number-marker": String(marker),
+              }
+            : {}),
+        });
+        if (res.status === 404)
+          throw s3Error(`ListParts ${path}`, 404, await res.text());
+        const page = parseParts(await res.text());
+        out.push(...page.parts);
+        marker = page.next;
+      } while (marker);
+      return out.sort((a, b) => a.n - b.n);
+    },
+    async complete(path, uploadId, parts, o = {}) {
+      parts.forEach((p, i) => {
+        if (p.n !== i + 1)
+          throw new FmError("INVALID", `Missing part ${i + 1}`);
+      });
+      if (parts.length === 0)
+        throw new FmError("INVALID", "No parts to complete");
+      await checkTarget(path, o);
+      const xml = `<CompleteMultipartUpload>${parts.map(p =>
+        `<Part><PartNumber>${p.n}</PartNumber><ETag>"${p.etag}"</ETag></Part>`).join("")}</CompleteMultipartUpload>`;
+      const res = await send("POST", fileKey(path), {
+        query: uploadQuery(uploadId),
+        body: new TextEncoder().encode(xml),
+      });
+      // S3 may report a failed completion as 200 with an <Error> body.
+      const text = await res.text();
+      if (/<Error>/.test(text))
+        throw s3Error(`CompleteMultipartUpload ${path}`, res.status, text);
+      return stat(path);
+    },
+    async abort(path, uploadId) {
+      try {
+        await send("DELETE", fileKey(path), {
+          query: uploadQuery(uploadId),
+        }).then(r => r.text());
+      }
+      catch (err) {
+        if (!(err instanceof FmError && err.code === "NOT_FOUND"))
+          throw err;
+      }
+    },
+  };
+  if (opts.presignUploads) {
+    multipart.presignPart = async (path, uploadId, n, expiresIn) => {
+      const url = objectUrl(fileKey(path), uploadQuery(uploadId, {
+        "partNumber": String(n),
+        "X-Amz-Expires": String(expiresIn),
+      }));
+      return (await client.sign(url, {
+        method: "PUT",
+        aws: { signQuery: true },
+      })).url;
+    };
+  }
+
   /** Copies `from` to `to`; returns the source keys so `move` can delete them. */
   const transfer = async (from: string, to: string): Promise<string[]> => {
     writable();
@@ -304,15 +459,15 @@ export function s3Driver(opts: FmS3DriverOptions): FmDriver {
     },
     async write(path, body, o = {}) {
       writable();
-      const key = fileKey(path);
-      const current = await head(key);
-      if (!current && await isDir(path))
-        throw new FmError("IS_A_DIR", `Is a directory: ${path}`);
-      if (current && o.exclusive)
-        throw new FmError("EXISTS", `Already exists: ${path}`);
-      if (o.ifMatch !== undefined && current?.etag !== o.ifMatch)
-        throw new FmError("ETAG_MISMATCH", "File changed since it was read");
-      await send("PUT", key, { body: await readAll(body) }).then(r => r.text());
+      await checkTarget(path, o);
+      await send("PUT", fileKey(path), typeof o.size === "number" && body instanceof ReadableStream
+        ? {
+            headers: {
+              "content-length": String(o.size),
+            },
+            body,
+          }
+        : { body: await readAll(body) }).then(r => r.text());
       return stat(path);
     },
     async mkdir(path) {
@@ -345,5 +500,8 @@ export function s3Driver(opts: FmS3DriverOptions): FmDriver {
         : (await listTree(path)).map(o => o.key);
       await inBatches(keys, key => send("DELETE", key).then(r => r.text()));
     },
+    ...(opts.readOnly
+      ? {}
+      : { multipart }),
   };
 }
