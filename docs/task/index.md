@@ -54,3 +54,6 @@ Each task is a single line linking to its detail file. All detailed information 
 - [x] [**20261103-0846-naming-conventions Naming conventions for shipped code**](20261103-0846-naming-conventions.md) `P1`
 - [x] [**20261103-0939-no-deprecated-apis Remove deprecated API usage and lint against it**](20261103-0939-no-deprecated-apis.md) `P1`
 - [x] [**20261103-0948-rename-dev-apps Rename demo apps to fm-api / fm-web**](20261103-0948-rename-dev-apps.md) `P1`
+- [x] [**20261104-0200-resizable-panels Resizable panels**](20261104-0200-resizable-panels.md) `P2`
+- [x] [**20261104-0212-tree-collapsible Folder tree on shadcn Collapsible**](20261104-0212-tree-collapsible.md) `P2`
+- [x] [**20261104-0337-tree-preview-layout Tree + preview layout**](20261104-0337-tree-preview-layout.md) `P2`

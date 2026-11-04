@@ -200,7 +200,8 @@
         "@codemirror/language",
         "@codemirror/language-data",
         "@codemirror/state",
-        "lucide-react"
+        "lucide-react",
+        "react-resizable-panels"
       ],
       "registryDependencies": [
         "button",
@@ -212,6 +213,8 @@
         "breadcrumb",
         "progress",
         "tooltip",
+        "resizable",
+        "collapsible",
         "@bkhq/fm-client"
       ],
       "files": [
@@ -286,9 +289,19 @@
           "target": "~/src/fm/react/plugins.ts"
         },
         {
+          "path": "registry/fm/react/path-bar.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/path-bar.tsx"
+        },
+        {
           "path": "registry/fm/react/preview-dialog.tsx",
           "type": "registry:file",
           "target": "~/src/fm/react/preview-dialog.tsx"
+        },
+        {
+          "path": "registry/fm/react/preview-pane.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/preview-pane.tsx"
         },
         {
           "path": "registry/fm/react/preview-registry.ts",

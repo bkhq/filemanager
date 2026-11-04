@@ -68,6 +68,7 @@ import { FileManager } from "@/fm/react/file-manager";
 <FileManager baseUrl="/api/fm" features={{ delete: false, upload: false }} />;
 
 // Start without the folder tree; users can toggle it. Below 640px it is always single-pane.
+// The tree and details panes are resizable (drag or arrow keys); sizes persist per `storageKey`.
 <FileManager baseUrl="/api/fm" layout="single" />;
 ```
 

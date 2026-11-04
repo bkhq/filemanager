@@ -127,3 +127,35 @@ Cloudflare Workers delivered (20261103-1005-workers-r2): `r2Driver({ bucket, pre
 ## 2026-11-03 13:50 [progress]
 
 P1 campaign `l1-d4j0p0gu-20261103101038` complete (plan 20261103-1005-p1-campaign): change events, recursive search + quick open (with git ls-files hardening), FilePicker + sidebar drives, registry publishing workflow, cross-mount copy / move (with a reserved-target guard), resumable uploads (sessions, multipart for memory / local / S3, opt-in presign), R2 driver + `apps/fm-worker`. Merged into local `main` only, not pushed. Final `bun run check`: 219 pass / 1 skip; 32 e2e; registry smoke OK. Deferred items are listed in the campaign plan Decisions.
+
+## 2026-11-04 02:10 [progress]
+
+Resizable panels (20261104-0200-resizable-panels): the folder tree and details panel in `<FileManager>` are shadcn `resizable` panels (react-resizable-panels 4.17.0) instead of fixed `w-56` / `w-72`; drag or arrow keys resize them, sizes persist under `${storageKey}:panels`. `fm-react` now requires the shadcn `resizable` component and `react-resizable-panels`. Verified: `bun run check`, 33 Playwright e2e, registry smoke.
+
+## 2026-11-04 02:12 [progress]
+
+Folder tree rebuilt on shadcn `collapsible` + `button` (20261104-0212-tree-collapsible): each row is one focusable trigger button (chevron, icon and label, as in the shadcn file-tree demo), subfolders load across all listing pages. `fm-react` now also requires the shadcn `collapsible` component.
+
+## 2026-11-04 02:24 [progress]
+
+Folder tree: files are listed under their folders (click reveals the file in the list), a row click navigates and toggles, and the tree supports WAI-ARIA keyboard navigation (Up / Down / Home / End, Right to expand or enter, Left to collapse or go to the parent, Enter / Space to activate). Verified: 34 Playwright e2e.
+
+## 2026-11-04 02:27 [progress]
+
+Folder tree context menus: right-clicking a folder or file row reveals it in the list and opens the same entry menu as the list; a mount row opens the folder menu (new folder, new file, upload, paste, refresh) at the mount root; trash and group rows open none. Verified: 35 Playwright e2e.
+
+## 2026-11-04 02:30 [progress]
+
+Context menus: the list and the tree share one menu shell (`w-56`); every item has an icon ("Open" uses a folder-open or preview icon); shortcuts the list handles are shown on the right (Enter, Ctrl/⌘+C / X / V, F2, Del; hidden from the accessible name); groups follow VS Code: open / download, cut / copy / duplicate / copy contents, rename / details, plugin actions, delete. Verified: 35 Playwright e2e.
+
+## 2026-11-04 03:50 [progress]
+
+Tree + preview layout (20261104-0337-tree-preview-layout): with the folder tree shown, the right side previews the selected file inline (or shows the folder's empty state) instead of the file list; the list remains in the single / narrow layouts and the picker. Tree toolbar for folder actions, tree rows draggable across folders and mounts, unsaved inline edits guarded. \`PreviewBody\` / \`DiscardChangesDialog\` live in the new \`react/preview-pane.tsx\`. Verified: 37 Playwright e2e.
+
+## 2026-11-04 05:44 [progress]
+
+Tree + preview header: an editor-style path bar (`react/path-bar.tsx`, modelled on the bks file browser) replaces the up button and breadcrumb in the split layout: mount › folders › open file; each step opens a picker of its siblings (folders unfold, files open, "Open <folder>" on folder steps), the mount step switches mounts. Verified: tree e2e + new path bar e2e.
+
+## 2026-11-04 05:50 [progress]
+
+Split layout keeps the open file: clicking folders or mounts only moves the tree's focus; the preview changes only when another file is selected (`openFile` state, cleared when the file disappears from its loaded folder or is deleted from the header). The path bar shows the open file's path; every step, including the mount, lists its siblings (no folder-open item). Download, rename and delete act on the entry's own mount; renaming the open file keeps it open. Verified: 38 Playwright e2e.

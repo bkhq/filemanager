@@ -4,19 +4,10 @@ import type { FmEntry } from "../core/schema";
 import type { FmLabels } from "./labels";
 import type { FmPreviewer } from "./preview-registry";
 import { ChevronLeftIcon, ChevronRightIcon, DownloadIcon } from "lucide-react";
-import { createElement, Suspense, useState } from "react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { IconButton } from "./icon-button";
-import { findPreviewer } from "./preview-registry";
+import { DiscardChangesDialog, PreviewBody } from "./preview-pane";
 
 /** Preview of `entry` with previous / next over `siblings` and a guard against losing unsaved edits. */
 export function PreviewDialog({ entry, siblings, client, labels, editable, previewers, onNavigate, onDownload, onClose }: {
@@ -58,13 +49,6 @@ export function PreviewDialog({ entry, siblings, client, labels, editable, previ
       go(next);
   };
 
-  const shown = editable
-    ? entry
-    : {
-        ...entry,
-        caps: { ...entry.caps, write: false },
-      };
-
   return (
     <>
       <Dialog open onOpenChange={o => !o && guard(onClose)}>
@@ -81,40 +65,20 @@ export function PreviewDialog({ entry, siblings, client, labels, editable, previ
             )}
           </DialogHeader>
           <div className="min-h-0 flex-1">
-            <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">{labels.loading}</div>}>
-              {createElement(findPreviewer(entry, previewers), {
-                key: entry.path,
-                entry: shown,
-                client,
-                labels,
-                actions,
-                onDirtyChange: setDirty,
-              })}
-            </Suspense>
+            <PreviewBody entry={entry} client={client} labels={labels} editable={editable} previewers={previewers} actions={actions} onDirtyChange={setDirty} />
           </div>
         </DialogContent>
       </Dialog>
       {pending && (
-        <AlertDialog open onOpenChange={o => !o && setPending(undefined)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{labels.discardChanges}</AlertDialogTitle>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>{labels.cancel}</AlertDialogCancel>
-              <AlertDialogAction
-                variant="destructive"
-                onClick={() => {
-                  setPending(undefined);
-                  setDirty(false);
-                  pending();
-                }}
-              >
-                {labels.discard}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <DiscardChangesDialog
+          labels={labels}
+          onCancel={() => setPending(undefined)}
+          onDiscard={() => {
+            setPending(undefined);
+            setDirty(false);
+            pending();
+          }}
+        />
       )}
     </>
   );

@@ -45,7 +45,9 @@ export function DetailsPanel({ entry, mountLabel, client, labels, overlay, onClo
 
   return (
     <aside
-      className={cn("flex w-72 shrink-0 flex-col border-l bg-background", overlay && "absolute inset-y-0 right-0 z-20 max-w-[85%] shadow-lg")}
+      className={cn("flex flex-col bg-background", overlay
+        ? "absolute inset-y-0 right-0 z-20 w-72 max-w-[85%] border-l shadow-lg"
+        : "h-full")}
       aria-label={labels.details}
     >
       <div className="flex items-center gap-2 border-b px-3 py-2">

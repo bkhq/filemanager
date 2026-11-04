@@ -47,3 +47,5 @@ Each plan is a single line linking to its detail file. All detailed information 
 - [x] [**20261103-1005-cross-mount-copy Cross-mount copy and move**](20261103-1005-cross-mount-copy.md) `2026-11-03`
 - [x] [**20261103-1005-resumable-uploads Large and resumable uploads**](20261103-1005-resumable-uploads.md) `2026-11-03`
 - [x] [**20261103-1005-workers-r2 Cloudflare Workers app and R2 driver**](20261103-1005-workers-r2.md) `2026-11-03`
+- [x] [**20261104-0200-resizable-panels Resizable panels**](20261104-0200-resizable-panels.md) `2026-11-04`
+- [x] [**20261104-0337-tree-preview-layout Tree + preview layout**](20261104-0337-tree-preview-layout.md) `2026-11-04`

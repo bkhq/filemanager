@@ -3,6 +3,7 @@ import type { FmClient } from "../client/client";
 import type { FmUploadFile } from "../client/upload";
 import type { FmEntry, FmOpsRequest, FmSortKey } from "../core/schema";
 import type { FmFeatures } from "./features";
+import type { FmTreeTarget } from "./file-tree";
 import type { FmLabels } from "./labels";
 import type { FmActionContext, FmFileAction, FmPlugin } from "./plugins";
 import type { FmClipboard, FmSelection, FmSelectMode } from "./state";
@@ -18,8 +19,10 @@ import {
   CopyIcon,
   CopyPlusIcon,
   DownloadIcon,
+  EyeIcon,
   FilePlusIcon,
   FileSearchIcon,
+  FolderOpenIcon,
   FolderPlusIcon,
   FolderUpIcon,
   InfoIcon,
@@ -36,6 +39,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDefaultLayout } from "react-resizable-panels";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -50,6 +54,7 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuShortcut,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import {
@@ -64,6 +69,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { createFmClient } from "../client/client";
 import { fmKeys, useFmMutations, useListing, useMounts, useSearch, useTrash } from "../client/hooks";
 import { createUploadQueue, xhrTransport } from "../client/upload";
@@ -78,7 +84,9 @@ import { FileTree } from "./file-tree";
 import { IconButton } from "./icon-button";
 import { enLabels } from "./labels";
 import { groupMountsByDriver, parseHidden, visibleMounts } from "./mount-visibility";
+import { PathBar } from "./path-bar";
 import { PreviewDialog } from "./preview-dialog";
+import { DiscardChangesDialog, PreviewBody } from "./preview-pane";
 import { QuickOpen } from "./quick-open";
 import { EMPTY_SELECTION, formatSize, kindOf, prune, select, step } from "./state";
 import { TrashView } from "./trash-view";
@@ -139,7 +147,7 @@ export interface FileManagerProps {
 type DialogState
   = | { kind: "mkdir" }
     | { kind: "rename"; entry: FmEntry }
-    | { kind: "delete"; paths: string[] }
+    | { kind: "delete"; paths: string[]; mount: string; after?: () => void }
     | { kind: "newFile" }
     | { kind: "emptyTrash" }
     | { kind: "manageDrives" }
@@ -188,6 +196,27 @@ function useStoredList(key: string) {
 
 const NARROW = 640;
 
+const MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent);
+/** Shortcut labels shown in context menus; they mirror the list's key handler. */
+const KEYS = {
+  open: MAC
+    ? "↩"
+    : "Enter",
+  copy: MAC
+    ? "⌘C"
+    : "Ctrl+C",
+  cut: MAC
+    ? "⌘X"
+    : "Ctrl+X",
+  paste: MAC
+    ? "⌘V"
+    : "Ctrl+V",
+  rename: "F2",
+  delete: MAC
+    ? "⌦"
+    : "Del",
+};
+
 /** Width of an element, tracked with ResizeObserver (0 until measured). */
 function useWidth() {
   const [el, setEl] = useState<HTMLElement | null>(null);
@@ -233,7 +262,20 @@ export function FileManager(props: FileManagerProps) {
   const [notice, setNotice] = useState<{ message: string; undo?: () => void }>();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [dropActive, setDropActive] = useState(false);
+  // Unsaved edits in the inline preview; navigation asks before discarding them.
+  const paneDirtyRef = useRef(false);
+  const [pendingNav, setPendingNav] = useState<() => void>();
+  const [paneActions, setPaneActions] = useState<HTMLElement | null>(null);
+  const guard = useCallback((fn: () => void) => {
+    if (paneDirtyRef.current)
+      setPendingNav(() => fn);
+    else
+      fn();
+  }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Set by the tree row before its context menu opens; read once by the trigger.
+  const treeTargetRef = useRef<FmTreeTarget | undefined>(undefined);
+  const [treeTarget, setTreeTarget] = useState<FmTreeTarget>();
   const folderInputRef = useRef<HTMLInputElement>(null);
 
   const listing = useListing(client, mount, path, sort.key, sort.order, query.trim());
@@ -266,6 +308,26 @@ export function FileManager(props: FileManagerProps) {
     };
   }, [rawSelection, order, pick, byPath]);
   const selected = useMemo(() => [...selection.paths].map(p => byPath.get(p)).filter((e): e is FmEntry => !!e), [selection, byPath]);
+  // With the tree shown, the right side shows the open file instead of listing the folder.
+  // Selecting a file opens it; folders, mounts and an empty selection leave it open.
+  const explorer = split && !pick;
+  const [openFile, setOpenFile] = useState<FmEntry>();
+  const picked = explorer && !inTrash && selected.length === 1 && selected[0]!.kind === "file"
+    ? selected[0]
+    : undefined;
+  if (picked && (picked.mount !== openFile?.mount || picked.path !== openFile.path || picked.etag !== openFile.etag))
+    setOpenFile(picked);
+  // Gone from its own, fully loaded folder: deleted or renamed elsewhere.
+  if (openFile && !picked && openFile.mount === mount && dirname(openFile.path) === path && !inTrash
+    && listing.isSuccess && !listing.isPlaceholderData && !listing.hasNextPage && !query.trim() && !byPath.has(openFile.path)) {
+    setOpenFile(undefined);
+  }
+  const paneFile = explorer && !inTrash
+    ? openFile
+    : undefined;
+  useEffect(() => {
+    paneDirtyRef.current = false;
+  }, [paneFile?.path]);
   const mutations = useFmMutations(client, mount ?? "");
   const canWrite = !!dir?.caps.write;
   const canUpload = canWrite && features.upload;
@@ -370,31 +432,46 @@ export function FileManager(props: FileManagerProps) {
   };
 
   /** Mounts with a trash delete right away (undo is offered); others confirm first. */
-  const requestDelete = (paths: string[]) => {
-    if (currentMount?.trash)
-      runOps({ op: "delete", paths }, () => setRawSelection(EMPTY_SELECTION));
-    else
-      setDialog({ kind: "delete", paths });
+  const requestDelete = (paths: string[], from = mount, after?: () => void) => {
+    if (!from)
+      return;
+    const done = () => {
+      setRawSelection(EMPTY_SELECTION);
+      after?.();
+    };
+    if (mounts.data?.find(m => m.id === from)?.trash) {
+      runOps({ op: "delete", paths }, done, from);
+    }
+    else {
+      setDialog({
+        kind: "delete",
+        paths,
+        mount: from,
+        after: done,
+      });
+    }
   };
+
+  /** Search hit: go to its folder with the hit selected. */
+  const reveal = (e: FmEntry) => guard(() => {
+    navigate(e.mount, dirname(e.path));
+    setRawSelection({
+      paths: new Set([e.path]),
+      anchor: e.path,
+    });
+  });
 
   const open = (e: FmEntry) => {
     if (e.kind === "dir")
       navigate(e.mount, e.path);
+    else if (explorer)
+      reveal(e);
     else if (!pick)
       setPreview(e);
     else if (pickable(e) && pick.multiple)
       setRawSelection(s => select(s, e.path, "toggle", order));
     else if (pickable(e))
       pick.onPick([e]);
-  };
-
-  /** Search hit: go to its folder with the hit selected. */
-  const reveal = (e: FmEntry) => {
-    navigate(e.mount, dirname(e.path));
-    setRawSelection({
-      paths: new Set([e.path]),
-      anchor: e.path,
-    });
   };
   const openEntry = below
     ? reveal
@@ -404,18 +481,20 @@ export function FileManager(props: FileManagerProps) {
   const pickQuickOpen = (e: FmEntry) => {
     if (e.kind === "dir")
       return navigate(e.mount, e.path);
+    if (explorer)
+      return reveal(maskEntry(e, features));
     navigate(e.mount, dirname(e.path));
     setPreview(maskEntry(e, features));
   };
   const canQuickOpen = features.search && !inTrash && !!mount;
 
   const download = (targets: FmEntry[]) => {
-    if (!mount || targets.length === 0)
+    if (targets.length === 0)
       return;
     const only = targets[0]!;
     triggerDownload(targets.length === 1 && only.kind === "file"
-      ? client.readUrl(mount, only.path, { download: true })
-      : client.archiveUrl(mount, targets.map(t => t.path)));
+      ? client.readUrl(only.mount, only.path, { download: true })
+      : client.archiveUrl(only.mount, targets.map(t => t.path)));
   };
 
   const copyToClipboard = (mode: FmClipboard["mode"], targets: FmEntry[]) => {
@@ -449,10 +528,11 @@ export function FileManager(props: FileManagerProps) {
   };
 
   /** Tree drop: move within the mount, copy to another one. */
-  const dropEntries = (paths: string[], to: string, folder: string) => {
-    if (!mount)
+  const dropEntries = (paths: string[], to: string, folder: string, from?: string) => {
+    const source = from ?? mount;
+    if (!source)
       return;
-    const cross = to !== mount;
+    const cross = to !== source;
     if ((cross && !features.copy) || (!cross && !features.move))
       return;
     runOps({
@@ -465,7 +545,7 @@ export function FileManager(props: FileManagerProps) {
         ? { destMount: to }
         : {}),
       conflict: "rename",
-    });
+    }, undefined, source);
   };
 
   const copyContents = async (entry: FmEntry) => {
@@ -530,11 +610,11 @@ export function FileManager(props: FileManagerProps) {
     switch (e.key) {
       case "ArrowDown":
       case "ArrowRight":
-        setRawSelection(s => step(prune(s, order), order, 1, e.shiftKey));
+        guard(() => setRawSelection(s => step(prune(s, order), order, 1, e.shiftKey)));
         break;
       case "ArrowUp":
       case "ArrowLeft":
-        setRawSelection(s => step(prune(s, order), order, -1, e.shiftKey));
+        guard(() => setRawSelection(s => step(prune(s, order), order, -1, e.shiftKey)));
         break;
       case "Enter":
         if (pick && selection.anchor !== undefined && byPath.has(selection.anchor))
@@ -602,15 +682,18 @@ export function FileManager(props: FileManagerProps) {
     void filesFromDrop(e.dataTransfer).then(upload);
   };
 
-  const menuItem = (key: string, label: string, icon: ReactNode, fn: () => void, opts: { show?: boolean; destructive?: boolean } = {}) =>
+  const menuItem = (key: string, label: string, icon: ReactNode, fn: () => void, opts: { show?: boolean; destructive?: boolean; shortcut?: string } = {}) =>
     opts.show === false
       ? null
       : (
           <ContextMenuItem key={key} variant={opts.destructive ? "destructive" : "default"} onClick={fn}>
             {icon}
             {label}
+            {opts.shortcut && <ContextMenuShortcut aria-hidden>{opts.shortcut}</ContextMenuShortcut>}
           </ContextMenuItem>
         );
+  /** Shared shell for the list and tree context menus. */
+  const menuContent = (items: ReactNode) => <ContextMenuContent className="w-56">{items}</ContextMenuContent>;
 
   const runAction = (action: FmFileAction, targets: FmEntry[]) => {
     if (!mount)
@@ -642,16 +725,19 @@ export function FileManager(props: FileManagerProps) {
     ]
       .filter(a => !a.when || a.when(targets));
     return [
-      one && menuItem("open", labels.open, null, () => open(one)),
+      one && menuItem("open", labels.open, one.kind === "dir"
+        ? <FolderOpenIcon />
+        : <EyeIcon />, () => open(one), { shortcut: KEYS.open }),
       menuItem("download", labels.download, <DownloadIcon />, () => download(targets), { show: features.download }),
       <ContextMenuSeparator key="s1" />,
-      menuItem("copy", labels.copy, <CopyIcon />, () => copyToClipboard("copy", targets), {
-        show: targets.every(t => t.caps.copy),
-      }),
       menuItem("cut", labels.cut, <ScissorsIcon />, () => copyToClipboard("cut", targets), {
         show: targets.every(t => t.caps.move),
+        shortcut: KEYS.cut,
       }),
-      one && menuItem("rename", labels.rename, <PencilIcon />, () => setDialog({ kind: "rename", entry: one }), { show: one.caps.rename }),
+      menuItem("copy", labels.copy, <CopyIcon />, () => copyToClipboard("copy", targets), {
+        show: targets.every(t => t.caps.copy),
+        shortcut: KEYS.copy,
+      }),
       menuItem("duplicate", labels.duplicate, <CopyPlusIcon />, () => runOps({
         op: "copy",
         paths: targets.map(t => t.path),
@@ -661,13 +747,19 @@ export function FileManager(props: FileManagerProps) {
       one && menuItem("copyContents", labels.copyContents, <ClipboardCopyIcon />, () => void copyContents(one), {
         show: features.download && !inTrash && one.kind === "file" && kindOf(one) === "text" && one.size <= 1024 * 1024,
       }),
+      <ContextMenuSeparator key="s2" />,
+      one && menuItem("rename", labels.rename, <PencilIcon />, () => setDialog({ kind: "rename", entry: one }), {
+        show: one.caps.rename,
+        shortcut: KEYS.rename,
+      }),
       one && menuItem("details", labels.details, <InfoIcon />, () => setDetailsOpen(true), { show: features.details }),
-      custom.length > 0 && <ContextMenuSeparator key="s2" />,
+      custom.length > 0 && <ContextMenuSeparator key="s3" />,
       ...custom.map(a => menuItem(`x-${a.id}`, a.label, a.icon, () => runAction(a, targets))),
-      <ContextMenuSeparator key="s3" />,
+      <ContextMenuSeparator key="s4" />,
       menuItem("delete", labels.delete, <Trash2Icon />, () => requestDelete(targets.map(t => t.path)), {
         show: targets.every(t => t.caps.delete),
         destructive: true,
+        shortcut: KEYS.delete,
       }),
     ];
   };
@@ -676,388 +768,530 @@ export function FileManager(props: FileManagerProps) {
     menuItem("mkdir", labels.newFolder, <FolderPlusIcon />, () => setDialog({ kind: "mkdir" }), { show: canMkdir }),
     menuItem("newFile", labels.newFile, <FilePlusIcon />, () => setDialog({ kind: "newFile" }), { show: canNewFile }),
     menuItem("upload", labels.upload, <UploadIcon />, () => fileInputRef.current?.click(), { show: canUpload }),
-    menuItem("paste", labels.paste, <ClipboardPasteIcon />, paste, { show: canPaste }),
+    menuItem("paste", labels.paste, <ClipboardPasteIcon />, paste, { show: canPaste, shortcut: KEYS.paste }),
     menuItem("refresh", labels.refresh, <RefreshCwIcon />, () => void listing.refetch()),
   ];
+
+  const uploadMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<IconButton label={labels.upload} />}><UploadIcon /></DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+          <UploadIcon />
+          {labels.upload}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => folderInputRef.current?.click()}>
+          <FolderUpIcon />
+          {labels.uploadFolder}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+  const refreshButton = (
+    <IconButton
+      label={labels.refresh}
+      onClick={() => void qc.invalidateQueries({
+        queryKey: fmKeys.all(client),
+      })}
+    >
+      <RefreshCwIcon />
+    </IconButton>
+  );
 
   const crumbs = path === "/"
     ? []
     : path.slice(1).split("/");
+
+  const detailsEntry = detailsOpen && features.details && !inTrash
+    ? (selected.length === 1
+        ? selected[0]
+        : dir)
+    : undefined;
+  const sideDetails = !!detailsEntry && !narrow;
+  const panes = useDefaultLayout({
+    id: `${storageKey}:panels`,
+    panelIds: [
+      ...(split
+        ? ["tree"]
+        : []),
+      "main",
+      ...(sideDetails
+        ? ["details"]
+        : []),
+    ],
+    ...(typeof localStorage !== "undefined"
+      ? { storage: localStorage }
+      : {}),
+  });
 
   if (mounts.data && mounts.data.length === 0)
     return <div className={cn("p-6 text-sm text-muted-foreground", props.className)}>{labels.noMounts}</div>;
 
   return (
     <div ref={rootRef} className={cn("relative flex h-full min-h-0 overflow-hidden rounded-lg border bg-background", props.className)}>
-      {split && (
-        <aside className="w-56 shrink-0 overflow-auto border-r">
-          {shownMounts && (
-            <FileTree
-              client={client}
-              mounts={features.trash
-                ? shownMounts
-                : shownMounts.map(m => ({ ...m, trash: false }))}
-              mount={mount}
-              path={path}
-              inTrash={inTrash}
-              onNavigate={navigate}
-              onOpenTrash={m => go(m, "/", true)}
-              onDropEntries={dropEntries}
-              readOnlyLabel={labels.readOnly}
-              trashLabel={labels.trash}
-              group={props.sidebar?.group}
-              groupLabel={labels.driverGroup}
-              manageLabel={labels.manageDrives}
-              onManage={() => setDialog({ kind: "manageDrives" })}
-            />
-          )}
-        </aside>
-      )}
+      <ResizablePanelGroup id={`${storageKey}:panels`} orientation="horizontal" className="min-w-0 flex-1" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
+        {split && (
+          <ResizablePanel id="tree" defaultSize="224px" minSize="160px" maxSize="40%" className="flex flex-col">
+            {explorer && (
+              <div role="toolbar" aria-label={labels.folderActions} className="flex shrink-0 items-center gap-0.5 border-b px-2 py-1.5">
+                {canMkdir && <IconButton label={labels.newFolder} onClick={() => setDialog({ kind: "mkdir" })}><FolderPlusIcon /></IconButton>}
+                {canNewFile && <IconButton label={labels.newFile} onClick={() => setDialog({ kind: "newFile" })}><FilePlusIcon /></IconButton>}
+                {canUpload && uploadMenu}
+                {canPaste && <IconButton label={labels.paste} onClick={paste}><ClipboardPasteIcon /></IconButton>}
+                <span className="flex-1" />
+                {canQuickOpen && <IconButton label={labels.quickOpen} onClick={() => setQuickOpen(true)}><FileSearchIcon /></IconButton>}
+                {refreshButton}
+              </div>
+            )}
+            <div className="min-h-0 flex-1 overflow-auto [scrollbar-width:thin]">
+              {shownMounts && (
+                <ContextMenu>
+                  <ContextMenuTrigger
+                    render={<div className="min-h-full" />}
+                    onContextMenu={(e) => {
+                      if (!treeTargetRef.current)
+                        e.preventBaseUIHandler();
+                      treeTargetRef.current = undefined;
+                    }}
+                  >
+                    <FileTree
+                      client={client}
+                      mounts={features.trash
+                        ? shownMounts
+                        : shownMounts.map(m => ({ ...m, trash: false }))}
+                      mount={mount}
+                      path={path}
+                      inTrash={inTrash}
+                      onNavigate={navigate}
+                      onOpenTrash={m => go(m, "/", true)}
+                      onRevealFile={reveal}
+                      selected={selected.length === 1
+                        ? selected[0]!.path
+                        : undefined}
+                      onDropEntries={dropEntries}
+                      readOnlyLabel={labels.readOnly}
+                      trashLabel={labels.trash}
+                      group={props.sidebar?.group}
+                      groupLabel={labels.driverGroup}
+                      manageLabel={labels.manageDrives}
+                      onManage={() => setDialog({ kind: "manageDrives" })}
+                      onContextTarget={(target) => {
+                        treeTargetRef.current = target;
+                        setTreeTarget(target);
+                        // The menus act on the current folder, so show the target first.
+                        if (target?.entry)
+                          reveal(target.entry);
+                        else if (target)
+                          navigate(target.mount, "/");
+                      }}
+                    />
+                  </ContextMenuTrigger>
+                  {menuContent(treeTarget && (treeTarget.entry
+                    ? entryMenu([treeTarget.entry])
+                    : blankMenu()))}
+                </ContextMenu>
+              )}
+            </div>
+          </ResizablePanel>
+        )}
+        {split && <ResizableHandle withHandle aria-label={labels.resizeTree} />}
 
-      <section
-        className="flex min-w-0 flex-1 flex-col outline-none"
-        tabIndex={0}
-        onKeyDown={onKeyDown}
-        onDragOver={onDragOver}
-        onDragLeave={e => !e.currentTarget.contains(e.relatedTarget as Node) && setDropActive(false)}
-        onDrop={onDrop}
-        aria-label={currentMount?.label}
-      >
-        <header className="flex flex-wrap items-center gap-1 border-b px-2 py-1.5">
-          <IconButton label={labels.up} disabled={path === "/"} onClick={() => mount && navigate(mount, dirname(path))}>
-            <ArrowUpIcon />
-          </IconButton>
-          {/* Narrow: the toolbar wraps below the breadcrumb instead of squeezing it. */}
-          <Breadcrumb className={cn("min-w-0 flex-1 px-1", narrow && "basis-[calc(100%-2.5rem)]")}>
-            <BreadcrumbList className="flex-nowrap overflow-hidden">
-              <BreadcrumbItem>
-                {!split && shownMounts
-                  ? (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger render={<button type="button" className="flex items-center gap-1 rounded-sm hover:text-foreground" aria-label={labels.storage} />}>
-                          <span className="truncate">{currentMount?.label}</span>
-                          <ChevronDownIcon className="size-3.5" />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start" className="w-56">
-                          <DropdownMenuRadioGroup
-                            value={inTrash
-                              ? ""
-                              : mount ?? ""}
-                            onValueChange={v => navigate(v as string, "/")}
-                          >
-                            {props.sidebar?.group === "driver"
-                              ? groupMountsByDriver(shownMounts).map(g => (
-                                  <DropdownMenuGroup key={g.driver}>
-                                    <DropdownMenuLabel>{labels.driverGroup(g.driver)}</DropdownMenuLabel>
-                                    {g.mounts.map(m => <DropdownMenuRadioItem key={m.id} value={m.id} closeOnClick>{m.label}</DropdownMenuRadioItem>)}
-                                  </DropdownMenuGroup>
-                                ))
-                              : shownMounts.map(m => <DropdownMenuRadioItem key={m.id} value={m.id} closeOnClick>{m.label}</DropdownMenuRadioItem>)}
-                          </DropdownMenuRadioGroup>
-                          {currentMount?.trash && features.trash && (
+        <ResizablePanel id="main" minSize="320px">
+
+          <section
+            className="flex h-full min-w-0 flex-col outline-none"
+            tabIndex={0}
+            onKeyDown={onKeyDown}
+            onDragOver={onDragOver}
+            onDragLeave={e => !e.currentTarget.contains(e.relatedTarget as Node) && setDropActive(false)}
+            onDrop={onDrop}
+            aria-label={currentMount?.label}
+          >
+            <header className="flex flex-wrap items-center gap-1 border-b px-2 py-1.5">
+              {explorer && !inTrash && mount && shownMounts
+                ? (
+                    <PathBar
+                      client={client}
+                      mounts={shownMounts}
+                      mount={mount}
+                      path={path}
+                      file={paneFile}
+                      labels={labels}
+                      onOpenFile={reveal}
+                    />
+                  )
+                : (
+                    <>
+                      <IconButton label={labels.up} disabled={path === "/"} onClick={() => mount && navigate(mount, dirname(path))}>
+                        <ArrowUpIcon />
+                      </IconButton>
+                      {/* Narrow: the toolbar wraps below the breadcrumb instead of squeezing it. */}
+                      <Breadcrumb className={cn("min-w-0 flex-1 px-1", narrow && "basis-[calc(100%-2.5rem)]")}>
+                        <BreadcrumbList className="flex-nowrap overflow-hidden">
+                          <BreadcrumbItem>
+                            {!split && shownMounts
+                              ? (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger render={<button type="button" className="flex items-center gap-1 rounded-sm hover:text-foreground" aria-label={labels.storage} />}>
+                                      <span className="truncate">{currentMount?.label}</span>
+                                      <ChevronDownIcon className="size-3.5" />
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="start" className="w-56">
+                                      <DropdownMenuRadioGroup
+                                        value={inTrash
+                                          ? ""
+                                          : mount ?? ""}
+                                        onValueChange={v => navigate(v as string, "/")}
+                                      >
+                                        {props.sidebar?.group === "driver"
+                                          ? groupMountsByDriver(shownMounts).map(g => (
+                                              <DropdownMenuGroup key={g.driver}>
+                                                <DropdownMenuLabel>{labels.driverGroup(g.driver)}</DropdownMenuLabel>
+                                                {g.mounts.map(m => <DropdownMenuRadioItem key={m.id} value={m.id} closeOnClick>{m.label}</DropdownMenuRadioItem>)}
+                                              </DropdownMenuGroup>
+                                            ))
+                                          : shownMounts.map(m => <DropdownMenuRadioItem key={m.id} value={m.id} closeOnClick>{m.label}</DropdownMenuRadioItem>)}
+                                      </DropdownMenuRadioGroup>
+                                      {currentMount?.trash && features.trash && (
+                                        <>
+                                          <DropdownMenuSeparator />
+                                          <DropdownMenuItem onClick={() => go(currentMount.id, "/", true)}>
+                                            <Trash2Icon />
+                                            {labels.trash}
+                                          </DropdownMenuItem>
+                                        </>
+                                      )}
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem onClick={() => setDialog({ kind: "manageDrives" })}>
+                                        <SettingsIcon />
+                                        {labels.manageDrives}
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                )
+                              : crumbs.length || inTrash
+                                ? <BreadcrumbLink render={<button type="button" onClick={() => mount && navigate(mount, "/")} />}>{currentMount?.label}</BreadcrumbLink>
+                                : <BreadcrumbPage>{currentMount?.label}</BreadcrumbPage>}
+                          </BreadcrumbItem>
+                          {inTrash && (
                             <>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => go(currentMount.id, "/", true)}>
-                                <Trash2Icon />
-                                {labels.trash}
-                              </DropdownMenuItem>
+                              <BreadcrumbSeparator />
+                              <BreadcrumbItem>
+                                <BreadcrumbPage>{labels.trash}</BreadcrumbPage>
+                              </BreadcrumbItem>
                             </>
                           )}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => setDialog({ kind: "manageDrives" })}>
-                            <SettingsIcon />
-                            {labels.manageDrives}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )
-                  : crumbs.length || inTrash
-                    ? <BreadcrumbLink render={<button type="button" onClick={() => mount && navigate(mount, "/")} />}>{currentMount?.label}</BreadcrumbLink>
-                    : <BreadcrumbPage>{currentMount?.label}</BreadcrumbPage>}
-              </BreadcrumbItem>
-              {inTrash && (
-                <>
-                  <BreadcrumbSeparator />
-                  <BreadcrumbItem>
-                    <BreadcrumbPage>{labels.trash}</BreadcrumbPage>
-                  </BreadcrumbItem>
-                </>
-              )}
-              {!inTrash && crumbs.map((name, i) => {
-                const target = `/${crumbs.slice(0, i + 1).join("/")}`;
-                return [
-                  <BreadcrumbSeparator key={`s-${target}`} />,
-                  <BreadcrumbItem key={target} className="min-w-0">
-                    {i === crumbs.length - 1
-                      ? <BreadcrumbPage className="truncate">{name}</BreadcrumbPage>
-                      : <BreadcrumbLink className="truncate" render={<button type="button" onClick={() => mount && navigate(mount, target)} />}>{name}</BreadcrumbLink>}
-                  </BreadcrumbItem>,
-                ];
-              })}
-            </BreadcrumbList>
-          </Breadcrumb>
+                          {!inTrash && crumbs.map((name, i) => {
+                            const target = `/${crumbs.slice(0, i + 1).join("/")}`;
+                            return [
+                              <BreadcrumbSeparator key={`s-${target}`} />,
+                              <BreadcrumbItem key={target} className="min-w-0">
+                                {i === crumbs.length - 1
+                                  ? <BreadcrumbPage className="truncate">{name}</BreadcrumbPage>
+                                  : <BreadcrumbLink className="truncate" render={<button type="button" onClick={() => mount && navigate(mount, target)} />}>{name}</BreadcrumbLink>}
+                              </BreadcrumbItem>,
+                            ];
+                          })}
+                        </BreadcrumbList>
+                      </Breadcrumb>
+                    </>
+                  )}
 
-          {inTrash
-            ? (
-                <Button size="sm" variant="ghost" disabled={trashItems.length === 0} onClick={() => setDialog({ kind: "emptyTrash" })}>
-                  <Trash2Icon />
-                  {labels.emptyTrash}
-                </Button>
-              )
-            : features.search && (
-              <div className={cn("relative flex items-center gap-1", narrow && "order-last basis-full")}>
-                <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  type="search"
-                  aria-label={labels.search}
-                  placeholder={labels.search}
-                  className={cn("h-7 pl-7 text-xs md:text-xs", narrow
-                    ? "w-full"
-                    : "w-48")}
-                  value={query}
-                  onChange={e => changeQuery(e.target.value)}
-                  onKeyDown={e => e.key === "Escape" && changeQuery("")}
-                />
-                {canQuickOpen && <IconButton label={labels.quickOpen} onClick={() => setQuickOpen(true)}><FileSearchIcon /></IconButton>}
-                {query.trim() && (
-                  <div className="flex shrink-0 items-center gap-0.5" role="group" aria-label={labels.search}>
-                    {(["folder", "below"] as const).map(s => (
-                      <Button
-                        key={s}
-                        size="xs"
-                        variant={searchScope === s
-                          ? "secondary"
-                          : "ghost"}
-                        aria-pressed={searchScope === s}
-                        onClick={() => setSearchScope(s)}
-                      >
-                        {s === "folder"
-                          ? labels.searchHere
-                          : labels.searchBelow}
-                      </Button>
-                    ))}
+              {inTrash
+                ? (
+                    <Button size="sm" variant="ghost" disabled={trashItems.length === 0} onClick={() => setDialog({ kind: "emptyTrash" })}>
+                      <Trash2Icon />
+                      {labels.emptyTrash}
+                    </Button>
+                  )
+                : features.search && !explorer && (
+                  <div className={cn("relative flex items-center gap-1", narrow && "order-last basis-full")}>
+                    <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      type="search"
+                      aria-label={labels.search}
+                      placeholder={labels.search}
+                      className={cn("h-7 pl-7 text-xs md:text-xs", narrow
+                        ? "w-full"
+                        : "w-48")}
+                      value={query}
+                      onChange={e => changeQuery(e.target.value)}
+                      onKeyDown={e => e.key === "Escape" && changeQuery("")}
+                    />
+                    {canQuickOpen && <IconButton label={labels.quickOpen} onClick={() => setQuickOpen(true)}><FileSearchIcon /></IconButton>}
+                    {query.trim() && (
+                      <div className="flex shrink-0 items-center gap-0.5" role="group" aria-label={labels.search}>
+                        {(["folder", "below"] as const).map(s => (
+                          <Button
+                            key={s}
+                            size="xs"
+                            variant={searchScope === s
+                              ? "secondary"
+                              : "ghost"}
+                            aria-pressed={searchScope === s}
+                            onClick={() => setSearchScope(s)}
+                          >
+                            {s === "folder"
+                              ? labels.searchHere
+                              : labels.searchBelow}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
+
+              {inTrash
+                ? null
+                : explorer
+                  ? paneFile && (
+                    <div className="flex items-center gap-1" role="toolbar" aria-label={paneFile.name}>
+                      <div ref={setPaneActions} className="flex items-center gap-1" />
+                      {features.download && <IconButton label={labels.download} onClick={() => download([paneFile])}><DownloadIcon /></IconButton>}
+                      {paneFile.caps.rename && <IconButton label={labels.rename} onClick={() => setDialog({ kind: "rename", entry: paneFile })}><PencilIcon /></IconButton>}
+                      {paneFile.caps.delete && <IconButton label={labels.delete} onClick={() => requestDelete([paneFile.path], paneFile.mount, () => setOpenFile(undefined))}><Trash2Icon /></IconButton>}
+                    </div>
+                  )
+                  : selected.length > 0
+                    ? (
+                        <div className="flex items-center gap-1" role="toolbar" aria-label={labels.selected(selected.length)}>
+                          <span className="px-2 text-xs text-muted-foreground">{labels.selected(selected.length)}</span>
+                          {features.download && <IconButton label={labels.download} onClick={() => download(selected)}><DownloadIcon /></IconButton>}
+                          {selected.every(s => s.caps.copy) && <IconButton label={labels.copy} onClick={() => copyToClipboard("copy", selected)}><CopyIcon /></IconButton>}
+                          {selected.every(s => s.caps.move) && <IconButton label={labels.cut} onClick={() => copyToClipboard("cut", selected)}><ScissorsIcon /></IconButton>}
+                          {selected.length === 1 && selected[0]!.caps.rename && <IconButton label={labels.rename} onClick={() => setDialog({ kind: "rename", entry: selected[0]! })}><PencilIcon /></IconButton>}
+                          {selected.every(s => s.caps.delete) && (
+                            <IconButton
+                              label={labels.delete}
+                              onClick={() => requestDelete(selected.map(s => s.path))}
+                            >
+                              <Trash2Icon />
+                            </IconButton>
+                          )}
+                          <IconButton label={labels.cancel} onClick={() => setRawSelection(EMPTY_SELECTION)}><XIcon /></IconButton>
+                        </div>
+                      )
+                    : (
+                        <div className="flex items-center gap-1" role="toolbar">
+                          {canPaste && (
+                            <Button size="sm" variant="ghost" onClick={paste}>
+                              <ClipboardPasteIcon />
+                              {labels.paste}
+                            </Button>
+                          )}
+                          {canMkdir && <IconButton label={labels.newFolder} onClick={() => setDialog({ kind: "mkdir" })}><FolderPlusIcon /></IconButton>}
+                          {canNewFile && <IconButton label={labels.newFile} onClick={() => setDialog({ kind: "newFile" })}><FilePlusIcon /></IconButton>}
+                          {canUpload && uploadMenu}
+                          <DropdownMenu>
+                            {narrow
+                              ? <DropdownMenuTrigger render={<IconButton label={labels.sortBy} />}><ArrowUpDownIcon /></DropdownMenuTrigger>
+                              : <DropdownMenuTrigger render={<Button size="sm" variant="ghost" />}>{labels.sortBy}</DropdownMenuTrigger>}
+                            <DropdownMenuContent align="end" className="w-40">
+                              <DropdownMenuRadioGroup value={sort.key} onValueChange={v => setSort(s => ({ ...s, key: v as FmSortKey }))}>
+                                <DropdownMenuRadioItem value="name">{labels.name}</DropdownMenuRadioItem>
+                                <DropdownMenuRadioItem value="mtime">{labels.modified}</DropdownMenuRadioItem>
+                                <DropdownMenuRadioItem value="size">{labels.size}</DropdownMenuRadioItem>
+                              </DropdownMenuRadioGroup>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuRadioGroup value={sort.order} onValueChange={v => setSort(s => ({ ...s, order: v as "asc" | "desc" }))}>
+                                <DropdownMenuRadioItem value="asc">{labels.ascending}</DropdownMenuRadioItem>
+                                <DropdownMenuRadioItem value="desc">{labels.descending}</DropdownMenuRadioItem>
+                              </DropdownMenuRadioGroup>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                          <IconButton
+                            label={view === "list"
+                              ? labels.gridView
+                              : labels.listView}
+                            onClick={() => setView(view === "list"
+                              ? "grid"
+                              : "list")}
+                          >
+                            {view === "list"
+                              ? <LayoutGridIcon />
+                              : <ListIcon />}
+                          </IconButton>
+                          {refreshButton}
+                        </div>
+                      )}
+              {!narrow && (
+                <IconButton label={split ? labels.hideSidebar : labels.showSidebar} aria-pressed={split} onClick={() => setLayout(split ? "single" : "split")}>
+                  <PanelLeftIcon />
+                </IconButton>
+              )}
+              {!inTrash && features.details && (
+                <IconButton label={labels.details} aria-pressed={detailsOpen} onClick={() => setDetailsOpen(!detailsOpen)}>
+                  <InfoIcon />
+                </IconButton>
+              )}
+            </header>
+
+            {shownError && (
+              <div role="alert" className="flex items-center gap-2 border-b bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
+                <span className="flex-1">{shownError}</span>
+                <IconButton size="icon-xs" label={labels.close} onClick={() => setError(undefined)}><XIcon /></IconButton>
               </div>
             )}
 
-          {inTrash
-            ? null
-            : selected.length > 0
-              ? (
-                  <div className="flex items-center gap-1" role="toolbar" aria-label={labels.selected(selected.length)}>
-                    <span className="px-2 text-xs text-muted-foreground">{labels.selected(selected.length)}</span>
-                    {features.download && <IconButton label={labels.download} onClick={() => download(selected)}><DownloadIcon /></IconButton>}
-                    {selected.every(s => s.caps.copy) && <IconButton label={labels.copy} onClick={() => copyToClipboard("copy", selected)}><CopyIcon /></IconButton>}
-                    {selected.every(s => s.caps.move) && <IconButton label={labels.cut} onClick={() => copyToClipboard("cut", selected)}><ScissorsIcon /></IconButton>}
-                    {selected.length === 1 && selected[0]!.caps.rename && <IconButton label={labels.rename} onClick={() => setDialog({ kind: "rename", entry: selected[0]! })}><PencilIcon /></IconButton>}
-                    {selected.every(s => s.caps.delete) && (
-                      <IconButton
-                        label={labels.delete}
-                        onClick={() => requestDelete(selected.map(s => s.path))}
-                      >
-                        <Trash2Icon />
-                      </IconButton>
-                    )}
-                    <IconButton label={labels.cancel} onClick={() => setRawSelection(EMPTY_SELECTION)}><XIcon /></IconButton>
-                  </div>
-                )
-              : (
-                  <div className="flex items-center gap-1" role="toolbar">
-                    {canPaste && (
-                      <Button size="sm" variant="ghost" onClick={paste}>
-                        <ClipboardPasteIcon />
-                        {labels.paste}
-                      </Button>
-                    )}
-                    {canMkdir && <IconButton label={labels.newFolder} onClick={() => setDialog({ kind: "mkdir" })}><FolderPlusIcon /></IconButton>}
-                    {canNewFile && <IconButton label={labels.newFile} onClick={() => setDialog({ kind: "newFile" })}><FilePlusIcon /></IconButton>}
-                    {canUpload && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger render={<IconButton label={labels.upload} />}><UploadIcon /></DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-44">
-                          <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
-                            <UploadIcon />
-                            {labels.upload}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => folderInputRef.current?.click()}>
-                            <FolderUpIcon />
-                            {labels.uploadFolder}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
-                    <DropdownMenu>
-                      {narrow
-                        ? <DropdownMenuTrigger render={<IconButton label={labels.sortBy} />}><ArrowUpDownIcon /></DropdownMenuTrigger>
-                        : <DropdownMenuTrigger render={<Button size="sm" variant="ghost" />}>{labels.sortBy}</DropdownMenuTrigger>}
-                      <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuRadioGroup value={sort.key} onValueChange={v => setSort(s => ({ ...s, key: v as FmSortKey }))}>
-                          <DropdownMenuRadioItem value="name">{labels.name}</DropdownMenuRadioItem>
-                          <DropdownMenuRadioItem value="mtime">{labels.modified}</DropdownMenuRadioItem>
-                          <DropdownMenuRadioItem value="size">{labels.size}</DropdownMenuRadioItem>
-                        </DropdownMenuRadioGroup>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuRadioGroup value={sort.order} onValueChange={v => setSort(s => ({ ...s, order: v as "asc" | "desc" }))}>
-                          <DropdownMenuRadioItem value="asc">{labels.ascending}</DropdownMenuRadioItem>
-                          <DropdownMenuRadioItem value="desc">{labels.descending}</DropdownMenuRadioItem>
-                        </DropdownMenuRadioGroup>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    <IconButton
-                      label={view === "list"
-                        ? labels.gridView
-                        : labels.listView}
-                      onClick={() => setView(view === "list"
-                        ? "grid"
-                        : "list")}
-                    >
-                      {view === "list"
-                        ? <LayoutGridIcon />
-                        : <ListIcon />}
-                    </IconButton>
-                    <IconButton
-                      label={labels.refresh}
-                      onClick={() => void qc.invalidateQueries({
-                        queryKey: fmKeys.all(client),
-                      })}
-                    >
-                      <RefreshCwIcon />
-                    </IconButton>
-                  </div>
-                )}
-          {!narrow && (
-            <IconButton label={split ? labels.hideSidebar : labels.showSidebar} aria-pressed={split} onClick={() => setLayout(split ? "single" : "split")}>
-              <PanelLeftIcon />
-            </IconButton>
-          )}
-          {!inTrash && features.details && (
-            <IconButton label={labels.details} aria-pressed={detailsOpen} onClick={() => setDetailsOpen(!detailsOpen)}>
-              <InfoIcon />
-            </IconButton>
-          )}
-        </header>
-
-        {shownError && (
-          <div role="alert" className="flex items-center gap-2 border-b bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
-            <span className="flex-1">{shownError}</span>
-            <IconButton size="icon-xs" label={labels.close} onClick={() => setError(undefined)}><XIcon /></IconButton>
-          </div>
-        )}
-
-        {below && search.data?.truncated && (
-          <div className="border-b px-3 py-1 text-xs text-muted-foreground">{labels.searchTruncated}</div>
-        )}
-
-        {inTrash && mount
-          ? (
-              <TrashView
-                mount={mount}
-                mountLabel={currentMount?.label ?? mount}
-                client={client}
-                labels={labels}
-                onError={setError}
-                onRestored={n => n > 0 && setNotice({ message: labels.restored })}
-              />
-            )
-          : (
-              <ContextMenu>
-                <ContextMenuTrigger
-                  render={<div className="flex min-h-0 flex-1 flex-col" />}
-                  onContextMenu={(e) => {
-                    if (!(e.target as HTMLElement).closest("[data-path]"))
-                      setRawSelection(EMPTY_SELECTION);
-                  }}
-                >
-                  <FileList
-                    compact={narrow}
-                    entries={entries}
-                    view={view}
-                    selection={selection}
-                    labels={labels}
-                    client={client}
-                    sort={sort.key}
-                    order={sort.order}
-                    onSort={key => setSort(s => ({
-                      key,
-                      order: s.key === key && s.order === "asc"
-                        ? "desc"
-                        : "asc",
-                    }))}
-                    onSelect={onSelect}
-                    onClearSelection={() => setRawSelection(EMPTY_SELECTION)}
-                    onOpen={openEntry}
-                    onEntryContextMenu={e => !selection.paths.has(e.path) && setRawSelection({
-                      paths: new Set([e.path]),
-                      anchor: e.path,
-                    })}
-                    onDropOnFolder={(paths, folder) => runOps({
-                      op: "move",
-                      paths,
-                      dest: folder.path,
-                      conflict: "rename",
-                    })}
-                    showParent={below}
-                    hasMore={!below && !!listing.hasNextPage && !listing.isFetchingNextPage}
-                    onLoadMore={() => void listing.fetchNextPage()}
-                    disabled={pick && (e => e.kind === "file" && !acceptsEntry(e, pick.accept))}
-                    empty={(
-                      <div className="flex h-full min-h-40 items-center justify-center text-sm text-muted-foreground">
-                        {(below
-                          ? search.isPending
-                          : listing.isPending)
-                          ? labels.loading
-                          : (query.trim()
-                              ? labels.noMatches
-                              : labels.emptyFolder)}
-                      </div>
-                    )}
-                  />
-                </ContextMenuTrigger>
-                <ContextMenuContent className="w-48">
-                  {selected.length
-                    ? entryMenu(selected)
-                    : blankMenu()}
-                </ContextMenuContent>
-              </ContextMenu>
+            {below && search.data?.truncated && (
+              <div className="border-b px-3 py-1 text-xs text-muted-foreground">{labels.searchTruncated}</div>
             )}
 
-        {dropActive && (
-          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-primary/5 ring-2 ring-primary ring-inset">
-            <span className="rounded-md bg-background px-3 py-1.5 text-sm shadow">{labels.dropHere}</span>
-          </div>
+            {inTrash && mount
+              ? (
+                  <TrashView
+                    mount={mount}
+                    mountLabel={currentMount?.label ?? mount}
+                    client={client}
+                    labels={labels}
+                    onError={setError}
+                    onRestored={n => n > 0 && setNotice({ message: labels.restored })}
+                  />
+                )
+              : explorer
+                ? (paneFile
+                    ? (
+                        <div className="min-h-0 flex-1">
+                          <PreviewBody
+                            entry={paneFile}
+                            client={client}
+                            labels={labels}
+                            editable={features.edit}
+                            previewers={pluginPreviewers}
+                            actions={paneActions}
+                            onDirtyChange={(d) => {
+                              paneDirtyRef.current = d;
+                            }}
+                          />
+                        </div>
+                      )
+                    : (
+                        <ContextMenu>
+                          <ContextMenuTrigger render={<div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-6 text-center" />}>
+                            <FolderOpenIcon className="size-10 text-muted-foreground/60" />
+                            <div className="font-medium">
+                              {path === "/"
+                                ? currentMount?.label
+                                : basename(path)}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {listing.isPending
+                                ? labels.loading
+                                : labels.folderItems(entries.length, !!listing.hasNextPage)}
+                            </div>
+                            <div className="text-sm text-muted-foreground">{labels.selectFileHint}</div>
+                            {canUpload && <div className="text-xs text-muted-foreground">{labels.dropHere}</div>}
+                          </ContextMenuTrigger>
+                          {menuContent(blankMenu())}
+                        </ContextMenu>
+                      ))
+                : (
+                    <ContextMenu>
+                      <ContextMenuTrigger
+                        render={<div className="flex min-h-0 flex-1 flex-col" />}
+                        onContextMenu={(e) => {
+                          if (!(e.target as HTMLElement).closest("[data-path]"))
+                            setRawSelection(EMPTY_SELECTION);
+                        }}
+                      >
+                        <FileList
+                          compact={narrow}
+                          entries={entries}
+                          view={view}
+                          selection={selection}
+                          labels={labels}
+                          client={client}
+                          sort={sort.key}
+                          order={sort.order}
+                          onSort={key => setSort(s => ({
+                            key,
+                            order: s.key === key && s.order === "asc"
+                              ? "desc"
+                              : "asc",
+                          }))}
+                          onSelect={onSelect}
+                          onClearSelection={() => setRawSelection(EMPTY_SELECTION)}
+                          onOpen={openEntry}
+                          onEntryContextMenu={e => !selection.paths.has(e.path) && setRawSelection({
+                            paths: new Set([e.path]),
+                            anchor: e.path,
+                          })}
+                          onDropOnFolder={(paths, folder) => runOps({
+                            op: "move",
+                            paths,
+                            dest: folder.path,
+                            conflict: "rename",
+                          })}
+                          showParent={below}
+                          hasMore={!below && !!listing.hasNextPage && !listing.isFetchingNextPage}
+                          onLoadMore={() => void listing.fetchNextPage()}
+                          disabled={pick && (e => e.kind === "file" && !acceptsEntry(e, pick.accept))}
+                          empty={(
+                            <div className="flex h-full min-h-40 items-center justify-center text-sm text-muted-foreground">
+                              {(below
+                                ? search.isPending
+                                : listing.isPending)
+                                ? labels.loading
+                                : (query.trim()
+                                    ? labels.noMatches
+                                    : labels.emptyFolder)}
+                            </div>
+                          )}
+                        />
+                      </ContextMenuTrigger>
+                      {menuContent(selected.length
+                        ? entryMenu(selected)
+                        : blankMenu())}
+                    </ContextMenu>
+                  )}
+
+            {dropActive && (
+              <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-primary/5 ring-2 ring-primary ring-inset">
+                <span className="rounded-md bg-background px-3 py-1.5 text-sm shadow">{labels.dropHere}</span>
+              </div>
+            )}
+
+            {pick && (() => {
+              const total = selected.reduce((n, e) => n + e.size, 0);
+              const over = pick.maxTotalSize !== undefined && total > pick.maxTotalSize;
+              return (
+                <footer className="flex flex-wrap items-center gap-2 border-t px-3 py-2 text-sm" data-fm-pick-bar="">
+                  <span>{labels.selected(selected.length)}</span>
+                  <span className="text-muted-foreground tabular-nums">{labels.pickTotal(formatSize(total))}</span>
+                  {over && <span role="alert" className="text-destructive">{labels.pickOverLimit(formatSize(pick.maxTotalSize!))}</span>}
+                  <span className="flex-1" />
+                  {pick.onCancel && <Button size="sm" variant="ghost" onClick={pick.onCancel}>{labels.cancel}</Button>}
+                  <Button size="sm" disabled={selected.length === 0 || over} onClick={() => pick.onPick(selected)}>{labels.confirm}</Button>
+                </footer>
+              );
+            })()}
+          </section>
+        </ResizablePanel>
+
+        {sideDetails && detailsEntry && <ResizableHandle withHandle aria-label={labels.resizeDetails} />}
+        {sideDetails && detailsEntry && (
+          <ResizablePanel id="details" defaultSize="288px" minSize="220px" maxSize="50%">
+            <DetailsPanel
+              key={detailsEntry.path}
+              entry={detailsEntry}
+              mountLabel={currentMount?.label ?? ""}
+              client={client}
+              labels={labels}
+              overlay={false}
+              onClose={() => setDetailsOpen(false)}
+            />
+          </ResizablePanel>
         )}
+      </ResizablePanelGroup>
 
-        {pick && (() => {
-          const total = selected.reduce((n, e) => n + e.size, 0);
-          const over = pick.maxTotalSize !== undefined && total > pick.maxTotalSize;
-          return (
-            <footer className="flex flex-wrap items-center gap-2 border-t px-3 py-2 text-sm" data-fm-pick-bar="">
-              <span>{labels.selected(selected.length)}</span>
-              <span className="text-muted-foreground tabular-nums">{labels.pickTotal(formatSize(total))}</span>
-              {over && <span role="alert" className="text-destructive">{labels.pickOverLimit(formatSize(pick.maxTotalSize!))}</span>}
-              <span className="flex-1" />
-              {pick.onCancel && <Button size="sm" variant="ghost" onClick={pick.onCancel}>{labels.cancel}</Button>}
-              <Button size="sm" disabled={selected.length === 0 || over} onClick={() => pick.onPick(selected)}>{labels.confirm}</Button>
-            </footer>
-          );
-        })()}
-      </section>
-
-      {detailsOpen && features.details && !inTrash && (selected.length === 1
-        ? selected[0]
-        : dir) && (
+      {detailsEntry && narrow && (
         <DetailsPanel
-          key={(selected.length === 1
-            ? selected[0]
-            : dir)!.path}
-          entry={(selected.length === 1
-            ? selected[0]
-            : dir)!}
+          key={detailsEntry.path}
+          entry={detailsEntry}
           mountLabel={currentMount?.label ?? ""}
           client={client}
           labels={labels}
-          overlay={narrow}
+          overlay
           onClose={() => setDetailsOpen(false)}
         />
       )}
@@ -1094,6 +1328,18 @@ export function FileManager(props: FileManagerProps) {
               }
             : {})}
           onClose={() => setPreview(undefined)}
+        />
+      )}
+
+      {pendingNav && (
+        <DiscardChangesDialog
+          labels={labels}
+          onCancel={() => setPendingNav(undefined)}
+          onDiscard={() => {
+            paneDirtyRef.current = false;
+            setPendingNav(undefined);
+            pendingNav();
+          }}
         />
       )}
 
@@ -1148,8 +1394,19 @@ export function FileManager(props: FileManagerProps) {
           onClose={() => setDialog(undefined)}
           onSubmit={(name) => {
             setDialog(undefined);
-            if (name !== basename(dialog.entry.path))
-              runOps({ op: "rename", path: dialog.entry.path, name });
+            if (name === basename(dialog.entry.path))
+              return;
+            const renamed = dialog.entry;
+            runOps({ op: "rename", path: renamed.path, name }, () => {
+              // Keep showing a renamed open file under its new name.
+              if (renamed.kind === "file" && renamed.mount === openFile?.mount && renamed.path === openFile.path) {
+                reveal({
+                  ...renamed,
+                  name,
+                  path: joinPath(dirname(renamed.path), name),
+                });
+              }
+            }, renamed.mount);
           }}
         />
       )}
@@ -1160,7 +1417,7 @@ export function FileManager(props: FileManagerProps) {
           onClose={() => setDialog(undefined)}
           onConfirm={() => {
             setDialog(undefined);
-            runOps({ op: "delete", paths: dialog.paths }, () => setRawSelection(EMPTY_SELECTION));
+            runOps({ op: "delete", paths: dialog.paths }, dialog.after, dialog.mount);
           }}
         />
       )}
