@@ -18,7 +18,7 @@ export interface PreviewProps {
   onDirtyChange?: (dirty: boolean) => void;
 }
 
-const MAX_TEXT_BYTES = 2 * 1024 * 1024;
+export const MAX_TEXT_BYTES = 2 * 1024 * 1024;
 
 const TextPreview = lazy(() => import("./text-preview").then(m => ({ default: m.TextPreview })));
 
@@ -55,8 +55,6 @@ export function FallbackPreview({ entry, client, labels, message }: PreviewProps
 }
 
 export function LazyTextPreview(props: PreviewProps) {
-  if (props.entry.size > MAX_TEXT_BYTES)
-    return <FallbackPreview {...props} message={props.labels.tooLargeToPreview} />;
   return (
     <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">{props.labels.loading}</div>}>
       <TextPreview {...props} />

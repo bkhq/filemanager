@@ -6,6 +6,7 @@ import type { FmPreviewer } from "./preview-registry";
 import { ChevronLeftIcon, ChevronRightIcon, DownloadIcon } from "lucide-react";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { clearDraft } from "./drafts";
 import { IconButton } from "./icon-button";
 import { DiscardChangesDialog, PreviewBody } from "./preview-pane";
 
@@ -77,6 +78,8 @@ export function PreviewDialog({ entry, siblings, client, labels, editable, previ
             setPending(undefined);
             setDirty(false);
             pending();
+            // After the editor's unmount flush, so the draft does not come back.
+            setTimeout(clearDraft, 0, entry.mount, entry.path);
           }}
         />
       )}

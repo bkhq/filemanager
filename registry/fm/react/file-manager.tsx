@@ -79,6 +79,7 @@ import { basename, dirname, joinPath } from "../core/path";
 import { acceptsEntry } from "./accept";
 import { DetailsPanel } from "./details-panel";
 import { ConfirmDeleteDialog, ManageDrivesDialog, NameDialog, UploadConflictDialog } from "./dialogs";
+import { clearDraft } from "./drafts";
 import { filesFromDrop, filesFromInput } from "./drop";
 import { maskEntry, resolveFeatures } from "./features";
 import { FileList } from "./file-list";
@@ -1359,6 +1360,9 @@ export function FileManager(props: FileManagerProps) {
             paneDirtyRef.current = false;
             setPendingNav(undefined);
             pendingNav();
+            // After the editor's unmount flush, so the draft does not come back.
+            if (paneFile)
+              setTimeout(clearDraft, 0, paneFile.mount, paneFile.path);
           }}
         />
       )}
