@@ -10,6 +10,8 @@ export interface FmDriverEntry {
   mtime: number;
   etag: string;
   mime?: string;
+  /** Matched by an ignore rule such as .gitignore; set only by drivers that know. */
+  ignored?: boolean;
 }
 
 export interface FmByteRange {

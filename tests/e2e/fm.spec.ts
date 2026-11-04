@@ -551,6 +551,39 @@ test("jumps between files from the path bar", async ({ page }) => {
   await expect(bar).toHaveText(/Local disk.*docs.*sample\.pdf/);
 });
 
+test("toggles hidden files in the tree", async ({ page }) => {
+  expect((await page.request.post("/api/fm/m/local/mkdir", {
+    data: { path: "/dotted" },
+  })).ok()).toBe(true);
+  for (const name of [".secret", "plain.txt"])
+    expect((await page.request.put(`/api/fm/m/local/write?path=${encodeURIComponent(`/dotted/${name}`)}`, { data: name })).ok()).toBe(true);
+  await openTreeMount(page, "Local disk");
+  const item = (name: string) => page.getByRole("tree").getByRole("treeitem", { name, exact: true });
+  const toggle = page.getByRole("button", { name: "Show hidden files" });
+  await item("dotted").click();
+  await expect(item("plain.txt")).toBeVisible();
+  await expect(item(".secret")).toHaveCount(0);
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await expect(item(".secret")).toBeVisible();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(item(".secret")).toHaveCount(0);
+  await expect(item("plain.txt")).toBeVisible();
+
+  // The single layout's list follows the same preference.
+  await toggle.click();
+  await page.getByRole("button", { name: "Hide sidebar" }).click();
+  await expect(row(page, "/dotted/.secret")).toBeVisible();
+  await page.getByRole("button", { name: "Show sidebar" }).click();
+  await toggle.click();
+  await page.getByRole("button", { name: "Hide sidebar" }).click();
+  await expect(row(page, "/dotted/plain.txt")).toBeVisible();
+  await expect(row(page, "/dotted/.secret")).toHaveCount(0);
+});
+
 test("guards unsaved inline edits when switching files", async ({ page }) => {
   await openTreeMount(page, "Local disk");
   const item = (name: string) => page.getByRole("tree").getByRole("treeitem", { name, exact: true });
