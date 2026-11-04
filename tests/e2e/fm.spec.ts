@@ -256,6 +256,53 @@ test("copies a text file's contents to the clipboard", async ({ page, context })
   await expect(page.getByRole("menuitem", { name: "Copy contents" })).toHaveCount(0);
 });
 
+test("copies an entry's path and name to the clipboard", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await openMount(page, "Local disk");
+  await row(page, "/notes").dblclick();
+  await contextAction(page, "/notes/todo.txt", "Copy path");
+  await expect(page.getByRole("status").filter({ hasText: "Path copied" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("/notes/todo.txt");
+  await contextAction(page, "/notes/todo.txt", "Copy name");
+  await expect(page.getByRole("status").filter({ hasText: "Name copied" })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("todo.txt");
+});
+
+test("creates a folder inside a collapsed tree folder without opening it", async ({ page }) => {
+  await openTreeMount(page, "Local disk");
+  const tree = page.getByRole("tree");
+  const item = (name: string) => tree.getByRole("treeitem", { name, exact: true });
+  const bar = page.getByRole("navigation", { name: "Path" });
+  await page.getByRole("toolbar", { name: "Folder actions" }).getByRole("button", { name: "New folder" }).click();
+  await page.getByRole("dialog").getByRole("textbox").fill("xm-here-tree");
+  await page.getByRole("button", { name: "Create" }).click();
+  await expect(item("xm-here-tree")).toHaveAttribute("aria-expanded", "false");
+  await item("xm-here-tree").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "New folder here", exact: true }).click();
+  await page.getByRole("dialog").getByRole("textbox").fill("inner-here");
+  await page.getByRole("button", { name: "Create" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(bar).not.toContainText("xm-here-tree");
+  await expect(item("xm-here-tree")).toHaveAttribute("aria-expanded", "false");
+  await item("xm-here-tree").getByRole("button").click();
+  await expect(item("inner-here")).toBeVisible();
+});
+
+test("creates a file inside a list folder row without opening it", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await page.getByRole("button", { name: "New folder" }).click();
+  await page.getByRole("dialog").getByRole("textbox").fill("xm-here-list");
+  await page.getByRole("button", { name: "Create" }).click();
+  await contextAction(page, "/xm-here-list", "New file here");
+  await page.getByRole("dialog").getByRole("textbox").fill("made-here.txt");
+  await page.getByRole("button", { name: "Create" }).click();
+  await expect(page.getByRole("dialog").getByRole("heading", { name: "made-here.txt" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(row(page, "/made-here.txt")).toHaveCount(0);
+  await row(page, "/xm-here-list").dblclick();
+  await expect(row(page, "/xm-here-list/made-here.txt")).toBeVisible();
+});
+
 test("moves the selection to the trash, undoes, restores and purges", async ({ page }) => {
   await openMount(page, "Local disk");
   await row(page, "/e2e").dblclick();
@@ -512,7 +559,7 @@ test("opens context menus on tree rows", async ({ page }) => {
   await expect(page.getByRole("menuitem", { name: "Rename", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
   await item("Local disk").click({ button: "right" });
-  await expect(page.getByRole("menuitem", { name: "New folder", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "New folder here", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
   await item("Trash").click({ button: "right" });
   await expect(page.getByRole("menu")).toHaveCount(0);

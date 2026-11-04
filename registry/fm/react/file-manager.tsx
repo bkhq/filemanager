@@ -1,6 +1,6 @@
 import type { ChangeEvent, DragEvent, KeyboardEvent, ReactNode } from "react";
 import type { FmClient } from "../client/client";
-import type { FmUploadFile } from "../client/upload";
+import type { FmUploadFile, FmUploadTask } from "../client/upload";
 import type { FmEntry, FmOpsRequest, FmSortKey } from "../core/schema";
 import type { FmFeatures } from "./features";
 import type { FmTreeTarget } from "./file-tree";
@@ -144,14 +144,20 @@ export interface FileManagerProps {
   pick?: FmPickOptions;
 }
 
+/** A folder that an action targets instead of the current one. */
+interface FolderRef {
+  mount: string;
+  path: string;
+}
+
 type DialogState
-  = | { kind: "mkdir" }
+  = | { kind: "mkdir"; to?: FolderRef }
     | { kind: "rename"; entry: FmEntry }
     | { kind: "delete"; paths: string[]; mount: string; after?: () => void }
-    | { kind: "newFile" }
+    | { kind: "newFile"; to?: FolderRef }
     | { kind: "emptyTrash" }
     | { kind: "manageDrives" }
-    | { kind: "uploadConflict"; files: FmUploadFile[]; clashes: Set<string> }
+    | { kind: "uploadConflict"; files: FmUploadFile[]; clashes: Set<string>; to: FolderRef }
     | undefined;
 
 /** First path segment of an upload below the target folder. */
@@ -277,6 +283,8 @@ export function FileManager(props: FileManagerProps) {
   const treeTargetRef = useRef<FmTreeTarget | undefined>(undefined);
   const [treeTarget, setTreeTarget] = useState<FmTreeTarget>();
   const folderInputRef = useRef<HTMLInputElement>(null);
+  // Target folder of the next file picker upload; unset uploads into the current folder.
+  const uploadToRef = useRef<FolderRef | undefined>(undefined);
 
   const listing = useListing(client, mount, path, sort.key, sort.order, query.trim());
   const below = features.search && searchScope === "below" && !!query.trim();
@@ -334,12 +342,20 @@ export function FileManager(props: FileManagerProps) {
   const canMkdir = canWrite && features.createFolder;
   const canNewFile = canWrite && features.createFile;
 
-  const onUploadedRef = useRef(() => {});
-  onUploadedRef.current = () => void mutations.invalidate();
+  /** Refreshes the listings of a mount other than the current one too. */
+  const refreshMount = (m: string) => m === mount
+    ? mutations.invalidate()
+    : qc.invalidateQueries({
+        queryKey: fmKeys.lists(client, m),
+      });
+  const mountWritable = (m: string) => !!mounts.data?.find(x => x.id === m)?.caps.write;
+
+  const onUploadedRef = useRef((_task: FmUploadTask) => {});
+  onUploadedRef.current = task => void refreshMount(task.mount);
   const [queue] = useState(() => createUploadQueue({
     transport: xhrTransport(client),
     client,
-    onUploaded: () => onUploadedRef.current(),
+    onUploaded: task => onUploadedRef.current(task),
   }));
 
   const shownError = error ?? listing.error?.message ?? (below
@@ -498,33 +514,37 @@ export function FileManager(props: FileManagerProps) {
   };
 
   const copyToClipboard = (mode: FmClipboard["mode"], targets: FmEntry[]) => {
-    if (mount && targets.length) {
+    if (targets.length) {
       setClipboard({
         mode,
-        mount,
+        mount: targets[0]!.mount,
         paths: targets.map(t => t.path),
       });
     }
   };
 
   const canPaste = !!clipboard && !!mount && canWrite;
-  const paste = () => {
-    if (!clipboard || !canPaste)
+  const pasteInto = (to: FolderRef) => {
+    if (!clipboard)
       return;
     runOps({
       op: clipboard.mode === "cut"
         ? "move"
         : "copy",
       paths: clipboard.paths,
-      dest: path,
-      ...(clipboard.mount !== mount
-        ? { destMount: mount }
+      dest: to.path,
+      ...(clipboard.mount !== to.mount
+        ? { destMount: to.mount }
         : {}),
       conflict: "rename",
     }, () => {
       if (clipboard.mode === "cut")
         setClipboard(undefined);
     }, clipboard.mount);
+  };
+  const paste = () => {
+    if (canPaste && mount)
+      pasteInto({ mount, path });
   };
 
   /** Tree drop: move within the mount, copy to another one. */
@@ -563,26 +583,53 @@ export function FileManager(props: FileManagerProps) {
     }
   };
 
-  const upload = async (files: FmUploadFile[]) => {
-    if (!mount || files.length === 0)
+  const copyText = async (text: string, message: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setNotice({ message });
+    }
+    catch (e) {
+      setError(e instanceof Error
+        ? e.message
+        : String(e));
+    }
+  };
+
+  /** `to`: target folder when it is not the current one. */
+  const upload = async (files: FmUploadFile[], to?: FolderRef) => {
+    const m = to?.mount ?? mount;
+    const folder = to?.path ?? path;
+    if (!m || files.length === 0)
       return;
     const names = [
       ...new Set(files.map(topName)),
     ];
     // Trust the loaded listing only when it is current, unfiltered and complete; otherwise ask the server.
-    const complete = listing.isSuccess && !listing.isFetching && !query.trim() && !listing.hasNextPage;
+    const complete = !to && listing.isSuccess && !listing.isFetching && !query.trim() && !listing.hasNextPage;
     const existing = complete
       ? new Set(entries.map(e => e.name))
-      : new Set(await Promise.all(names.map(n => client.stat(mount, joinPath(path, n)).then(() => n, () => ""))));
+      : new Set(await Promise.all(names.map(n => client.stat(m, joinPath(folder, n)).then(() => n, () => ""))));
     const clashes = new Set(files.filter(f => !(f.relativePath ?? "").includes("/")).map(topName).filter(n => existing.has(n)));
-    if (clashes.size)
-      setDialog({ kind: "uploadConflict", files, clashes });
-    else
-      queue.getState().enqueue(mount, path, files);
+    if (clashes.size) {
+      setDialog({
+        kind: "uploadConflict",
+        files,
+        clashes,
+        to: { mount: m, path: folder },
+      });
+    }
+    else {
+      queue.getState().enqueue(m, folder, files);
+    }
   };
 
+  const pickFiles = (input: HTMLInputElement | null, to?: FolderRef) => {
+    uploadToRef.current = to;
+    input?.click();
+  };
   const onPick = (e: ChangeEvent<HTMLInputElement>) => {
-    void upload(filesFromInput(e.target.files!));
+    void upload(filesFromInput(e.target.files!), uploadToRef.current);
+    uploadToRef.current = undefined;
     e.target.value = "";
   };
 
@@ -695,13 +742,14 @@ export function FileManager(props: FileManagerProps) {
   /** Shared shell for the list and tree context menus. */
   const menuContent = (items: ReactNode) => <ContextMenuContent className="w-56">{items}</ContextMenuContent>;
 
-  const runAction = (action: FmFileAction, targets: FmEntry[]) => {
-    if (!mount)
+  const runAction = (action: FmFileAction, targets: FmEntry[], at?: FolderRef) => {
+    const m = at?.mount ?? mount;
+    if (!m)
       return;
     const ctx: FmActionContext = {
       client,
-      mount,
-      path,
+      mount: m,
+      path: at?.path ?? path,
       refresh: async () => {
         await qc.invalidateQueries({
           queryKey: fmKeys.all(client),
@@ -715,7 +763,15 @@ export function FileManager(props: FileManagerProps) {
       : String(e)));
   };
 
-  const entryMenu = (targets: FmEntry[]) => {
+  /** New file / folder and upload into `to` without navigating there. */
+  const hereMenu = (to: FolderRef, writable: boolean) => [
+    menuItem("newFileHere", labels.newFileHere, <FilePlusIcon />, () => setDialog({ kind: "newFile", to }), { show: writable && features.createFile }),
+    menuItem("newFolderHere", labels.newFolderHere, <FolderPlusIcon />, () => setDialog({ kind: "mkdir", to }), { show: writable && features.createFolder }),
+    menuItem("uploadHere", labels.uploadHere, <UploadIcon />, () => pickFiles(fileInputRef.current, to), { show: writable && features.upload }),
+  ];
+
+  /** `from`: folder holding the targets when it is not the current one (tree folder rows). */
+  const entryMenu = (targets: FmEntry[], from?: FolderRef) => {
     const one = targets.length === 1
       ? targets[0]
       : undefined;
@@ -729,6 +785,7 @@ export function FileManager(props: FileManagerProps) {
         ? <FolderOpenIcon />
         : <EyeIcon />, () => open(one), { shortcut: KEYS.open }),
       menuItem("download", labels.download, <DownloadIcon />, () => download(targets), { show: features.download }),
+      one?.kind === "dir" && !inTrash && hereMenu({ mount: one.mount, path: one.path }, one.caps.write),
       <ContextMenuSeparator key="s1" />,
       menuItem("cut", labels.cut, <ScissorsIcon />, () => copyToClipboard("cut", targets), {
         show: targets.every(t => t.caps.move),
@@ -741,22 +798,33 @@ export function FileManager(props: FileManagerProps) {
       menuItem("duplicate", labels.duplicate, <CopyPlusIcon />, () => runOps({
         op: "copy",
         paths: targets.map(t => t.path),
-        dest: path,
+        dest: from?.path ?? path,
         conflict: "rename",
-      }), { show: canWrite && targets.every(t => t.caps.copy) }),
+      }, undefined, from?.mount), {
+        show: (from
+          ? mountWritable(from.mount)
+          : canWrite) && targets.every(t => t.caps.copy),
+      }),
       one && menuItem("copyContents", labels.copyContents, <ClipboardCopyIcon />, () => void copyContents(one), {
         show: features.download && !inTrash && one.kind === "file" && kindOf(one) === "text" && one.size <= 1024 * 1024,
       }),
+      one && menuItem("copyPath", labels.copyPath, <ClipboardCopyIcon />, () => void copyText(one.path, labels.pathCopied), { show: !inTrash }),
+      one && menuItem("copyName", labels.copyName, <ClipboardCopyIcon />, () => void copyText(one.name, labels.nameCopied), { show: !inTrash }),
       <ContextMenuSeparator key="s2" />,
       one && menuItem("rename", labels.rename, <PencilIcon />, () => setDialog({ kind: "rename", entry: one }), {
         show: one.caps.rename,
         shortcut: KEYS.rename,
       }),
-      one && menuItem("details", labels.details, <InfoIcon />, () => setDetailsOpen(true), { show: features.details }),
+      one && menuItem("details", labels.details, <InfoIcon />, () => {
+        // Details show the selection, so select the entry in its folder first.
+        if (from)
+          reveal(one);
+        setDetailsOpen(true);
+      }, { show: features.details }),
       custom.length > 0 && <ContextMenuSeparator key="s3" />,
-      ...custom.map(a => menuItem(`x-${a.id}`, a.label, a.icon, () => runAction(a, targets))),
+      ...custom.map(a => menuItem(`x-${a.id}`, a.label, a.icon, () => runAction(a, targets, from))),
       <ContextMenuSeparator key="s4" />,
-      menuItem("delete", labels.delete, <Trash2Icon />, () => requestDelete(targets.map(t => t.path)), {
+      menuItem("delete", labels.delete, <Trash2Icon />, () => requestDelete(targets.map(t => t.path), from?.mount), {
         show: targets.every(t => t.caps.delete),
         destructive: true,
         shortcut: KEYS.delete,
@@ -767,20 +835,30 @@ export function FileManager(props: FileManagerProps) {
   const blankMenu = () => [
     menuItem("mkdir", labels.newFolder, <FolderPlusIcon />, () => setDialog({ kind: "mkdir" }), { show: canMkdir }),
     menuItem("newFile", labels.newFile, <FilePlusIcon />, () => setDialog({ kind: "newFile" }), { show: canNewFile }),
-    menuItem("upload", labels.upload, <UploadIcon />, () => fileInputRef.current?.click(), { show: canUpload }),
+    menuItem("upload", labels.upload, <UploadIcon />, () => pickFiles(fileInputRef.current), { show: canUpload }),
     menuItem("paste", labels.paste, <ClipboardPasteIcon />, paste, { show: canPaste, shortcut: KEYS.paste }),
     menuItem("refresh", labels.refresh, <RefreshCwIcon />, () => void listing.refetch()),
   ];
+
+  /** Tree mount row: acts on the mount root without opening it. */
+  const mountMenu = (m: string) => {
+    const root = { mount: m, path: "/" };
+    return [
+      ...hereMenu(root, mountWritable(m)),
+      menuItem("paste", labels.paste, <ClipboardPasteIcon />, () => pasteInto(root), { show: !!clipboard && mountWritable(m) }),
+      menuItem("refresh", labels.refresh, <RefreshCwIcon />, () => void refreshMount(m)),
+    ];
+  };
 
   const uploadMenu = (
     <DropdownMenu>
       <DropdownMenuTrigger render={<IconButton label={labels.upload} />}><UploadIcon /></DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
-        <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+        <DropdownMenuItem onClick={() => pickFiles(fileInputRef.current)}>
           <UploadIcon />
           {labels.upload}
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => folderInputRef.current?.click()}>
+        <DropdownMenuItem onClick={() => pickFiles(folderInputRef.current)}>
           <FolderUpIcon />
           {labels.uploadFolder}
         </DropdownMenuItem>
@@ -878,17 +956,21 @@ export function FileManager(props: FileManagerProps) {
                       onContextTarget={(target) => {
                         treeTargetRef.current = target;
                         setTreeTarget(target);
-                        // The menus act on the current folder, so show the target first.
-                        if (target?.entry)
+                        // File menus act on the current folder (copy contents), so show the file first;
+                        // folder and mount menus target their row directly.
+                        if (target?.entry?.kind === "file")
                           reveal(target.entry);
-                        else if (target)
-                          navigate(target.mount, "/");
                       }}
                     />
                   </ContextMenuTrigger>
                   {menuContent(treeTarget && (treeTarget.entry
-                    ? entryMenu([treeTarget.entry])
-                    : blankMenu()))}
+                    ? entryMenu([treeTarget.entry], treeTarget.entry.kind === "dir"
+                        ? {
+                            mount: treeTarget.entry.mount,
+                            path: dirname(treeTarget.entry.path),
+                          }
+                        : undefined)
+                    : mountMenu(treeTarget.mount)))}
                 </ContextMenu>
               )}
             </div>
@@ -1363,9 +1445,8 @@ export function FileManager(props: FileManagerProps) {
           onClose={() => setDialog(undefined)}
           onSubmit={(name) => {
             setDialog(undefined);
-            mutations.mkdir.mutate(joinPath(path, name), {
-              onError: e => setError(e.message),
-            });
+            const to = dialog.to ?? { mount, path };
+            client.mkdir(to.mount, joinPath(to.path, name)).then(() => void refreshMount(to.mount), (e: Error) => setError(e.message));
           }}
         />
       )}
@@ -1378,8 +1459,9 @@ export function FileManager(props: FileManagerProps) {
           onClose={() => setDialog(undefined)}
           onSubmit={(name) => {
             setDialog(undefined);
-            client.write(mount, joinPath(path, name), "", { conflict: "fail" }).then((e) => {
-              void mutations.invalidate();
+            const to = dialog.to ?? { mount, path };
+            client.write(to.mount, joinPath(to.path, name), "", { conflict: "fail" }).then((e) => {
+              void refreshMount(to.mount);
               setPreview(e);
             }, (e: Error) => setError(e.message));
           }}
@@ -1446,7 +1528,7 @@ export function FileManager(props: FileManagerProps) {
           onClose={() => setDialog(undefined)}
         />
       )}
-      {dialog?.kind === "uploadConflict" && mount && (
+      {dialog?.kind === "uploadConflict" && (
         <UploadConflictDialog
           count={dialog.clashes.size}
           labels={labels}
@@ -1455,7 +1537,7 @@ export function FileManager(props: FileManagerProps) {
             const { files, clashes } = dialog;
             setDialog(undefined);
             const clash = (f: FmUploadFile) => clashes.has(topName(f)) && !(f.relativePath ?? "").includes("/");
-            queue.getState().enqueue(mount, path, choice === "skip"
+            queue.getState().enqueue(dialog.to.mount, dialog.to.path, choice === "skip"
               ? files.filter(f => !clash(f))
               : files.map(f => (clash(f)
                   ? { ...f, conflict: choice }
