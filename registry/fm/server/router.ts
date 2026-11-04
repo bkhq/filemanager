@@ -343,6 +343,9 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
         : {}),
       etag: e.etag,
       caps: t.caps,
+      ...(e.ignored === true
+        ? { ignored: true }
+        : {}),
     };
   };
 
@@ -520,7 +523,7 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
   app.get("/m/:mount/list", describeRoute({
     tags: [TAG],
     summary: "List a directory",
-    description: "Directories first, then sorted by `sort`. `cursor` is an opaque offset.",
+    description: "Directories first, then sorted by `sort`. `cursor` is an opaque offset. `hidden=0` drops dot entries, `ignored=0` drops entries the driver marks ignored; `ignored` counts those before filtering.",
     responses: {
       200: ok(listResultSchema, "Listing"),
       ...ERRORS,
@@ -531,6 +534,8 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
     sort: sortKeySchema.default("name"),
     order: z.enum(["asc", "desc"]).default("asc"),
     q: z.string().max(255).optional(),
+    hidden: z.enum(["0", "1"]).default("1"),
+    ignored: z.enum(["0", "1"]).default("1"),
   })), async (c) => {
     const q = c.req.valid("query");
     const t = await resolve(c, c.req.param("mount"), q.path);
@@ -538,8 +543,11 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
     if (self.kind !== "dir")
       throw new FmError("NOT_A_DIR", "Not a directory");
     const needle = q.q?.trim().toLocaleLowerCase();
-    const all = (await t.mount.driver.list(t.path))
-      .filter(e => !hidden(t.mount, e.path) && (!needle || e.name.toLocaleLowerCase().includes(needle)));
+    const raw = (await t.mount.driver.list(t.path)).filter(e => !hidden(t.mount, e.path));
+    const ignored = raw.filter(e => e.ignored === true).length;
+    const all = raw.filter(e => (q.hidden === "1" || !e.name.startsWith("."))
+      && (q.ignored === "1" || e.ignored !== true)
+      && (!needle || e.name.toLocaleLowerCase().includes(needle)));
     if (all.length > limits.maxListEntries)
       throw new FmError("TOO_LARGE", `Directory has more than ${limits.maxListEntries} entries`);
     const dir = q.order === "asc"
@@ -570,6 +578,9 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
       total: all.length,
       ...(next
         ? { cursor: next }
+        : {}),
+      ...(ignored > 0
+        ? { ignored }
         : {}),
     });
   });
@@ -872,7 +883,7 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
   app.get("/m/:mount/search", describeRoute({
     tags: [TAG],
     summary: "Search below a folder",
-    description: "Case-insensitive name match at any depth, or with `mode=fuzzy` a fuzzy match on the path below `path`, best first. Without a driver search, walks at most `archiveMaxEntries` entries; `truncated` marks a partial result (walk budget or `limit` reached).",
+    description: "Case-insensitive name match at any depth, or with `mode=fuzzy` a fuzzy match on the path below `path`, best first. Without a driver search, walks at most `archiveMaxEntries` entries; `truncated` marks a partial result (walk budget or `limit` reached). `hidden=0` drops results below a dot segment, `ignored=0` drops entries the driver marks ignored (the walk skips both subtrees).",
     responses: {
       200: ok(searchResultSchema, "Matches"),
       ...ERRORS,
@@ -881,6 +892,8 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
     q: z.string().trim().min(1).max(255),
     limit: z.coerce.number().int().min(1).max(500).default(100),
     mode: searchModeSchema.default("substring"),
+    hidden: z.enum(["0", "1"]).default("1"),
+    ignored: z.enum(["0", "1"]).default("1"),
   })), async (c) => {
     const q = c.req.valid("query");
     const t = await resolve(c, c.req.param("mount"), q.path);
@@ -902,6 +915,8 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
     const relative = (path: string) => (t.path === "/"
       ? path
       : path.slice(t.path.length));
+    const dropped = (e: FmDriverEntry) => (q.hidden === "0" && e.path.split("/").some(s => s.startsWith(".")))
+      || (q.ignored === "0" && e.ignored === true);
     let truncated = false;
     let candidates = await d.search?.(t.path, q.q, {
       limit: q.limit,
@@ -918,7 +933,7 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
       let seen = 0;
       while (queue.length > 0 && !truncated) {
         for (const e of await d.list(queue.shift()!)) {
-          if (hidden(t.mount, e.path))
+          if (hidden(t.mount, e.path) || dropped(e))
             continue;
           // Fuzzy mode ranks afterwards, so it keeps every match within the budget.
           if ((!fuzzy && candidates.length >= q.limit) || ++seen > limits.archiveMaxEntries) {
@@ -937,7 +952,7 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
     }
     const items: FmEntry[] = [];
     for (const e of candidates) {
-      if (hidden(t.mount, e.path))
+      if (hidden(t.mount, e.path) || dropped(e))
         continue;
       const caps = await capsOf(e.path);
       if (caps.read)

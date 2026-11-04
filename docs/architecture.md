@@ -248,13 +248,13 @@ All under the host prefix, mount id in the path, entry path in the query
 | --- | --- | --- |
 | GET | `/mounts` | Mounts visible to caller + driver caps |
 | GET | `/m/:mount/stat?path=` | |
-| GET | `/m/:mount/list?path=&cursor=&limit=&sort=&dir=&q=` | Cursor paging, dirs first, `q` = name filter of direct children |
+| GET | `/m/:mount/list?path=&cursor=&limit=&sort=&dir=&q=&hidden=&ignored=` | Cursor paging, dirs first, `q` = name filter of direct children; `hidden=0\|1` / `ignored=0\|1` (default 1) drop dot entries / driver-ignored entries; entries carry an optional `ignored` flag and the result an `ignored` count |
 | GET | `/m/:mount/usage?path=` | Folder size `{ bytes, files, dirs, truncated }`, walk capped by `archiveMaxEntries` |
 | GET | `/m/:mount/read?path=&inline=&thumb=` | Range, ETag, presign 302 when allowed, `thumb` widths whitelist |
 | PUT | `/m/:mount/write?path=` | Small writes / editor save, `If-Match` |
 | POST | `/m/:mount/mkdir` | `{ path }` |
 | POST | `/m/:mount/ops` | Batch `{ op: move/copy/delete/rename, items, dest, destMount?, conflict: "fail"/"rename"/"overwrite" }`; bounded size, per-item results. A `destMount` other than `:mount` streams content between the two drivers file by file: `copy`/`move` on the source and `write` on the destination are authorized, the walk is bounded by `archiveMaxEntries` / `archiveMaxBytes` before anything is written, a failed item removes its partial copy, and `move` deletes the source (to the trash when enabled) only after the whole copy landed. An item whose computed target lands in a hidden folder (trash or `/.fm-uploads`) is rejected with `INVALID`. Such a copy runs inside one request, so on Workers it can hit the request-duration limit; the walk limits bound it |
-| GET | `/m/:mount/search?q=` | Driver search or fallback walk with limits |
+| GET | `/m/:mount/search?q=&hidden=&ignored=` | Driver search or fallback walk with limits; `hidden=0\|1` / `ignored=0\|1` (default 1) drop results below a dot segment / driver-ignored entries |
 | POST | `/m/:mount/archive` | Streamed zip (fflate passthrough, caps from bithk) |
 | POST | `/m/:mount/uploads` | Create session `{ path, size, conflict }` → `{ id, mode: "chunked" / "s3-multipart", path, size, partSize, parts, received, urls?, expiresAt }`; `path` is the final target (a free name for `conflict: "rename"`). `s3-multipart` when the driver presigns parts (`urls`), else `chunked` |
 | GET | `/m/:mount/uploads/:id` | Session status: `received` part numbers, fresh `urls` |
