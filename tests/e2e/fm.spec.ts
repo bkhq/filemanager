@@ -568,14 +568,17 @@ test("toggles hidden files in the tree", async ({ page }) => {
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
   await expect(item(".secret")).toBeVisible();
-  await page.getByRole("button", { name: "Hide sidebar" }).click();
-  await expect(row(page, "/dotted/.secret")).toBeVisible();
-  await page.getByRole("button", { name: "Show sidebar" }).click();
-
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
   await expect(item(".secret")).toHaveCount(0);
   await expect(item("plain.txt")).toBeVisible();
+
+  // The single layout's list follows the same preference.
+  await toggle.click();
+  await page.getByRole("button", { name: "Hide sidebar" }).click();
+  await expect(row(page, "/dotted/.secret")).toBeVisible();
+  await page.getByRole("button", { name: "Show sidebar" }).click();
+  await toggle.click();
   await page.getByRole("button", { name: "Hide sidebar" }).click();
   await expect(row(page, "/dotted/plain.txt")).toBeVisible();
   await expect(row(page, "/dotted/.secret")).toHaveCount(0);
