@@ -153,6 +153,50 @@ describe("list", () => {
     expect(body.total).toBe(1);
   });
 
+  it("drops dot entries with hidden=0", async () => {
+    const { req } = setup({
+      files: { "/.env": "e", "/.git/HEAD": "h", "/a.txt": "a" },
+    });
+    const all = await (await req("/m/m/list?path=/")).json();
+    expect(all.items.map((e: { name: string }) => e.name)).toEqual([".git", ".env", "a.txt"]);
+    expect(all.total).toBe(3);
+    const shown = await (await req("/m/m/list?path=/&hidden=0")).json();
+    expect(shown.items.map((e: { name: string }) => e.name)).toEqual(["a.txt"]);
+    expect(shown.total).toBe(1);
+  });
+
+  it("flags, counts and drops ignored entries", async () => {
+    const base = memoryDriver({
+      files: { "/dist/x.js": "x", "/a.txt": "a", "/b.log": "b" },
+    });
+    const driver: FmDriver = {
+      ...base,
+      list: async path => (await base.list(path)).map(e => (e.name === "dist" || e.name === "b.log"
+        ? { ...e, ignored: true }
+        : e)),
+    };
+    const { req } = setup({
+      mounts: [
+        { id: "m", label: "M", driver },
+      ],
+    });
+    const all = await (await req("/m/m/list?path=/")).json();
+    expect(all.items.map((e: { name: string; ignored?: boolean }) => [e.name, e.ignored])).toEqual([
+      ["dist", true],
+      ["a.txt", undefined],
+      ["b.log", true],
+    ]);
+    expect("ignored" in all.items[1]).toBe(false);
+    expect(all).toMatchObject({ total: 3, ignored: 2 });
+    const kept = await (await req("/m/m/list?path=/&ignored=0")).json();
+    expect(kept.items.map((e: { name: string }) => e.name)).toEqual(["a.txt"]);
+    expect(kept).toMatchObject({ total: 1, ignored: 2 });
+    const plain = await (await setup({
+      files: { "/a.txt": "a" },
+    }).req("/m/m/list?path=/")).json();
+    expect("ignored" in plain).toBe(false);
+  });
+
   it("refuses to list a file", async () => {
     const { req } = setup({
       files: { "/a.txt": "a" },
@@ -498,6 +542,63 @@ describe("search", () => {
     const walked = await (await req("/m/m/search?path=/&q=needle&limit=5")).json();
     expect(names(walked)).toEqual(["/d/needle.txt"]);
     expect(calls.length).toBeGreaterThan(0);
+  });
+
+  it("drops results below dot folders and ignored entries on request", async () => {
+    const base = memoryDriver({
+      files: { "/.cache/needle.txt": "n", "/src/needle.ts": "n", "/out/needle.js": "n" },
+    });
+    const driver: FmDriver = {
+      ...base,
+      list: async path => (await base.list(path)).map(e => (e.path === "/out"
+        ? { ...e, ignored: true }
+        : e)),
+    };
+    const { req } = setup({
+      mounts: [
+        { id: "m", label: "M", driver },
+      ],
+    });
+    const all = await (await req("/m/m/search?path=/&q=needle")).json();
+    expect(names(all).sort()).toEqual(["/.cache/needle.txt", "/out/needle.js", "/src/needle.ts"]);
+    const visible = await (await req("/m/m/search?path=/&q=needle&hidden=0")).json();
+    expect(names(visible).sort()).toEqual(["/out/needle.js", "/src/needle.ts"]);
+    const kept = await (await req("/m/m/search?path=/&q=needle&hidden=0&ignored=0")).json();
+    expect(names(kept)).toEqual(["/src/needle.ts"]);
+    const fuzzy = await (await req("/m/m/search?path=/&q=needle&mode=fuzzy&hidden=0")).json();
+    expect(names(fuzzy).sort()).toEqual(["/out/needle.js", "/src/needle.ts"]);
+  });
+
+  it("filters driver search results with hidden=0 and ignored=0", async () => {
+    const entry = (path: string, ignored?: boolean) => ({
+      path,
+      name: path.slice(path.lastIndexOf("/") + 1),
+      kind: "file" as const,
+      size: 1,
+      mtime: 0,
+      etag: path,
+      ...(ignored
+        ? { ignored }
+        : {}),
+    });
+    const driver: FmDriver = {
+      ...memoryDriver(),
+      search: async () => [
+        entry("/.git/needle"),
+        entry("/a/needle"),
+        entry("/b/needle", true),
+      ],
+    };
+    const { req } = setup({
+      mounts: [
+        { id: "m", label: "M", driver },
+      ],
+    });
+    const body = await (await req("/m/m/search?path=/&q=needle&hidden=0&ignored=0")).json();
+    expect(names(body)).toEqual(["/a/needle"]);
+    const all = await (await req("/m/m/search?path=/&q=needle")).json();
+    expect(names(all)).toEqual(["/.git/needle", "/a/needle", "/b/needle"]);
+    expect(all.items[2].ignored).toBe(true);
   });
 
   it("refuses files and empty queries", async () => {
