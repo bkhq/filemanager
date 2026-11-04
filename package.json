@@ -5,6 +5,9 @@
   "workspaces": [
     "apps/*"
   ],
+  "catalog": {
+    "shadcn": "4.23.0"
+  },
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json && bun run --filter '*' typecheck",
@@ -23,16 +26,12 @@
     "hono": "4.13.16",
     "hono-openapi": "1.5.0",
     "papaparse": "5.7.0",
-    "react-markdown": "10.1.0",
     "read-excel-file": "9.3.14",
-    "remark-gfm": "4.0.1",
-    "shiki": "4.6.0",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@antfu/eslint-config": "10.0.0",
     "@eslint-react/eslint-plugin": "^5.28.8",
-    "@nsio/nsl": "0.1.7",
     "@playwright/test": "1.64.1",
     "@types/bun": "1.4.4",
     "@types/papaparse": "5.5.2",
@@ -41,7 +40,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",
     "miniflare": "4.20260730.0",
-    "shadcn": "4.23.0",
+    "shadcn": "catalog:",
     "typescript": "npm:@typescript/typescript6@6.0.2"
   }
 }

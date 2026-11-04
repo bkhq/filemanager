@@ -54,3 +54,4 @@ Each plan is a single line linking to its detail file. All detailed information 
 - [x] [**20261104-0558-browser-shell Browser shell: copy path, folder menus, collapse all, remembered location, mobile**](20261104-0558-browser-shell.md) `2026-11-04`
 - [x] [**20261104-0558-listing Listing: hidden files toggle and git-ignored entries**](20261104-0558-listing.md) `2026-11-04`
 - [x] [**20261104-0558-previews Previews: binary sniff, PDF toolbar, Markdown plugin**](20261104-0558-previews.md) `2026-11-04`
+- [x] [**20261104-0843-dropzone-streamdown Dropzone uploads, streamdown live preview, dependency catalog**](20261104-0843-dropzone-streamdown.md) `2026-11-04`

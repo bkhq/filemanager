@@ -36,7 +36,7 @@ bunx shadcn add @bkhq/fm-react                        # UI + client
 | `fm-client` | typed fetch client, TanStack Query hooks, upload queue |
 | `fm-react` | `<FileManager />`: tree, list/grid, previews (image / video rotate, flip, zoom), uploads, trash, undo |
 | `fm-plugin-sheet` | optional plugin: CSV / TSV / XLSX table preview |
-| `fm-plugin-markdown` | optional plugin: rendered Markdown (GFM, highlighted code) with a source toggle |
+| `fm-plugin-markdown` | optional plugin: Markdown opens in the editor with a live rendered preview (streamdown: GFM, highlighted code) |
 
 Files land under `src/fm/`. Mount the router in the host API:
 
@@ -96,6 +96,14 @@ import { markdownPlugin } from "@/fm/plugins/markdown"; // bunx shadcn add @bkhq
 import { sheetPlugin } from "@/fm/plugins/sheet";       // bunx shadcn add @bkhq/fm-plugin-sheet
 
 <FileManager baseUrl="/api/fm" plugins={[sheetPlugin(), markdownPlugin()]} />;
+```
+
+The Markdown plugin renders with streamdown, whose classes Tailwind must see.
+Add to the host's CSS (paths relative to that file):
+
+```css
+@source "../node_modules/streamdown/dist/*.js";
+@source "../node_modules/@streamdown/code/dist/*.js";
 ```
 
 A plugin is a plain object (`FmPlugin` in `src/fm/react/plugins.ts`):
@@ -243,7 +251,7 @@ Repository map for maintainers:
 | `tests/e2e` | Playwright flows against the built app |
 | `docs/architecture.md` | design and API surface; `docs/changelog.md` records decisions and pitfalls |
 
-Dev apps (two processes, routed by nsl at `fm.localhost:3355`):
+Dev apps (two processes, routed by nsl at `fm.localhost:3355`; `nsl` is a global CLI, not a dependency):
 
 ```bash
 cd apps/fm-api && bun run dev

@@ -5,6 +5,9 @@
 
 /* Registry sources live outside the app in this repo. */
 @source "../../../registry/fm";
+/* Markdown plugin: utility classes used by streamdown. */
+@source "../../../node_modules/streamdown/dist/*.js";
+@source "../../../node_modules/@streamdown/code/dist/*.js";
 
 @custom-variant dark (&:is(.dark *));
 

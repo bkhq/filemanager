@@ -201,7 +201,8 @@
         "@codemirror/language-data",
         "@codemirror/state",
         "lucide-react",
-        "react-resizable-panels"
+        "react-resizable-panels",
+        "react-dropzone@20.1.4"
       ],
       "registryDependencies": [
         "button",
@@ -394,9 +395,8 @@
       "title": "File manager: Markdown preview",
       "description": "Optional plugin: rendered Markdown (GFM, highlighted code) with a Rendered / Source toggle. Pass markdownPlugin() to <FileManager plugins>.",
       "dependencies": [
-        "react-markdown@10.1.0",
-        "remark-gfm@4.0.1",
-        "shiki@4.6.0"
+        "streamdown@2.7.1",
+        "@streamdown/code@2.0.0"
       ],
       "registryDependencies": [
         "@bkhq/fm-react"

@@ -5,7 +5,7 @@ import { languages } from "@codemirror/language-data";
 import { useQuery } from "@tanstack/react-query";
 import CodeMirror, { EditorView, keymap, Prec } from "@uiw/react-codemirror";
 import { DownloadIcon, LockIcon, MoreHorizontalIcon, SaveIcon, WrapTextIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -33,8 +33,18 @@ const DRAFT_DELAY = 300;
 
 const isDark = () => typeof document !== "undefined" && document.documentElement.classList.contains("dark");
 
+/** Follows the host's `.dark` class on <html>, so the editor switches with the page theme. */
+function subscribeTheme(onChange: () => void) {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
+  return () => observer.disconnect();
+}
+
 /** Text / code viewer; editable with optimistic concurrency when the entry allows writes. */
-export function TextPreview({ entry, client, labels, actions, onDirtyChange }: PreviewProps) {
+export function TextPreview({ entry, client, labels, actions, onDirtyChange, onTextChange }: PreviewProps) {
   // Files above the limit load only their head through a Range request and stay read-only.
   const truncated = entry.size > MAX_TEXT_BYTES;
   const full = useFileText(client, entry.mount, entry.path, !truncated);
@@ -65,6 +75,10 @@ export function TextPreview({ entry, client, labels, actions, onDirtyChange }: P
 
   const base = full.data;
   const text = draft ?? (truncated ? head.data : base?.text) ?? "";
+  const dark = useSyncExternalStore(subscribeTheme, isDark, () => false);
+  useEffect(() => {
+    onTextChange?.(text);
+  }, [text, onTextChange]);
   const dirty = draft !== undefined && draft !== base?.text;
   const conflict = stale || (save.error instanceof FmApiError && save.error.status === 412);
   const baseEtag = etag ?? base?.etag;
@@ -225,13 +239,17 @@ export function TextPreview({ entry, client, labels, actions, onDirtyChange }: P
           {dirty
             ? <span className="text-xs text-muted-foreground">{labels.unsaved}</span>
             : saved && <span className="text-xs text-muted-foreground">{labels.saved}</span>}
-          <IconButton label={labels.save} disabled={!dirty || save.isPending} onClick={onSave}><SaveIcon /></IconButton>
-          <DropdownMenu>
-            <DropdownMenuTrigger render={<IconButton label={labels.more} />}><MoreHorizontalIcon /></DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem disabled={!dirty} onClick={discard}>{labels.discardEdits}</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {dirty && (
+            <>
+              <IconButton label={labels.save} disabled={save.isPending} onClick={onSave}><SaveIcon /></IconButton>
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<IconButton label={labels.more} />}><MoreHorizontalIcon /></DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={discard}>{labels.discardEdits}</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          )}
         </>,
         actions,
       )}
@@ -262,7 +280,7 @@ export function TextPreview({ entry, client, labels, actions, onDirtyChange }: P
         className="min-h-0 flex-1 overflow-auto text-sm"
         height="100%"
         value={text}
-        theme={isDark()
+        theme={dark
           ? "dark"
           : "light"}
         readOnly={!editable}

@@ -184,3 +184,27 @@ Browser shell (20261104-0558-browser-shell) delivered: entry menus copy the path
 ## 2026-11-04 08:20 [progress]
 
 Explorer parity campaign `l1-d4j0p0gu-20261104060841` complete (plan 20261104-0558-explorer-parity): A1-A7 and B1-B8 from the bks / bkd comparison merged into local `main` (listing `4e612f2`, previews `00a9d20`, editor `4d3ffee`, browser-shell `34d551d`, editor follow-up `fe61759`). Final on `main`: `bun run check` 243 pass / 1 skip, registry smoke OK, 57 Playwright e2e. Not pushed.
+
+## 2026-11-04 08:39 [progress]
+
+Editor-style header: Markdown files open in the text editor by default with an "Open preview" / "Reopen as source" button (VS Code style); the split-layout header drops download / rename / delete (they are in the context menu); Save and More (discard changes) appear only while there are unsaved edits. Verified: `bun run check`, 57 Playwright e2e.
+
+## 2026-11-04 09:40 [progress]
+
+Dropzone / streamdown / catalog delivered (20261104-0843-dropzone-streamdown): uploads through react-dropzone (section drop, empty-preview click area), Markdown live preview beside or instead of the editor rendered with streamdown, `@nsio/nsl` removed in favour of the global CLI, Bun `catalog` for `shadcn`.
+
+## 2026-11-04 09:40 [pitfall]
+
+react-dropzone `getRootProps`: with `noKeyboard` it discards the passed `onKeyDown`, with `disabled` it adds `aria-disabled` (assistive tech and Playwright then treat every control inside as disabled) and it defaults `role` to `presentation`. Pass key handlers outside `getRootProps` and override those props. streamdown needs `@source` lines in the host CSS.
+
+## 2026-11-04 10:05 [progress]
+
+Explorer tree header follows VS Code: an "Explorer" title, New file / New folder / Refresh / Collapse all shown on hover or focus, and a "More" menu with upload, paste, quick open and the hidden / git-ignored toggles (checkbox items).
+
+## 2026-11-04 10:30 [progress]
+
+Demo header: title on the left; on the right a view-only shadcn Checkbox, a language dropdown (English / 中文, saved as `fm-demo:lang`) and a theme dropdown (light / dark / system); radio items use `closeOnClick` (Base UI keeps menus open by default). The text editor now follows `.dark` on `<html>` live (MutationObserver via `useSyncExternalStore`) instead of reading it once per render.
+
+## 2026-11-04 10:50 [progress]
+
+Explorer refresh also reveals the selected row (or the current folder): its ancestors expand and the row scrolls into view once rendered, as in VS Code.

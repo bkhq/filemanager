@@ -172,20 +172,38 @@ test("previews spreadsheets with the sheet plugin", async ({ page }) => {
   await expect(dialog.getByRole("table", { name: "Crew" })).toContainText("Captain");
 });
 
-test("renders markdown and toggles to the source editor", async ({ page }) => {
+test("opens markdown in the editor and toggles the preview", async ({ page }) => {
   await openMount(page, "Local disk");
   await row(page, "/samples").dblclick();
   await row(page, "/samples/guide.md").dblclick();
   const dialog = page.getByRole("dialog");
+  await expect(dialog.locator(".cm-content")).toContainText("# Guide");
+  await dialog.getByRole("button", { name: "Open preview", exact: true }).click();
   await expect(dialog.getByRole("heading", { name: "Guide", exact: true })).toBeVisible();
   await expect(dialog.getByRole("table")).toContainText("Piraeus");
-  await expect(dialog.getByRole("link", { name: "project page" })).toHaveAttribute("target", "_blank");
-  await expect(dialog.locator("pre.shiki")).toContainText("console.log(greeting)");
-  await dialog.getByRole("button", { name: "Source", exact: true }).click();
-  await expect(dialog.locator(".cm-content")).toContainText("# Guide");
-  await dialog.getByRole("button", { name: "Rendered", exact: true }).click();
-  await expect(dialog.getByRole("heading", { name: "Guide", exact: true })).toBeVisible();
+  await expect(dialog.locator("[data-streamdown='link']")).toContainText("project page");
+  await expect(dialog.locator("[data-streamdown='code-block']")).toContainText("console.log(greeting)");
   await expect(dialog.locator(".cm-content")).toBeHidden();
+  await dialog.getByRole("button", { name: "Reopen as source", exact: true }).click();
+  await expect(dialog.locator(".cm-content")).toContainText("# Guide");
+});
+
+test("previews markdown to the side, following unsaved edits", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await row(page, "/samples").dblclick();
+  await row(page, "/samples/guide.md").dblclick();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Open preview to the side" }).click();
+  const preview = dialog.locator("[data-fm-markdown-preview]");
+  await expect(preview.getByRole("heading", { name: "Guide", exact: true })).toBeVisible();
+  await expect(dialog.locator(".cm-content")).toBeVisible();
+  await dialog.locator(".cm-content").click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type("\n\n## Live heading\n");
+  await expect(preview.getByRole("heading", { name: "Live heading" })).toBeVisible();
+  await dialog.getByRole("button", { name: "More" }).click();
+  await page.getByRole("menuitem", { name: "Discard changes" }).click();
+  await expect(preview.getByRole("heading", { name: "Live heading" })).toHaveCount(0);
 });
 
 test("moves with cut and paste", async ({ page }) => {
@@ -482,7 +500,7 @@ test("steps through previews and guards unsaved edits", async ({ page }) => {
 
 test("view-only mode hides every changing action", async ({ page }) => {
   await openMount(page, "Local disk");
-  await page.getByLabel("View only").check();
+  await page.getByRole("checkbox", { name: "View only" }).check();
   await expect(page.getByRole("searchbox")).toBeVisible();
   for (const name of ["New folder", "New text file", "Upload files"])
     await expect(page.getByRole("button", { name })).toHaveCount(0);
@@ -602,7 +620,16 @@ test("previews the selected tree file on the right", async ({ page }) => {
   await expect(page.getByText("Select a file in the tree to preview it")).toBeVisible();
   await item("todo.txt").click();
   await expect(page.locator(".cm-content")).toContainText("try rename");
-  await expect(page.getByRole("toolbar", { name: "todo.txt" }).getByRole("button", { name: "Rename" })).toBeVisible();
+  // Entry actions live in the context menu; save / more appear only with unsaved edits.
+  const header = page.getByRole("toolbar", { name: "todo.txt" });
+  for (const name of [
+    "Rename",
+    "Delete",
+    "Download",
+    "Save",
+    "More",
+  ])
+    await expect(header.getByRole("button", { name, exact: true })).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   // Folders only move the tree's focus; the open file stays.
   await item("docs").click();
@@ -623,7 +650,7 @@ test("jumps between files from the path bar", async ({ page }) => {
   await bar.getByRole("button", { name: "Local disk" }).click();
   await page.getByRole("menuitem", { name: "docs" }).click();
   await page.getByRole("menuitem", { name: "sample.pdf" }).click();
-  await expect(page.getByRole("toolbar", { name: "sample.pdf" })).toBeVisible();
+  await expect(page.locator("iframe[title='sample.pdf']")).toBeVisible();
   await expect(bar).toHaveText(/Local disk.*docs.*sample\.pdf/);
 });
 
@@ -635,17 +662,27 @@ test("toggles hidden files in the tree", async ({ page }) => {
     expect((await page.request.put(`/api/fm/m/local/write?path=${encodeURIComponent(`/dotted/${name}`)}`, { data: name })).ok()).toBe(true);
   await openTreeMount(page, "Local disk");
   const item = (name: string) => page.getByRole("tree").getByRole("treeitem", { name, exact: true });
-  const toggle = page.getByRole("button", { name: "Show hidden files" });
+  const hiddenItem = async () => {
+    await page.getByRole("toolbar", { name: "Folder actions" }).locator("..").getByRole("button", { name: "More" }).click();
+    return page.getByRole("menuitemcheckbox", { name: "Show hidden files" });
+  };
+  const toggle = {
+    click: async () => (await hiddenItem()).click(),
+  };
+  const expectHidden = async (shown: boolean) => {
+    await expect(await hiddenItem()).toHaveAttribute("aria-checked", String(shown));
+    await page.keyboard.press("Escape");
+  };
   await item("dotted").click();
   await expect(item("plain.txt")).toBeVisible();
   await expect(item(".secret")).toHaveCount(0);
-  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expectHidden(false);
 
   await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await expectHidden(true);
   await expect(item(".secret")).toBeVisible();
   await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expectHidden(false);
   await expect(item(".secret")).toHaveCount(0);
   await expect(item("plain.txt")).toBeVisible();
 
@@ -713,7 +750,7 @@ test("collapses every tree row at once", async ({ page }) => {
   await bar.getByRole("button", { name: "Local disk" }).click();
   await page.getByRole("menuitem", { name: "docs" }).click();
   await page.getByRole("menuitem", { name: "sample.pdf" }).click();
-  await expect(page.getByRole("toolbar", { name: "sample.pdf" })).toBeVisible();
+  await expect(page.locator("iframe[title='sample.pdf']")).toBeVisible();
   await expect(item("Local disk")).toHaveAttribute("aria-expanded", "true");
   await expect(item("docs")).toHaveAttribute("aria-selected", "true");
 });
@@ -1029,7 +1066,7 @@ test("restores an unsaved draft after a reload", async ({ page }) => {
   await again.getByRole("button", { name: "More" }).click();
   await page.getByRole("menuitem", { name: "Discard changes" }).click();
   await expect(again.locator(".cm-content")).toHaveText("server text");
-  await expect(again.getByRole("button", { name: "Save" })).toHaveAttribute("aria-disabled", "true");
+  await expect(again.getByRole("button", { name: "Save" })).toHaveCount(0);
 });
 
 test("resolves a save conflict by overwriting", async ({ page }) => {
@@ -1053,7 +1090,7 @@ test("resolves a save conflict by reloading from disk", async ({ page }) => {
   await expect(dialog.getByText("The file changed on disk since you opened it.")).toBeVisible();
   await dialog.getByRole("button", { name: "Reload from disk" }).click();
   await expect(dialog.locator(".cm-content")).toHaveText("theirs");
-  await expect(dialog.getByRole("button", { name: "Save" })).toHaveAttribute("aria-disabled", "true");
+  await expect(dialog.getByRole("button", { name: "Save" })).toHaveCount(0);
 });
 
 test("discarding through the guard drops the draft", async ({ page }) => {
@@ -1099,4 +1136,80 @@ test("deleting a file drops its draft", async ({ page }) => {
   const again = await reopenEditorFile(page, "/drafts-del-e2e", "n.txt");
   await expect(again.locator(".cm-content")).not.toContainText("unsaved draft");
   await expect(again.getByText("Unsaved")).toHaveCount(0);
+});
+
+test("uploads files dropped from the OS", async ({ page }) => {
+  await page.request.post("/api/fm/m/local/mkdir", {
+    data: { path: "/dz-drop-e2e" },
+  });
+  await openMount(page, "Local disk");
+  await row(page, "/dz-drop-e2e").dblclick();
+  await expect(page.getByText("This folder is empty")).toBeVisible();
+  const dataTransfer = await page.evaluateHandle(() => {
+    const dt = new DataTransfer();
+    dt.items.add(new File(["dropped"], "dropped.txt", { type: "text/plain" }));
+    return dt;
+  });
+  const section = page.locator("section").first();
+  await section.dispatchEvent("dragenter", { dataTransfer });
+  await section.dispatchEvent("drop", { dataTransfer });
+  await expect(row(page, "/dz-drop-e2e/dropped.txt")).toBeVisible();
+});
+
+test("uploads from the empty preview by clicking the drop area", async ({ page }) => {
+  await page.request.post("/api/fm/m/local/mkdir", {
+    data: { path: "/dz-click-e2e" },
+  });
+  await openTreeMount(page, "Local disk");
+  const tree = page.getByRole("tree");
+  await tree.getByRole("treeitem", { name: "dz-click-e2e", exact: true }).getByRole("button").first().click();
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Drop files here or click to upload" }).click();
+  await (await chooser).setFiles({
+    name: "picked.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("picked"),
+  });
+  await expect(tree.getByRole("treeitem", { name: "picked.txt", exact: true })).toBeVisible();
+});
+
+test("switches language and theme in the demo, the open editor follows", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("theme", "light"));
+  expect((await page.request.post("/api/fm/m/local/mkdir", {
+    data: { path: "/theme-e2e" },
+  })).ok()).toBe(true);
+  expect((await page.request.put(`/api/fm/m/local/write?path=${encodeURIComponent("/theme-e2e/note.txt")}&conflict=overwrite`, { data: "themed" })).ok()).toBe(true);
+  await openTreeMount(page, "Local disk");
+  const item = (name: string) => page.getByRole("tree").getByRole("treeitem", { name, exact: true });
+  await item("theme-e2e").click();
+  await item("note.txt").click();
+  const editor = page.locator(".cm-editor");
+  await expect(editor).toContainText("themed");
+  const background = () => editor.evaluate(el => getComputedStyle(el).backgroundColor);
+  const light = await background();
+  await page.getByRole("button", { name: "Theme", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "Dark" }).click();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await expect.poll(background).not.toBe(light);
+
+  await page.getByRole("button", { name: "Language", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "中文" }).click();
+  await expect(page.getByRole("heading", { name: "文件管理器" })).toBeVisible();
+  await expect(page.getByText("资源管理器")).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "文件管理器" })).toBeVisible();
+});
+
+test("explorer refresh reveals the selected file after collapse all", async ({ page }) => {
+  await openTreeMount(page, "Local disk");
+  const item = (name: string) => page.getByRole("tree").getByRole("treeitem", { name, exact: true });
+  await item("samples").click();
+  await item("guide.md").click();
+  await expect(item("guide.md")).toHaveAttribute("aria-selected", "true");
+  const header = page.getByRole("toolbar", { name: "Folder actions" });
+  await header.getByRole("button", { name: "Collapse all" }).click();
+  await expect(item("guide.md")).toBeHidden();
+  await header.getByRole("button", { name: "Refresh" }).click();
+  await expect(item("guide.md")).toBeInViewport();
+  await expect(item("guide.md")).toHaveAttribute("aria-selected", "true");
 });

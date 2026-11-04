@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "bunx nsl run -n fm:/api -s -- bun --watch src/index.ts",
+    "dev": "nsl run -n fm:/api -s -- bun --watch src/index.ts",
     "dev:bare": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun",

@@ -1,4 +1,4 @@
-import type { ChangeEvent, DragEvent, KeyboardEvent, ReactNode } from "react";
+import type { ChangeEvent, KeyboardEvent, ReactNode } from "react";
 import type { FmClient } from "../client/client";
 import type { FmUploadFile, FmUploadTask } from "../client/upload";
 import type { FmEntry, FmOpsRequest, FmSortKey } from "../core/schema";
@@ -21,14 +21,13 @@ import {
   CopyIcon,
   CopyPlusIcon,
   DownloadIcon,
+  EllipsisIcon,
   EyeIcon,
-  EyeOffIcon,
   FilePlusIcon,
   FileSearchIcon,
   FolderOpenIcon,
   FolderPlusIcon,
   FolderUpIcon,
-  GitBranchIcon,
   InfoIcon,
   LayoutGridIcon,
   ListIcon,
@@ -43,6 +42,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDropzone } from "react-dropzone";
 import { useDefaultLayout } from "react-resizable-panels";
 import {
   Breadcrumb,
@@ -63,6 +63,7 @@ import {
 } from "@/components/ui/context-menu";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
@@ -82,7 +83,7 @@ import { acceptsEntry } from "./accept";
 import { DetailsPanel } from "./details-panel";
 import { ConfirmDeleteDialog, ManageDrivesDialog, NameDialog, UploadConflictDialog } from "./dialogs";
 import { clearDraft, clearDrafts } from "./drafts";
-import { filesFromDrop, filesFromInput } from "./drop";
+import { filesFromDropzone, filesFromInput } from "./drop";
 import { maskEntry, resolveFeatures } from "./features";
 import { FileList } from "./file-list";
 import { FileTree } from "./file-tree";
@@ -346,7 +347,6 @@ export function FileManager(props: FileManagerProps) {
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<{ message: string; undo?: () => void }>();
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [dropActive, setDropActive] = useState(false);
   // Unsaved edits in the inline preview; navigation asks before discarding them.
   const paneDirtyRef = useRef(false);
   const [pendingNav, setPendingNav] = useState<() => void>();
@@ -863,19 +863,15 @@ export function FileManager(props: FileManagerProps) {
     e.preventDefault();
   };
 
-  const onDragOver = (e: DragEvent) => {
-    if (!canUpload || !e.dataTransfer.types.includes("Files"))
-      return;
-    e.preventDefault();
-    setDropActive(true);
-  };
-  const onDrop = (e: DragEvent) => {
-    setDropActive(false);
-    if (!canUpload || !e.dataTransfer.types.includes("Files"))
-      return;
-    e.preventDefault();
-    void filesFromDrop(e.dataTransfer).then(upload);
-  };
+  // OS files (and folders) dropped anywhere on the right side upload into the current folder.
+  // Drags of entries inside the manager carry no files and are left to the list / tree.
+  const dropzone = useDropzone({
+    noClick: true,
+    noKeyboard: true,
+    noPaste: true,
+    disabled: !canUpload,
+    onDrop: files => void upload(filesFromDropzone(files)),
+  });
 
   const menuItem = (key: string, label: string, icon: ReactNode, fn: () => void, opts: { show?: boolean; destructive?: boolean; shortcut?: string } = {}) =>
     opts.show === false
@@ -1013,6 +1009,42 @@ export function FileManager(props: FileManagerProps) {
       </DropdownMenuContent>
     </DropdownMenu>
   );
+  // Explorer refresh also reveals the selected row (or the current folder) like VS Code:
+  // its ancestors open and the row scrolls into view once rendered.
+  const treeScrollRef = useRef<HTMLDivElement>(null);
+  const [revealTick, setRevealTick] = useState(0);
+  const refreshTree = () => {
+    void qc.invalidateQueries({
+      queryKey: fmKeys.all(client),
+    });
+    if (!mount)
+      return;
+    const target = selected.length === 1
+      ? selected[0]!.path
+      : path;
+    setExpanded(s => new Set([
+      ...s,
+      ...onPathKeys(mount, target, inTrash),
+    ]));
+    setRevealTick(t => t + 1);
+  };
+  useEffect(() => {
+    if (!revealTick)
+      return;
+    let frame = 0;
+    let tries = 0;
+    const scroll = () => {
+      const rows = treeScrollRef.current?.querySelectorAll<HTMLElement>("[role=treeitem][aria-selected=true]");
+      const row = rows?.[rows.length - 1];
+      if (row)
+        (row.firstElementChild ?? row).scrollIntoView({ block: "nearest" });
+      // Rows of freshly opened folders may still be loading.
+      else if (++tries < 60)
+        frame = requestAnimationFrame(scroll);
+    };
+    frame = requestAnimationFrame(scroll);
+    return () => cancelAnimationFrame(frame);
+  }, [revealTick]);
   const refreshButton = (
     <IconButton
       label={labels.refresh}
@@ -1054,28 +1086,56 @@ export function FileManager(props: FileManagerProps) {
   const treePane = (
     <>
       {explorer && (
-        <div role="toolbar" aria-label={labels.folderActions} className="flex shrink-0 items-center gap-0.5 border-b px-2 py-1.5">
-          {canMkdir && <IconButton label={labels.newFolder} onClick={() => setDialog({ kind: "mkdir" })}><FolderPlusIcon /></IconButton>}
-          {canNewFile && <IconButton label={labels.newFile} onClick={() => setDialog({ kind: "newFile" })}><FilePlusIcon /></IconButton>}
-          {canUpload && uploadMenu}
-          {canPaste && <IconButton label={labels.paste} onClick={paste}><ClipboardPasteIcon /></IconButton>}
-          <span className="flex-1" />
-          <IconButton label={labels.collapseAll} onClick={collapseAll}><ChevronsDownUpIcon /></IconButton>
-          {canQuickOpen && <IconButton label={labels.quickOpen} onClick={() => setQuickOpen(true)}><FileSearchIcon /></IconButton>}
-          <IconButton label={labels.showHiddenFiles} aria-pressed={showHidden} onClick={() => setHiddenFiles(showHidden ? "off" : "on")}>
-            {showHidden
-              ? <EyeIcon />
-              : <EyeOffIcon />}
-          </IconButton>
-          {(hasIgnored || !showIgnored) && (
-            <IconButton label={labels.showIgnoredFiles} aria-pressed={showIgnored} onClick={() => setIgnoredFiles(showIgnored ? "off" : "on")}>
-              <GitBranchIcon />
-            </IconButton>
-          )}
-          {refreshButton}
+        // VS Code style: title on the left, common actions on hover, the rest under "More".
+        <div className="group/explorer flex h-9 shrink-0 items-center gap-0.5 pr-1 pl-3">
+          <span className="flex-1 truncate text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{labels.explorer}</span>
+          <div role="toolbar" aria-label={labels.folderActions} className="flex items-center gap-0.5 opacity-0 group-hover/explorer:opacity-100 focus-within:opacity-100 has-aria-expanded:opacity-100">
+            {canNewFile && <IconButton label={labels.newFile} onClick={() => setDialog({ kind: "newFile" })}><FilePlusIcon /></IconButton>}
+            {canMkdir && <IconButton label={labels.newFolder} onClick={() => setDialog({ kind: "mkdir" })}><FolderPlusIcon /></IconButton>}
+            <IconButton label={labels.refresh} onClick={refreshTree}><RefreshCwIcon /></IconButton>
+            <IconButton label={labels.collapseAll} onClick={collapseAll}><ChevronsDownUpIcon /></IconButton>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<IconButton label={labels.more} />}><EllipsisIcon /></DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              {canUpload && (
+                <>
+                  <DropdownMenuItem onClick={() => pickFiles(fileInputRef.current)}>
+                    <UploadIcon />
+                    {labels.upload}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => pickFiles(folderInputRef.current)}>
+                    <FolderUpIcon />
+                    {labels.uploadFolder}
+                  </DropdownMenuItem>
+                </>
+              )}
+              {canPaste && (
+                <DropdownMenuItem onClick={paste}>
+                  <ClipboardPasteIcon />
+                  {labels.paste}
+                </DropdownMenuItem>
+              )}
+              {canQuickOpen && (
+                <DropdownMenuItem onClick={() => setQuickOpen(true)}>
+                  <FileSearchIcon />
+                  {labels.quickOpen}
+                </DropdownMenuItem>
+              )}
+              {(canUpload || canPaste || canQuickOpen) && <DropdownMenuSeparator />}
+              <DropdownMenuCheckboxItem closeOnClick checked={showHidden} onCheckedChange={on => setHiddenFiles(on ? "on" : "off")}>
+                {labels.showHiddenFiles}
+              </DropdownMenuCheckboxItem>
+              {(hasIgnored || !showIgnored) && (
+                <DropdownMenuCheckboxItem closeOnClick checked={showIgnored} onCheckedChange={on => setIgnoredFiles(on ? "on" : "off")}>
+                  {labels.showIgnoredFiles}
+                </DropdownMenuCheckboxItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-auto [scrollbar-width:thin]">
+      <div ref={treeScrollRef} className="min-h-0 flex-1 overflow-auto [scrollbar-width:thin]">
         {shownMounts && (
           <ContextMenu>
             <ContextMenuTrigger
@@ -1156,14 +1216,17 @@ export function FileManager(props: FileManagerProps) {
         <ResizablePanel id="main" minSize="320px">
 
           <section
-            className="flex h-full min-w-0 flex-col outline-none"
-            tabIndex={0}
-            inert={treeOnly}
+            {...dropzone.getRootProps({
+              "className": "relative flex h-full min-w-0 flex-col outline-none",
+              "tabIndex": 0,
+              "inert": treeOnly,
+              "role": "region",
+              "aria-label": currentMount?.label,
+              // Read-only only turns off dropping, not the whole section.
+              "aria-disabled": undefined,
+            })}
+            // Outside getRootProps: with noKeyboard it drops onKeyDown.
             onKeyDown={onKeyDown}
-            onDragOver={onDragOver}
-            onDragLeave={e => !e.currentTarget.contains(e.relatedTarget as Node) && setDropActive(false)}
-            onDrop={onDrop}
-            aria-label={currentMount?.label}
           >
             <header className="flex flex-wrap items-center gap-1 border-b px-2 py-1.5">
               {stacked && (
@@ -1311,9 +1374,6 @@ export function FileManager(props: FileManagerProps) {
                   ? paneFile && (
                     <div className="flex items-center gap-1" role="toolbar" aria-label={paneFile.name}>
                       <div ref={setPaneActions} className="flex items-center gap-1" />
-                      {features.download && <IconButton label={labels.download} onClick={() => download([paneFile])}><DownloadIcon /></IconButton>}
-                      {paneFile.caps.rename && <IconButton label={labels.rename} onClick={() => setDialog({ kind: "rename", entry: paneFile })}><PencilIcon /></IconButton>}
-                      {paneFile.caps.delete && <IconButton label={labels.delete} onClick={() => requestDelete([paneFile.path], paneFile.mount, () => setOpenFile(undefined))}><Trash2Icon /></IconButton>}
                     </div>
                   )
                   : selected.length > 0
@@ -1444,7 +1504,16 @@ export function FileManager(props: FileManagerProps) {
                                 : labels.folderItems(entries.length, !!listing.hasNextPage)}
                             </div>
                             <div className="text-sm text-muted-foreground">{labels.selectFileHint}</div>
-                            {canUpload && <div className="text-xs text-muted-foreground">{labels.dropHere}</div>}
+                            {canUpload && (
+                              <button
+                                type="button"
+                                className="mt-2 flex flex-col items-center gap-1 rounded-lg border border-dashed px-6 py-4 text-xs text-muted-foreground hover:border-primary hover:text-foreground"
+                                onClick={() => pickFiles(fileInputRef.current)}
+                              >
+                                <UploadIcon className="size-4" />
+                                {labels.dropOrClick}
+                              </button>
+                            )}
                           </ContextMenuTrigger>
                           {menuContent(blankMenu())}
                         </ContextMenu>
@@ -1509,7 +1578,7 @@ export function FileManager(props: FileManagerProps) {
                     </ContextMenu>
                   )}
 
-            {dropActive && (
+            {dropzone.isDragActive && (
               <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-primary/5 ring-2 ring-primary ring-inset">
                 <span className="rounded-md bg-background px-3 py-1.5 text-sm shadow">{labels.dropHere}</span>
               </div>

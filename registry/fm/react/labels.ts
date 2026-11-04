@@ -26,10 +26,12 @@ export const enLabels = {
   up: "Up",
   emptyFolder: "This folder is empty",
   dropHere: "Drop files to upload",
+  dropOrClick: "Drop files here or click to upload",
   folderItems: (n: number, more: boolean) => `${n}${more ? "+" : ""} ${n === 1 && !more
     ? "item"
     : "items"}`,
   selectFileHint: "Select a file in the tree to preview it",
+  explorer: "Explorer",
   folderActions: "Folder actions",
   path: "Path",
   noMounts: "No storage available",
@@ -136,8 +138,9 @@ export const enLabels = {
   pickTotal: (size: string) => `Total ${size}`,
   pickOverLimit: (max: string) => `Selection exceeds the ${max} limit`,
   pickUnavailable: "This file type cannot be selected",
-  markdownRendered: "Rendered",
-  markdownSource: "Source",
+  openPreview: "Open preview",
+  openPreviewToSide: "Open preview to the side",
+  reopenSource: "Reopen as source",
 };
 
 export type FmLabels = typeof enLabels;
@@ -170,8 +173,10 @@ export const zhLabels: FmLabels = {
   up: "上一级",
   emptyFolder: "此文件夹为空",
   dropHere: "拖放文件以上传",
+  dropOrClick: "拖放文件到这里，或点击上传",
   folderItems: (n, more) => `${n}${more ? "+" : ""} 项`,
   selectFileHint: "在左侧树中选择文件进行预览",
+  explorer: "资源管理器",
   folderActions: "文件夹操作",
   path: "路径",
   noMounts: "没有可用的存储",
@@ -272,6 +277,7 @@ export const zhLabels: FmLabels = {
   pickTotal: size => `共 ${size}`,
   pickOverLimit: max => `所选文件超过 ${max} 上限`,
   pickUnavailable: "无法选择此类型的文件",
-  markdownRendered: "渲染",
-  markdownSource: "源码",
+  openPreview: "以预览方式打开",
+  openPreviewToSide: "在侧边打开预览",
+  reopenSource: "以源文件格式重新打开",
 };

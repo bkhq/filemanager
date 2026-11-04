@@ -16,6 +16,8 @@ export interface PreviewProps {
   actions?: HTMLElement | null;
   /** Editors report unsaved changes so closing or navigating can ask first. */
   onDirtyChange?: (dirty: boolean) => void;
+  /** Editors report their current text, unsaved edits included (e.g. for a live preview). */
+  onTextChange?: (text: string) => void;
 }
 
 export const MAX_TEXT_BYTES = 2 * 1024 * 1024;
