@@ -14,6 +14,7 @@ import {
   ArrowUpDownIcon,
   ArrowUpIcon,
   ChevronDownIcon,
+  ChevronsDownUpIcon,
   ClipboardCopyIcon,
   ClipboardPasteIcon,
   CopyIcon,
@@ -200,6 +201,34 @@ function useStoredList(key: string) {
   return [value, change] as const;
 }
 
+/** Tree rows that the location opens: its mount and, outside the trash, every ancestor folder. */
+function onPathKeys(mount: string, path: string, trash: boolean) {
+  const keys = [`${mount}:/`];
+  if (!trash) {
+    for (let p = dirname(path); p !== "/"; p = dirname(p))
+      keys.push(`${mount}:${p}`);
+  }
+  return keys;
+}
+
+/** The remembered `{ mount, path, file? }`, if it parses. */
+function readLast(key: string) {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(key) ?? "null");
+    if (v && typeof v === "object" && "mount" in v && "path" in v && typeof v.mount === "string" && typeof v.path === "string") {
+      return {
+        mount: v.mount,
+        path: v.path,
+        file: "file" in v && typeof v.file === "string"
+          ? v.file
+          : undefined,
+      };
+    }
+  }
+  catch {}
+  return undefined;
+}
+
 const NARROW = 640;
 
 const MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent);
@@ -251,6 +280,42 @@ export function FileManager(props: FileManagerProps) {
   const mount = location.mount ?? (mounts.data && (visibleMounts(mounts.data, hostHidden, userHidden, undefined)[0] ?? mounts.data[0]))?.id;
   const shownMounts = mounts.data && visibleMounts(mounts.data, hostHidden, userHidden, mount);
   const { path, trash: inTrash } = location;
+  // Expanded tree rows; a new location opens the rows on its path that were not on the previous one.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const [pathRows, setPathRows] = useState<{ at?: string | undefined; keys: ReadonlySet<string> }>(() => ({
+    keys: new Set(),
+  }));
+  const at = mount && `${mount}:${path}:${inTrash}`;
+  if (mount && at !== pathRows.at) {
+    const keys = onPathKeys(mount, path, inTrash);
+    const added = keys.filter(k => !pathRows.keys.has(k));
+    setPathRows({
+      at,
+      keys: new Set(keys),
+    });
+    if (added.length) {
+      setExpanded(s => new Set([
+        ...s,
+        ...added,
+      ]));
+    }
+  }
+  const setRowExpanded = (key: string, open: boolean) => setExpanded((s) => {
+    const next = new Set(s);
+    if (open)
+      next.add(key);
+    else
+      next.delete(key);
+    return next;
+  });
+  const collapseAll = () => {
+    setExpanded(new Set());
+    // The next location reopens its whole path.
+    setPathRows(r => ({
+      ...r,
+      keys: new Set(),
+    }));
+  };
   const [query, setQuery] = useState("");
   const [searchScope, setSearchScope] = useState<"folder" | "below">("folder");
   const [view, setView] = useStoredChoice(`${storageKey}:view`, ["list", "grid"], "list");
@@ -503,6 +568,72 @@ export function FileManager(props: FileManagerProps) {
     setPreview(maskEntry(e, features));
   };
   const canQuickOpen = features.search && !inTrash && !!mount;
+
+  // Restores the last location once the mounts are known; stale parts fall back silently.
+  const lastKey = `${storageKey}:last`;
+  const restoreRef = useRef(props.initialMount === undefined && props.initialPath === undefined && typeof localStorage !== "undefined");
+  const [restored, setRestored] = useState(!restoreRef.current);
+  useEffect(() => {
+    if (!restoreRef.current || !mounts.data)
+      return;
+    restoreRef.current = false;
+    const last = readLast(lastKey);
+    const m = last && visibleMounts(mounts.data, props.sidebar?.hidden ?? [], userHidden, undefined).find(x => x.id === last.mount);
+    if (!last || !m) {
+      setRestored(true);
+      return;
+    }
+    const stat = (p: string) => client.stat(m.id, p).catch(() => undefined);
+    void (async () => {
+      const dir = last.path === "/"
+        ? undefined
+        : await stat(last.path);
+      const folder = dir?.kind === "dir"
+        ? dir.path
+        : "/";
+      const file = last.file && dirname(last.file) === folder
+        ? await stat(last.file)
+        : undefined;
+      navigate(m.id, folder);
+      if (file?.kind === "file") {
+        if (explorer) {
+          setRawSelection({
+            paths: new Set([file.path]),
+            anchor: file.path,
+          });
+        }
+        else if (!pick) {
+          setPreview(maskEntry(file, features));
+        }
+      }
+      setRestored(true);
+    })();
+  }, [
+    mounts.data,
+    lastKey,
+    props.sidebar?.hidden,
+    userHidden,
+    client,
+    navigate,
+    explorer,
+    pick,
+    features,
+  ]);
+  const shownFile = inTrash
+    ? undefined
+    : explorer
+      ? paneFile
+      : preview;
+  useEffect(() => {
+    if (restored && mount)
+      localStorage.setItem(lastKey, JSON.stringify({ mount, path, file: shownFile?.path }));
+  }, [
+    restored,
+    lastKey,
+    mount,
+    path,
+    shownFile?.path,
+  ]);
 
   const download = (targets: FmEntry[]) => {
     if (targets.length === 0)
@@ -917,6 +1048,7 @@ export function FileManager(props: FileManagerProps) {
                 {canUpload && uploadMenu}
                 {canPaste && <IconButton label={labels.paste} onClick={paste}><ClipboardPasteIcon /></IconButton>}
                 <span className="flex-1" />
+                <IconButton label={labels.collapseAll} onClick={collapseAll}><ChevronsDownUpIcon /></IconButton>
                 {canQuickOpen && <IconButton label={labels.quickOpen} onClick={() => setQuickOpen(true)}><FileSearchIcon /></IconButton>}
                 {refreshButton}
               </div>
@@ -940,6 +1072,8 @@ export function FileManager(props: FileManagerProps) {
                       mount={mount}
                       path={path}
                       inTrash={inTrash}
+                      expanded={expanded}
+                      onExpandedChange={setRowExpanded}
                       onNavigate={navigate}
                       onOpenTrash={m => go(m, "/", true)}
                       onRevealFile={reveal}
