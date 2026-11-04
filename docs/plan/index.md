@@ -49,3 +49,8 @@ Each plan is a single line linking to its detail file. All detailed information 
 - [x] [**20261103-1005-workers-r2 Cloudflare Workers app and R2 driver**](20261103-1005-workers-r2.md) `2026-11-03`
 - [x] [**20261104-0200-resizable-panels Resizable panels**](20261104-0200-resizable-panels.md) `2026-11-04`
 - [x] [**20261104-0337-tree-preview-layout Tree + preview layout**](20261104-0337-tree-preview-layout.md) `2026-11-04`
+- [ ] [**20261104-0558-explorer-parity Explorer parity campaign (bks / bkd review)**](20261104-0558-explorer-parity.md) `2026-11-04`
+- [ ] [**20261104-0558-editor Editor: save shortcut, wrap, conflicts, drafts, large files**](20261104-0558-editor.md) `2026-11-04`
+- [ ] [**20261104-0558-browser-shell Browser shell: copy path, folder menus, collapse all, remembered location, mobile**](20261104-0558-browser-shell.md) `2026-11-04`
+- [ ] [**20261104-0558-listing Listing: hidden files toggle and git-ignored entries**](20261104-0558-listing.md) `2026-11-04`
+- [ ] [**20261104-0558-previews Previews: binary sniff, PDF toolbar, Markdown plugin**](20261104-0558-previews.md) `2026-11-04`

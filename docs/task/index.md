@@ -57,3 +57,7 @@ Each task is a single line linking to its detail file. All detailed information 
 - [x] [**20261104-0200-resizable-panels Resizable panels**](20261104-0200-resizable-panels.md) `P2`
 - [x] [**20261104-0212-tree-collapsible Folder tree on shadcn Collapsible**](20261104-0212-tree-collapsible.md) `P2`
 - [x] [**20261104-0337-tree-preview-layout Tree + preview layout**](20261104-0337-tree-preview-layout.md) `P2`
+- [ ] [**20261104-0558-editor Editor: save shortcut, wrap, conflicts, drafts, large files**](20261104-0558-editor.md) `P2`
+- [ ] [**20261104-0558-browser-shell Browser shell: copy path, folder menus, collapse all, remembered location, mobile**](20261104-0558-browser-shell.md) `P2`
+- [ ] [**20261104-0558-listing Listing: hidden files toggle and git-ignored entries**](20261104-0558-listing.md) `P2`
+- [ ] [**20261104-0558-previews Previews: binary sniff, PDF toolbar, Markdown plugin**](20261104-0558-previews.md) `P2`

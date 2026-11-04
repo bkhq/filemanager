@@ -159,3 +159,7 @@ Tree + preview header: an editor-style path bar (`react/path-bar.tsx`, modelled 
 ## 2026-11-04 05:50 [progress]
 
 Split layout keeps the open file: clicking folders or mounts only moves the tree's focus; the preview changes only when another file is selected (`openFile` state, cleared when the file disappears from its loaded folder or is deleted from the header). The path bar shows the open file's path; every step, including the mount, lists its siblings (no folder-open item). Download, rename and delete act on the entry's own mount; renaming the open file keeps it open. Verified: 38 Playwright e2e.
+
+## 2026-11-04 05:58 [progress]
+
+Explorer parity requirements written from the bks / bkd comparison: campaign plan `20261104-0558-explorer-parity` with four workstream tasks and plans — editor (A1 Ctrl+S / unsaved marker, A2 wrap, B2 large files read-only, B3 conflict choices, B4 persisted drafts), browser-shell (A3 copy path / name, A4 folder-targeted new / upload, A5 collapse all, B7 remembered location, B8 phone tree / preview switch), listing (A6 hidden files toggle, B6 git-ignored entries), previews (A7 PDF toolbar off, B1 binary sniff, B5 Markdown plugin). Group C stays in existing tasks. Drafts awaiting the dispatch confirmation.
