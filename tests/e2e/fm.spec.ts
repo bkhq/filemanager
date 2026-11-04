@@ -606,7 +606,7 @@ test("collapses every tree row at once", async ({ page }) => {
   await page.getByRole("menuitem", { name: "sample.pdf" }).click();
   await expect(page.getByRole("toolbar", { name: "sample.pdf" })).toBeVisible();
   await expect(item("Local disk")).toHaveAttribute("aria-expanded", "true");
-  await expect(item("sample.pdf")).toHaveAttribute("aria-selected", "true");
+  await expect(item("docs")).toHaveAttribute("aria-selected", "true");
 });
 
 test("reopens the last folder and file after a reload", async ({ page }) => {
@@ -620,7 +620,7 @@ test("reopens the last folder and file after a reload", async ({ page }) => {
   await expect(page.getByRole("toolbar", { name: "todo.txt" })).toBeVisible();
   await expect(page.locator(".cm-content")).toContainText("try rename");
   await expect(bar).toHaveText(/Local disk.*notes.*todo\.txt/);
-  await expect(item("todo.txt")).toHaveAttribute("aria-selected", "true");
+  await expect(item("notes")).toHaveAttribute("aria-selected", "true");
 });
 
 test("ignores a stale remembered location", async ({ page }) => {
