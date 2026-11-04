@@ -1,8 +1,8 @@
 # 20261104-0558-explorer-parity Explorer parity campaign (bks / bkd review)
 
-- **status**: draft
+- **status**: implementing
 - **createdAt**: 2026-11-04 05:58
-- **approvedAt**: (pending)
+- **approvedAt**: 2026-11-04 06:09
 - **relatedTask**: (campaign; covers the four tasks below)
 
 ## Context
@@ -46,13 +46,15 @@ Four L2 workstreams, all parallel: [editor](20261104-0558-editor.md), [browser-s
 
 ## Annotations
 
+2026-11-04 06:09: user confirmed dispatch (`go`); auto mode not enabled, so every L2 -> main merge waits for user confirmation. campaignId `l1-d4j0p0gu-20261104060841`, baseBranch `main` (`0a47c3d`).
+
 2026-11-04: user asked to implement groups A and B, write requirement docs with PMA and process them with BKD L1.
 
 ## Status
 
 | Workstream | L2 issue | State | Merge SHA |
 |---|---|---|---|
-| editor | - | planned | - |
-| browser-shell | - | planned | - |
-| listing | - | planned | - |
-| previews | - | planned | - |
+| editor | h10kua0k | dispatched | - |
+| browser-shell | baikc887 | dispatched | - |
+| listing | xevmk1iw | dispatched | - |
+| previews | ld1vvq5p | dispatched | - |
