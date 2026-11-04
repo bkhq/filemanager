@@ -163,3 +163,7 @@ Split layout keeps the open file: clicking folders or mounts only moves the tree
 ## 2026-11-04 05:58 [progress]
 
 Explorer parity requirements written from the bks / bkd comparison: campaign plan `20261104-0558-explorer-parity` with four workstream tasks and plans — editor (A1 Ctrl+S / unsaved marker, A2 wrap, B2 large files read-only, B3 conflict choices, B4 persisted drafts), browser-shell (A3 copy path / name, A4 folder-targeted new / upload, A5 collapse all, B7 remembered location, B8 phone tree / preview switch), listing (A6 hidden files toggle, B6 git-ignored entries), previews (A7 PDF toolbar off, B1 binary sniff, B5 Markdown plugin). Group C stays in existing tasks. Drafts awaiting the dispatch confirmation.
+
+## 2026-11-04 06:30 [progress]
+
+Listing (20261104-0558-listing): list and search take `hidden=0|1` / `ignored=0|1` (default 1); entries carry an optional `ignored` flag and listings an `ignored` count. The local driver with `gitIgnore` marks ignored entries with one `git check-ignore -z --stdin` per listing, sharing the hardened git spawn with search (fsmonitor and untracked cache off, minimal env); failures mark nothing. The tree toolbar adds "Show hidden files" (default off) and "Show git-ignored files" (default on, shown when a listing has ignored entries) toggles, persisted per `storageKey` and applied to the tree, list, path bar, search and quick open; ignored rows are dimmed. Verified: 229 unit tests (10 new), 39 Playwright e2e (1 new).
