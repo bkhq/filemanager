@@ -144,6 +144,7 @@ function ListRow({ p, entry, top }: { p: FileListProps; entry: FmEntry; top: num
         h.selected && "bg-accent text-accent-foreground hover:bg-accent",
         h.over && "ring-2 ring-primary",
         h.props["aria-disabled"] && "opacity-50",
+        entry.ignored && "opacity-60",
       )}
       style={{ transform: `translateY(${top}px)` }}
     >
@@ -177,6 +178,7 @@ function GridCell({ p, entry }: { p: FileListProps; entry: FmEntry }) {
         h.selected && "bg-accent text-accent-foreground hover:bg-accent",
         h.over && "ring-2 ring-primary",
         h.props["aria-disabled"] && "opacity-50",
+        entry.ignored && "opacity-60",
       )}
     >
       <div className="flex h-20 w-full items-center justify-center overflow-hidden rounded-md">

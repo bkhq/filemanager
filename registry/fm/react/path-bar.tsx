@@ -1,4 +1,4 @@
-import type { FmClient } from "../client/client";
+import type { FmClient, FmListFilter } from "../client/client";
 import type { FmEntry, FmMountInfo } from "../core/schema";
 import type { FmLabels } from "./labels";
 import { cn } from "cn";
@@ -22,15 +22,16 @@ const PICKER = "max-h-80 w-auto max-w-72 min-w-40 overflow-y-auto";
 const PICKER_ITEM = "gap-1.5 py-1 text-xs whitespace-nowrap";
 
 /** Entries of `path`: folders unfold into their own entries, files open. */
-function PickerEntries({ client, mount, path, current, labels, onOpenFile }: {
+function PickerEntries({ client, mount, path, current, labels, filter, onOpenFile }: {
   client: FmClient;
   mount: string;
   path: string;
   current: string;
   labels: FmLabels;
+  filter: FmListFilter | undefined;
   onOpenFile: (entry: FmEntry) => void;
 }) {
-  const listing = useListing(client, mount, path, "name", "asc");
+  const listing = useListing(client, mount, path, "name", "asc", "", filter);
   const entries = listing.data?.pages.flatMap(p => p.items) ?? [];
   if (listing.isSuccess && entries.length === 0)
     return <DropdownMenuItem disabled className={PICKER_ITEM}>{labels.emptyFolder}</DropdownMenuItem>;
@@ -44,7 +45,7 @@ function PickerEntries({ client, mount, path, current, labels, onOpenFile }: {
             <span className="truncate">{entry.name}</span>
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className={PICKER}>
-            <PickerEntries client={client} mount={mount} path={entry.path} current={current} labels={labels} onOpenFile={onOpenFile} />
+            <PickerEntries client={client} mount={mount} path={entry.path} current={current} labels={labels} filter={filter} onOpenFile={onOpenFile} />
           </DropdownMenuSubContent>
         </DropdownMenuSub>
       );
@@ -63,7 +64,7 @@ function PickerEntries({ client, mount, path, current, labels, onOpenFile }: {
  * open): the mount, each folder and the file. Every step opens a picker of what
  * sits beside it: folders unfold, files open.
  */
-export function PathBar({ client, mounts, mount, path, file, labels, onOpenFile }: {
+export function PathBar({ client, mounts, mount, path, file, labels, filter, onOpenFile }: {
   client: FmClient;
   mounts: FmMountInfo[];
   /** Current mount and folder, shown while no file is open. */
@@ -71,6 +72,8 @@ export function PathBar({ client, mounts, mount, path, file, labels, onOpenFile 
   path: string;
   file?: FmEntry | undefined;
   labels: FmLabels;
+  /** Hidden / ignored filter for the pickers. */
+  filter?: FmListFilter | undefined;
   onOpenFile: (entry: FmEntry) => void;
 }) {
   const at = file?.mount ?? mount;
@@ -100,6 +103,7 @@ export function PathBar({ client, mounts, mount, path, file, labels, onOpenFile 
             ? trail[0] ?? ""
             : target}
           labels={labels}
+          filter={filter}
           onOpenFile={onOpenFile}
         />
       </DropdownMenuContent>
