@@ -19,10 +19,13 @@ trailer<</Root 1 0 R>>
 
 export const SEED: Record<string, string | Uint8Array> = {
   "README.md": "# Local root\n\nFiles in this mount live on the local disk.\n",
+  "samples/guide.md": "# Guide\n\nRead the [project page](https://github.com/bkhq/filemanager) first.\n\n| Port | Country |\n| --- | --- |\n| Piraeus | Greece |\n| Split | Croatia |\n\n- [x] Rendered view\n- [ ] Source view\n\n```ts\nconst greeting: string = \"hello\";\nconsole.log(greeting);\n```\n",
   "notes/todo.txt": "- try rename\n- try drag and drop\n",
   "notes/config.json": "{\n  \"region\": \"aegean\",\n  \"ports\": [\"Piraeus\", \"Mykonos\", \"Naxos\"]\n}\n",
   "images/dot.png": PNG,
   "docs/sample.pdf": PDF,
+  "samples/hosts": "127.0.0.1 localhost\n::1 localhost\n",
+  "samples/blob": Uint8Array.of(0x7F, 0x45, 0x4C, 0x46, 0, 1, 2, 0, 0, 0),
   "sheets/ports.csv": "port,country,berths\nPiraeus,Greece,670\nSplit,Croatia,350\n\"Valletta, Grand Harbour\",Malta,120\n",
   "sheets/fleet.xlsx": makeXlsx({
     Fleet: [

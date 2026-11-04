@@ -36,6 +36,7 @@ bunx shadcn add @bkhq/fm-react                        # UI + client
 | `fm-client` | typed fetch client, TanStack Query hooks, upload queue |
 | `fm-react` | `<FileManager />`: tree, list/grid, previews (image / video rotate, flip, zoom), uploads, trash, undo |
 | `fm-plugin-sheet` | optional plugin: CSV / TSV / XLSX table preview |
+| `fm-plugin-markdown` | optional plugin: rendered Markdown (GFM, highlighted code) with a source toggle |
 
 Files land under `src/fm/`. Mount the router in the host API:
 
@@ -91,20 +92,21 @@ Optional file-type support is shipped as plugins: extra previewers and
 context-menu actions.
 
 ```tsx
-import { sheetPlugin } from "@/fm/plugins/sheet";   // bunx shadcn add @bkhq/fm-plugin-sheet
+import { markdownPlugin } from "@/fm/plugins/markdown"; // bunx shadcn add @bkhq/fm-plugin-markdown
+import { sheetPlugin } from "@/fm/plugins/sheet";       // bunx shadcn add @bkhq/fm-plugin-sheet
 
-<FileManager baseUrl="/api/fm" plugins={[sheetPlugin()]} />;
+<FileManager baseUrl="/api/fm" plugins={[sheetPlugin(), markdownPlugin()]} />;
 ```
 
 A plugin is a plain object (`FmPlugin` in `src/fm/react/plugins.ts`):
 
 ```tsx
-const markdownPlugin: FmPlugin = {
-  id: "markdown",
+const logPlugin: FmPlugin = {
+  id: "log",
   previewers: [{
-    id: "markdown",
-    match: e => e.name.endsWith(".md"),
-    component: lazy(() => import("./markdown-view")),   // receives PreviewProps
+    id: "log",
+    match: e => e.name.endsWith(".log"),
+    component: lazy(() => import("./log-view")),        // receives PreviewProps
     priority: 10,                                        // beats the built-in text editor
   }],
   actions: [{
