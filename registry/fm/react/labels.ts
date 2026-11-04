@@ -119,6 +119,8 @@ export const enLabels = {
   pickTotal: (size: string) => `Total ${size}`,
   pickOverLimit: (max: string) => `Selection exceeds the ${max} limit`,
   pickUnavailable: "This file type cannot be selected",
+  markdownRendered: "Rendered",
+  markdownSource: "Source",
 };
 
 export type FmLabels = typeof enLabels;
@@ -236,4 +238,6 @@ export const zhLabels: FmLabels = {
   pickTotal: size => `共 ${size}`,
   pickOverLimit: max => `所选文件超过 ${max} 上限`,
   pickUnavailable: "无法选择此类型的文件",
+  markdownRendered: "渲染",
+  markdownSource: "源码",
 };
