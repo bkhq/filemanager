@@ -50,6 +50,12 @@ Four L2 workstreams, all parallel: [editor](20261104-0558-editor.md), [browser-s
 
 2026-11-04: user asked to implement groups A and B, write requirement docs with PMA and process them with BKD L1.
 
+## Decisions
+
+- decision: A — message `3ldfc9h8`: the guard's "Discard" also clears the persisted draft (editor, both guard sites, with an e2e).
+- decision: A — message `ahizn0ph`: `client.readText` gains a `range` option; the large-file read uses it so a host `fetch` applies (editor scope extended to `client.ts`).
+- listing: `git check-ignore` rejects `--literal-pathspecs`; names are passed with a `./` prefix instead (test covers `:(top)` names). Accepted.
+
 ## Status
 
 | Workstream | L2 issue | State | Merge SHA |

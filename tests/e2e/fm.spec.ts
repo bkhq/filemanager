@@ -762,6 +762,20 @@ test.describe("on a phone", () => {
     await page.getByRole("button", { name: "Details" }).click();
     await expect(page.getByRole("complementary", { name: "Details" })).toContainText("2 files, 0 folders");
   });
+
+  test("shows the tree or the open file with a back button in the tree layout", async ({ page }) => {
+    await openTreeMount(page, "Local disk");
+    const tree = page.getByRole("tree");
+    const item = (name: string) => tree.getByRole("treeitem", { name, exact: true });
+    await expect(row(page, "/notes")).toHaveCount(0);
+    await item("notes").tap();
+    await expect(tree).toBeVisible();
+    await item("todo.txt").tap();
+    await expect(page.getByRole("toolbar", { name: "todo.txt" })).toBeVisible();
+    await expect(tree).toHaveCount(0);
+    await page.getByRole("button", { name: "Back to folders" }).tap();
+    await expect(item("todo.txt")).toBeVisible();
+  });
 });
 
 test.describe("file picker", () => {
