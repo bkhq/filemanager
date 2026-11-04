@@ -1,5 +1,5 @@
 import type { FmOpsRequest, FmSearchMode, FmSortKey } from "../core/schema";
-import type { FmClient } from "./client";
+import type { FmClient, FmListFilter } from "./client";
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 export const fmKeys = {
@@ -13,20 +13,24 @@ export const fmKeys = {
     "list",
     mount,
   ] as const,
-  list: (client: FmClient, mount: string, path: string, sort: FmSortKey, order: "asc" | "desc", q = "") =>
+  list: (client: FmClient, mount: string, path: string, sort: FmSortKey, order: "asc" | "desc", q = "", filter: FmListFilter = {}) =>
     [
       ...fmKeys.lists(client, mount),
       path,
       sort,
       order,
       q,
+      filter.hidden ?? true,
+      filter.ignored ?? true,
     ] as const,
-  search: (client: FmClient, mount: string, path: string, q: string, mode: FmSearchMode = "substring") => [
+  search: (client: FmClient, mount: string, path: string, q: string, mode: FmSearchMode = "substring", filter: FmListFilter = {}) => [
     ...fmKeys.lists(client, mount),
     "search",
     path,
     q,
     mode,
+    filter.hidden ?? true,
+    filter.ignored ?? true,
   ] as const,
   trash: (client: FmClient, mount: string) => [
     ...fmKeys.all(client),
@@ -55,10 +59,10 @@ export function useMounts(client: FmClient) {
 
 const PAGE = 500;
 
-/** Directory listing, paged by the server cursor; `q` filters names. */
-export function useListing(client: FmClient, mount: string | undefined, path: string, sort: FmSortKey, order: "asc" | "desc", q = "") {
+/** Directory listing, paged by the server cursor; `q` filters names, `filter` drops hidden / ignored entries. */
+export function useListing(client: FmClient, mount: string | undefined, path: string, sort: FmSortKey, order: "asc" | "desc", q = "", filter: FmListFilter = {}) {
   return useInfiniteQuery({
-    queryKey: fmKeys.list(client, mount ?? "", path, sort, order, q),
+    queryKey: fmKeys.list(client, mount ?? "", path, sort, order, q, filter),
     enabled: !!mount,
     // Keep rows on screen while a new filter loads.
     placeholderData: keepPreviousData,
@@ -69,16 +73,22 @@ export function useListing(client: FmClient, mount: string | undefined, path: st
       sort,
       order,
       q,
+      hidden: filter.hidden,
+      ignored: filter.ignored,
     }),
     getNextPageParam: last => last.cursor,
   });
 }
 
 /** Name matches at any depth below `path`. */
-export function useSearch(client: FmClient, mount: string | undefined, path: string, q: string, enabled = true, mode: FmSearchMode = "substring") {
+export function useSearch(client: FmClient, mount: string | undefined, path: string, q: string, enabled = true, mode: FmSearchMode = "substring", filter: FmListFilter = {}) {
   return useQuery({
-    queryKey: fmKeys.search(client, mount ?? "", path, q, mode),
-    queryFn: () => client.search(mount!, path, q, { mode }),
+    queryKey: fmKeys.search(client, mount ?? "", path, q, mode, filter),
+    queryFn: () => client.search(mount!, path, q, {
+      mode,
+      hidden: filter.hidden,
+      ignored: filter.ignored,
+    }),
     enabled: enabled && !!mount && !!q.trim(),
     // Keep results on screen while the next query loads.
     placeholderData: keepPreviousData,

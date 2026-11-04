@@ -20,11 +20,13 @@ import {
   CopyPlusIcon,
   DownloadIcon,
   EyeIcon,
+  EyeOffIcon,
   FilePlusIcon,
   FileSearchIcon,
   FolderOpenIcon,
   FolderPlusIcon,
   FolderUpIcon,
+  GitBranchIcon,
   InfoIcon,
   LayoutGridIcon,
   ListIcon,
@@ -249,6 +251,11 @@ export function FileManager(props: FileManagerProps) {
   const [searchScope, setSearchScope] = useState<"folder" | "below">("folder");
   const [view, setView] = useStoredChoice(`${storageKey}:view`, ["list", "grid"], "list");
   const [layout, setLayout] = useStoredChoice(`${storageKey}:layout`, ["split", "single"], props.layout ?? "split");
+  const [hiddenFiles, setHiddenFiles] = useStoredChoice(`${storageKey}:hidden-files`, ["on", "off"], "off");
+  const [ignoredFiles, setIgnoredFiles] = useStoredChoice(`${storageKey}:ignored-files`, ["on", "off"], "on");
+  const showHidden = hiddenFiles === "on";
+  const showIgnored = ignoredFiles === "on";
+  const filter = useMemo(() => ({ hidden: showHidden, ignored: showIgnored }), [showHidden, showIgnored]);
   const [rootRef, width] = useWidth();
   const narrow = width > 0 && width < NARROW;
   const split = layout === "split" && !narrow;
@@ -278,14 +285,15 @@ export function FileManager(props: FileManagerProps) {
   const [treeTarget, setTreeTarget] = useState<FmTreeTarget>();
   const folderInputRef = useRef<HTMLInputElement>(null);
 
-  const listing = useListing(client, mount, path, sort.key, sort.order, query.trim());
+  const listing = useListing(client, mount, path, sort.key, sort.order, query.trim(), filter);
   const below = features.search && searchScope === "below" && !!query.trim();
-  const search = useSearch(client, mount, path, query.trim(), below);
+  const search = useSearch(client, mount, path, query.trim(), below, "substring", filter);
   const items = useMemo(() => (below
     ? search.data?.items
     : listing.data?.pages.flatMap(p => p.items)), [below, search.data, listing.data]);
   const entries = useMemo(() => items?.map(e => maskEntry(e, features)) ?? [], [items, features]);
   const rawDir = listing.data?.pages[0]?.entry;
+  const hasIgnored = listing.data?.pages.some(p => (p.ignored ?? 0) > 0) ?? false;
   const dir = useMemo(() => rawDir && maskEntry(rawDir, features), [rawDir, features]);
   const order = useMemo(() => entries.map(e => e.path), [entries]);
   const byPath = useMemo(() => new Map(entries.map(e => [e.path, e])), [entries]);
@@ -840,6 +848,16 @@ export function FileManager(props: FileManagerProps) {
                 {canPaste && <IconButton label={labels.paste} onClick={paste}><ClipboardPasteIcon /></IconButton>}
                 <span className="flex-1" />
                 {canQuickOpen && <IconButton label={labels.quickOpen} onClick={() => setQuickOpen(true)}><FileSearchIcon /></IconButton>}
+                <IconButton label={labels.showHiddenFiles} aria-pressed={showHidden} onClick={() => setHiddenFiles(showHidden ? "off" : "on")}>
+                  {showHidden
+                    ? <EyeIcon />
+                    : <EyeOffIcon />}
+                </IconButton>
+                {(hasIgnored || !showIgnored) && (
+                  <IconButton label={labels.showIgnoredFiles} aria-pressed={showIgnored} onClick={() => setIgnoredFiles(showIgnored ? "off" : "on")}>
+                    <GitBranchIcon />
+                  </IconButton>
+                )}
                 {refreshButton}
               </div>
             )}
@@ -869,6 +887,7 @@ export function FileManager(props: FileManagerProps) {
                         ? selected[0]!.path
                         : undefined}
                       onDropEntries={dropEntries}
+                      filter={filter}
                       readOnlyLabel={labels.readOnly}
                       trashLabel={labels.trash}
                       group={props.sidebar?.group}
@@ -917,6 +936,7 @@ export function FileManager(props: FileManagerProps) {
                       path={path}
                       file={paneFile}
                       labels={labels}
+                      filter={filter}
                       onOpenFile={reveal}
                     />
                   )
@@ -1351,6 +1371,7 @@ export function FileManager(props: FileManagerProps) {
           open={quickOpen}
           onOpenChange={setQuickOpen}
           onPick={pickQuickOpen}
+          filter={filter}
         />
       )}
 

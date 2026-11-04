@@ -17,8 +17,9 @@ export interface FmLocalDriverOptions {
   /**
    * When true and the root is inside a git work tree, `search` lists candidates
    * with `git ls-files`, honouring .gitignore. Only files are found (git does not
-   * list directories). Otherwise the router walks. git runs with fsmonitor and
-   * the untracked cache disabled, literal pathspecs and a minimal environment.
+   * list directories). Otherwise the router walks. `list` marks entries git
+   * ignores with `ignored: true` via `git check-ignore`. git runs with fsmonitor
+   * and the untracked cache disabled, literal pathspecs and a minimal environment.
    * `.git` paths become read-only through this driver: write / mkdir / move /
    * copy / remove on any path with a `.git` segment throw FORBIDDEN.
    */
@@ -128,15 +129,37 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
     return [a, b] as const;
   };
 
+  /** Spawns git at the root with fsmonitor and the untracked cache disabled and a minimal env. */
+  const spawnGit = async (args: string[], extra: { stdin?: Blob; signal?: AbortSignal | undefined } = {}) => Bun.spawn([
+    "git",
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "core.untrackedCache=false",
+    ...args,
+  ], {
+    cwd: await abs("/"),
+    env: {
+      PATH: process.env.PATH ?? "",
+      ...(process.env.HOME !== undefined
+        ? { HOME: process.env.HOME }
+        : {}),
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_TERMINAL_PROMPT: "0",
+      GIT_OPTIONAL_LOCKS: "0",
+    },
+    stdin: extra.stdin ?? "ignore",
+    stdout: "pipe",
+    stderr: "ignore",
+    ...(extra.signal
+      ? { signal: extra.signal }
+      : {}),
+  });
+
   /** Root-relative paths from `git ls-files` below `dir`; null when git fails or the root is not a work tree. */
   const gitFiles = async (dir: string, signal?: AbortSignal): Promise<string[] | null> => {
     try {
-      const proc = Bun.spawn([
-        "git",
-        "-c",
-        "core.fsmonitor=false",
-        "-c",
-        "core.untrackedCache=false",
+      const proc = await spawnGit([
         "--literal-pathspecs",
         "ls-files",
         "-z",
@@ -147,23 +170,7 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
         dir === "/"
           ? "."
           : dir.slice(1),
-      ], {
-        cwd: await abs("/"),
-        env: {
-          PATH: process.env.PATH ?? "",
-          ...(process.env.HOME !== undefined
-            ? { HOME: process.env.HOME }
-            : {}),
-          GIT_CONFIG_NOSYSTEM: "1",
-          GIT_TERMINAL_PROMPT: "0",
-          GIT_OPTIONAL_LOCKS: "0",
-        },
-        stdout: "pipe",
-        stderr: "ignore",
-        ...(signal
-          ? { signal }
-          : {}),
-      });
+      ], { signal });
       const [out, exitCode] = await Promise.all([
         new Response(proc.stdout).text(),
         proc.exited,
@@ -174,6 +181,28 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
     }
     catch {
       return null;
+    }
+  };
+
+  /** Root-relative paths among `rels` that git ignores; empty when git fails or the root is not a work tree. */
+  const gitIgnored = async (rels: string[]): Promise<Set<string>> => {
+    try {
+      // check-ignore rejects --literal-pathspecs; a "./" prefix keeps names like ":(top)x" literal.
+      const proc = await spawnGit(["check-ignore", "-z", "--stdin"], {
+        stdin: new Blob([
+          rels.map(r => `./${r}\0`).join(""),
+        ]),
+      });
+      const [out, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        proc.exited,
+      ]);
+      return exitCode === 0
+        ? new Set(out.split("\0").filter(Boolean).map(p => p.slice(2)))
+        : new Set();
+    }
+    catch {
+      return new Set();
     }
   };
 
@@ -381,6 +410,13 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
         }
         catch {
           // Dangling symlinks and entries removed mid-listing are skipped.
+        }
+      }
+      if (opts.gitIgnore && out.length > 0) {
+        const ignored = await gitIgnored(out.map(e => e.path.slice(1)));
+        for (const e of out) {
+          if (ignored.has(e.path.slice(1)))
+            e.ignored = true;
         }
       }
       return out;

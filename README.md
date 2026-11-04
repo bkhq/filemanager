@@ -54,6 +54,16 @@ app.route("/api/fm", createFmRouter({
 }));
 ```
 
+Local driver options:
+
+| Option | Effect |
+| --- | --- |
+| `root` | absolute directory served as the mount root |
+| `readOnly` | expose read-only capabilities |
+| `showHidden` | `false` drops dotfiles everywhere (default `true`) |
+| `gitIgnore` | search via `git ls-files`; listings mark `ignored` entries via `git check-ignore`; writes into `.git` are refused |
+| `uploadDir` | directory for in-progress multipart parts (default `<root>/.fm-uploads/parts`) |
+
 Render the UI inside a `QueryClientProvider`:
 
 ```tsx
