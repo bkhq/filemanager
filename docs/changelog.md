@@ -163,3 +163,7 @@ Split layout keeps the open file: clicking folders or mounts only moves the tree
 ## 2026-11-04 05:58 [progress]
 
 Explorer parity requirements written from the bks / bkd comparison: campaign plan `20261104-0558-explorer-parity` with four workstream tasks and plans — editor (A1 Ctrl+S / unsaved marker, A2 wrap, B2 large files read-only, B3 conflict choices, B4 persisted drafts), browser-shell (A3 copy path / name, A4 folder-targeted new / upload, A5 collapse all, B7 remembered location, B8 phone tree / preview switch), listing (A6 hidden files toggle, B6 git-ignored entries), previews (A7 PDF toolbar off, B1 binary sniff, B5 Markdown plugin). Group C stays in existing tasks. Drafts awaiting the dispatch confirmation.
+
+## 2026-11-04 06:33 [progress]
+
+Editor workstream (20261104-0558-editor) delivered: Ctrl/Cmd+S save with an "Unsaved" marker and "Discard changes" (A1), persisted word wrap `fm:wrap` (A2), text files over 2 MiB open read-only from a Range read with a banner (B2), conflict banner with Overwrite / Reload from disk / Keep editing (B3), drafts persisted per mount + path in `fm:drafts` via the new `react/drafts.ts` (`loadDraft` / `saveDraft` / `clearDraft` / `clearDrafts`, 50 entries / ~5 MiB) and restored on reopen (B4); the unsaved-changes guard's "Discard" now drops the stored draft. Verified: `bun run check`, 45 Playwright e2e.
