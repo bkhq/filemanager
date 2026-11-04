@@ -175,3 +175,7 @@ Previews (20261104-0558-previews): the PDF iframe hides the browser viewer's too
 ## 2026-11-04 06:33 [progress]
 
 Editor workstream (20261104-0558-editor) delivered: Ctrl/Cmd+S save with an "Unsaved" marker and "Discard changes" (A1), persisted word wrap `fm:wrap` (A2), text files over 2 MiB open read-only from a Range read through `client.readText` with a range option, with a banner (B2), conflict banner with Overwrite / Reload from disk / Keep editing (B3), drafts persisted per mount + path in `fm:drafts` via the new `react/drafts.ts` (`loadDraft` / `saveDraft` / `clearDraft` / `clearDrafts`, 50 entries / ~5 MiB) and restored on reopen (B4); the unsaved-changes guard's "Discard" now drops the stored draft. Verified: `bun run check`, 45 Playwright e2e.
+
+## 2026-11-04 06:40 [progress]
+
+Browser shell (20261104-0558-browser-shell) delivered: entry menus copy the path / name (A3); tree folder / mount rows and list folder rows offer "New file here", "New folder here", "Upload here" without navigating (A4); tree expansion is owned by `FileManager` with "Collapse all" in the tree toolbar (A5); the last mount, folder and open file are restored from `${storageKey}:last`, stale parts ignored, the file reopened only in the tree layout (B7); in the split layout a container narrower than 640px shows the tree or the open file one at a time, with a guarded "Back to folders" button (B8; `single` and the picker keep the narrow list, the layout toggle stays hidden on narrow). Verified: `bun run check` (219 pass / 1 skip), 45 Playwright e2e passed.
