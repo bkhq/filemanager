@@ -49,6 +49,16 @@ describe("fm client against the router", () => {
     expect(seen.every(h => h.get("authorization") === "Bearer t")).toBe(true);
   });
 
+  it("reads a byte range through the client fetch", async () => {
+    const { c, seen } = client();
+    await c.write("m", "/r.txt", "0123456789");
+    const { text } = await c.readText("m", "/r.txt", {
+      range: { start: 0, end: 4 },
+    });
+    expect(seen.at(-1)!.get("range")).toBe("bytes=0-4");
+    expect(text).toBe("01234");
+  });
+
   it("raises typed errors", async () => {
     const { c } = client();
     const err = await c.stat("m", "/missing").catch(e => e);

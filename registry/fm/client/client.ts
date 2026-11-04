@@ -112,11 +112,25 @@ export function createFmClient(opts: FmClientOptions) {
       }),
     archiveUrl: (mount: string, paths: string[]) => url(`${m(mount)}/archive`, { path: paths }),
     writeUrl: (mount: string, path: string, conflict: FmConflict = "overwrite") => url(`${m(mount)}/write`, { path, conflict }),
-    readText: async (mount: string, path: string) => {
-      const res = await request(url(`${m(mount)}/read`, { path }));
+    /** `range` holds inclusive byte offsets; the text is decoded from at most that many bytes. */
+    readText: async (mount: string, path: string, o: { range?: { start: number; end: number } } = {}) => {
+      const r = o.range;
+      const res = await request(url(`${m(mount)}/read`, { path }), r
+        ? {
+            headers: { range: `bytes=${r.start}-${r.end}` },
+          }
+        : {});
+      const etag = (res.headers.get("etag") ?? "").replace(/"/g, "");
+      if (!r)
+        return { text: await res.text(), etag };
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      // A server ignoring Range answers 200 with the whole file.
+      const from = res.status === 206
+        ? 0
+        : r.start;
       return {
-        text: await res.text(),
-        etag: (res.headers.get("etag") ?? "").replace(/"/g, ""),
+        text: new TextDecoder().decode(bytes.slice(from, from + r.end - r.start + 1)),
+        etag,
       };
     },
     write: (mount: string, path: string, body: BodyInit, p: FmWriteParams = {}) => json<FmEntry>(url(`${m(mount)}/write`, { path, conflict: p.conflict }), {
