@@ -163,3 +163,7 @@ Split layout keeps the open file: clicking folders or mounts only moves the tree
 ## 2026-11-04 05:58 [progress]
 
 Explorer parity requirements written from the bks / bkd comparison: campaign plan `20261104-0558-explorer-parity` with four workstream tasks and plans — editor (A1 Ctrl+S / unsaved marker, A2 wrap, B2 large files read-only, B3 conflict choices, B4 persisted drafts), browser-shell (A3 copy path / name, A4 folder-targeted new / upload, A5 collapse all, B7 remembered location, B8 phone tree / preview switch), listing (A6 hidden files toggle, B6 git-ignored entries), previews (A7 PDF toolbar off, B1 binary sniff, B5 Markdown plugin). Group C stays in existing tasks. Drafts awaiting the dispatch confirmation.
+
+## 2026-11-04 06:31 [progress]
+
+Previews (20261104-0558-previews): the PDF iframe hides the browser viewer's toolbar and sidebar (`#toolbar=0&navpanes=0`); files of unknown type up to 2 MiB, including extensionless ones such as `hosts` or `LICENSE`, are sniffed with a Range read of their first 8 KiB (`looksBinary` in `react/state.ts`, built-in `sniff` previewer) and open in the text editor unless a NUL byte marks them binary. New optional registry item `fm-plugin-markdown` (`react-markdown`, `remark-gfm`, lazily loaded `shiki`) renders `.md` / `.markdown` with GFM tables, task lists and highlighted code, no raw HTML, and a Rendered / Source toggle in the preview header (Source is the text editor); fm-web enables it and the fm-api seed gains a `samples/` folder. Verified: `bun run check`, 40 Playwright e2e.
