@@ -234,6 +234,11 @@
           "target": "~/src/fm/react/dialogs.tsx"
         },
         {
+          "path": "registry/fm/react/drafts.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/drafts.ts"
+        },
+        {
           "path": "registry/fm/react/drop.ts",
           "type": "registry:file",
           "target": "~/src/fm/react/drop.ts"
