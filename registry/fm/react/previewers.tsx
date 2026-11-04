@@ -77,14 +77,10 @@ export function SniffPreview(props: PreviewProps) {
       entry.etag,
     ],
     queryFn: async () => {
-      const res = await fetch(client.readUrl(entry.mount, entry.path, { version: entry.etag }), {
-        headers: {
-          ...client.headers(),
-          Range: `bytes=0-${SNIFF_BYTES - 1}`,
-        },
+      const res = await client.read(entry.mount, entry.path, {
+        version: entry.etag,
+        range: { start: 0, end: SNIFF_BYTES - 1 },
       });
-      if (res.status !== 200 && res.status !== 206)
-        throw new Error(res.statusText);
       return looksBinary(new Uint8Array(await res.arrayBuffer()).subarray(0, SNIFF_BYTES));
     },
   });
