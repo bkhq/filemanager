@@ -61,6 +61,8 @@ export const entrySchema = z.object({
   mime: z.string().optional(),
   etag: z.string(),
   caps: capsSchema,
+  /** Matched by an ignore rule such as .gitignore; set only by drivers that know. */
+  ignored: z.boolean().optional(),
 });
 export type FmEntry = z.infer<typeof entrySchema>;
 
@@ -83,6 +85,8 @@ export const listResultSchema = z.object({
   items: z.array(entrySchema),
   cursor: z.string().optional(),
   total: z.number().int().nonnegative(),
+  /** Entries in the directory marked ignored, counted before `ignored=0` drops them; present only when > 0. */
+  ignored: z.number().int().nonnegative().optional(),
 });
 export type FmListResult = z.infer<typeof listResultSchema>;
 
