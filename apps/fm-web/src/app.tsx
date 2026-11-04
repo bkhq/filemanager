@@ -1,5 +1,6 @@
 import type { FmSidebarOptions } from "@/fm/react/file-manager";
 import { useState } from "react";
+import { markdownPlugin } from "@/fm/plugins/markdown";
 import { sheetPlugin } from "@/fm/plugins/sheet";
 import { FileManager } from "@/fm/react/file-manager";
 import { FilePicker } from "@/fm/react/file-picker";
@@ -7,6 +8,7 @@ import { enLabels, zhLabels } from "@/fm/react/labels";
 
 const plugins = [
   sheetPlugin(),
+  markdownPlugin(),
 ];
 
 const labels = navigator.language.startsWith("zh")

@@ -159,6 +159,22 @@ test("previews spreadsheets with the sheet plugin", async ({ page }) => {
   await expect(dialog.getByRole("table", { name: "Crew" })).toContainText("Captain");
 });
 
+test("renders markdown and toggles to the source editor", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await row(page, "/samples").dblclick();
+  await row(page, "/samples/guide.md").dblclick();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: "Guide", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("table")).toContainText("Piraeus");
+  await expect(dialog.getByRole("link", { name: "project page" })).toHaveAttribute("target", "_blank");
+  await expect(dialog.locator("pre.shiki")).toContainText("console.log(greeting)");
+  await dialog.getByRole("button", { name: "Source", exact: true }).click();
+  await expect(dialog.locator(".cm-content")).toContainText("# Guide");
+  await dialog.getByRole("button", { name: "Rendered", exact: true }).click();
+  await expect(dialog.getByRole("heading", { name: "Guide", exact: true })).toBeVisible();
+  await expect(dialog.locator(".cm-content")).toBeHidden();
+});
+
 test("moves with cut and paste", async ({ page }) => {
   await openMount(page, "Local disk");
   await contextAction(page, "/README.md", "Cut");

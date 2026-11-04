@@ -19,6 +19,7 @@ trailer<</Root 1 0 R>>
 
 export const SEED: Record<string, string | Uint8Array> = {
   "README.md": "# Local root\n\nFiles in this mount live on the local disk.\n",
+  "samples/guide.md": "# Guide\n\nRead the [project page](https://github.com/bkhq/filemanager) first.\n\n| Port | Country |\n| --- | --- |\n| Piraeus | Greece |\n| Split | Croatia |\n\n- [x] Rendered view\n- [ ] Source view\n\n```ts\nconst greeting: string = \"hello\";\nconsole.log(greeting);\n```\n",
   "notes/todo.txt": "- try rename\n- try drag and drop\n",
   "notes/config.json": "{\n  \"region\": \"aegean\",\n  \"ports\": [\"Piraeus\", \"Mykonos\", \"Naxos\"]\n}\n",
   "images/dot.png": PNG,
