@@ -599,20 +599,16 @@ export function FileManager(props: FileManagerProps) {
       const folder = dir?.kind === "dir"
         ? dir.path
         : "/";
-      const file = last.file && dirname(last.file) === folder
+      // The file reopens only in the tree layout, where it shows inline; the list layout never pops a dialog.
+      const file = explorer && last.file && dirname(last.file) === folder
         ? await stat(last.file)
         : undefined;
       navigate(m.id, folder);
       if (file?.kind === "file") {
-        if (explorer) {
-          setRawSelection({
-            paths: new Set([file.path]),
-            anchor: file.path,
-          });
-        }
-        else if (!pick) {
-          setPreview(maskEntry(file, features));
-        }
+        setRawSelection({
+          paths: new Set([file.path]),
+          anchor: file.path,
+        });
       }
       setRestored(true);
     })();
@@ -624,8 +620,6 @@ export function FileManager(props: FileManagerProps) {
     client,
     navigate,
     explorer,
-    pick,
-    features,
   ]);
   const shownFile = inTrash
     ? undefined
