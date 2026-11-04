@@ -127,6 +127,19 @@ test("previews images and pdfs", async ({ page }) => {
   await row(page, "/docs").dblclick();
   await row(page, "/docs/sample.pdf").dblclick();
   await expect(page.getByRole("dialog").locator("iframe[title='sample.pdf']")).toBeVisible();
+  await expect(page.getByRole("dialog").locator("iframe[title='sample.pdf']")).toHaveAttribute("src", /#toolbar=0&navpanes=0$/);
+});
+
+test("sniffs extensionless files: text opens in the editor, binary offers download", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await row(page, "/samples").dblclick();
+  await row(page, "/samples/hosts").dblclick();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.locator(".cm-content")).toContainText("localhost");
+  await page.keyboard.press("Escape");
+  await row(page, "/samples/blob").dblclick();
+  await expect(dialog.getByText("No preview available")).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "Download" })).toBeVisible();
 });
 
 test("rotates, flips and zooms an image without changing it", async ({ page }) => {
