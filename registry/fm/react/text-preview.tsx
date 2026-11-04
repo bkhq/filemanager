@@ -46,18 +46,9 @@ export function TextPreview({ entry, client, labels, actions, onDirtyChange }: P
       entry.path,
       entry.etag,
     ],
-    queryFn: async () => {
-      const res = await fetch(client.readUrl(entry.mount, entry.path), {
-        headers: {
-          ...client.headers(),
-          range: `bytes=0-${MAX_TEXT_BYTES - 1}`,
-        },
-      });
-      if (!res.ok)
-        throw new FmApiError(res.status, "HTTP_ERROR", res.statusText);
-      // A server ignoring Range answers 200 with the whole file.
-      return new TextDecoder().decode((await res.arrayBuffer()).slice(0, MAX_TEXT_BYTES));
-    },
+    queryFn: async () => (await client.readText(entry.mount, entry.path, {
+      range: { start: 0, end: MAX_TEXT_BYTES - 1 },
+    })).text,
     enabled: truncated,
     staleTime: 0,
   });
