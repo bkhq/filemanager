@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useListing } from "../client/hooks";
-import { basename, isWithin } from "../core/path";
+import { basename } from "../core/path";
 import { DRAG_TYPE, EntryIcon } from "./file-list";
 import { groupMountsByDriver } from "./mount-visibility";
 
@@ -31,10 +31,16 @@ interface TreeProps {
   selected?: string | undefined;
   /** Right-click on a row, before the context menu opens; undefined for rows without a menu. */
   onContextTarget?: ((target: FmTreeTarget | undefined) => void) | undefined;
+  /** Expanded rows, keyed `mount:path`; a mount row uses `/`. */
+  expanded: ReadonlySet<string>;
+  onExpandedChange: (key: string, open: boolean) => void;
   /** Entries of the current mount dropped onto `folder` of `mount`. */
   /** Entries dropped onto `folder` of `mount`; `from` is their mount (the current one when absent). */
   onDropEntries?: ((paths: string[], mount: string, folder: string, from?: string) => void) | undefined;
 }
+
+/** Expansion key of a folder row (`mount:path`); a mount row uses its root `/`. */
+const treeKey = (mount: string, path: string) => `${mount}:${path}`;
 
 const ROW = "w-full justify-start font-normal aria-expanded:bg-transparent aria-expanded:hover:bg-muted dark:aria-expanded:hover:bg-muted/50";
 const ACTIVE = "bg-accent text-accent-foreground aria-expanded:bg-accent aria-expanded:hover:bg-accent";
@@ -236,22 +242,14 @@ function dropOn(t: TreeProps, mount: string, folder: string, writable: boolean) 
 
 function Node({ t, entry }: { t: TreeProps; entry: FmEntry }) {
   const { mount, path } = entry;
-  const onPath = t.mount === mount && !t.inTrash && isWithin(t.path, path) && t.path !== path;
-  const [open, setOpen] = useState(onPath);
-  // Opens when navigation enters the subtree; clicks can still collapse it.
-  const [wasOnPath, setWasOnPath] = useState(onPath);
-  if (onPath !== wasOnPath) {
-    setWasOnPath(onPath);
-    if (onPath)
-      setOpen(true);
-  }
+  const key = treeKey(mount, path);
   return (
     <Branch
       label={basename(path)}
       icon={<FolderIcon className="text-sky-500" />}
       active={t.mount === mount && !t.inTrash && t.path === path}
-      open={open}
-      onOpenChange={setOpen}
+      open={t.expanded.has(key)}
+      onOpenChange={open => t.onExpandedChange(key, open)}
       onClick={() => t.onNavigate(mount, path)}
       drag={entry.caps.move || entry.caps.copy
         ? { mount, path }
@@ -265,14 +263,7 @@ function Node({ t, entry }: { t: TreeProps; entry: FmEntry }) {
 }
 
 function MountNode({ t, info, readOnlyLabel, trashLabel }: { t: TreeProps; info: FmMountInfo; readOnlyLabel: string; trashLabel: string }) {
-  const current = t.mount === info.id;
-  const [open, setOpen] = useState(current);
-  const [wasCurrent, setWasCurrent] = useState(current);
-  if (current !== wasCurrent) {
-    setWasCurrent(current);
-    if (current)
-      setOpen(true);
-  }
+  const key = treeKey(info.id, "/");
   const readOnly = !info.caps.write;
   const trashActive = t.mount === info.id && t.inTrash;
   return (
@@ -282,8 +273,8 @@ function MountNode({ t, info, readOnlyLabel, trashLabel }: { t: TreeProps; info:
         ? <LockIcon className="text-muted-foreground" />
         : <HardDriveIcon className="text-muted-foreground" />}
       active={t.mount === info.id && !t.inTrash && t.path === "/"}
-      open={open}
-      onOpenChange={setOpen}
+      open={t.expanded.has(key)}
+      onOpenChange={open => t.onExpandedChange(key, open)}
       onClick={() => t.onNavigate(info.id, "/")}
       onDrop={dropOn(t, info.id, "/", !readOnly)}
       onContextMenu={() => t.onContextTarget?.({ mount: info.id })}

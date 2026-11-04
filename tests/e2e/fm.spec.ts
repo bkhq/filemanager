@@ -587,6 +587,58 @@ test("resizes the folder tree by dragging and keeps the width", async ({ page })
   await expect.poll(width).toBeLessThan(dragged - 5);
 });
 
+test("collapses every tree row at once", async ({ page }) => {
+  await openTreeMount(page, "Local disk");
+  const tree = page.getByRole("tree");
+  const item = (name: string) => tree.getByRole("treeitem", { name, exact: true });
+  const expanded = tree.locator("[role=treeitem][aria-expanded=true]");
+  await item("docs").getByRole("button").click();
+  await item("images").getByRole("button").click();
+  await expect(item("docs")).toHaveAttribute("aria-expanded", "true");
+  await expect(item("images")).toHaveAttribute("aria-expanded", "true");
+  await page.getByRole("button", { name: "Collapse all" }).click();
+  await expect(expanded).toHaveCount(0);
+  await expect(item("Local disk")).toHaveAttribute("aria-expanded", "false");
+  // The next location opens its path again.
+  const bar = page.getByRole("navigation", { name: "Path" });
+  await bar.getByRole("button", { name: "Local disk" }).click();
+  await page.getByRole("menuitem", { name: "docs" }).click();
+  await page.getByRole("menuitem", { name: "sample.pdf" }).click();
+  await expect(page.getByRole("toolbar", { name: "sample.pdf" })).toBeVisible();
+  await expect(item("Local disk")).toHaveAttribute("aria-expanded", "true");
+  await expect(item("sample.pdf")).toHaveAttribute("aria-selected", "true");
+});
+
+test("reopens the last folder and file after a reload", async ({ page }) => {
+  await openTreeMount(page, "Local disk");
+  const item = (name: string) => page.getByRole("tree").getByRole("treeitem", { name, exact: true });
+  const bar = page.getByRole("navigation", { name: "Path" });
+  await item("notes").click();
+  await item("todo.txt").click();
+  await expect(page.locator(".cm-content")).toContainText("try rename");
+  await page.reload();
+  await expect(page.getByRole("toolbar", { name: "todo.txt" })).toBeVisible();
+  await expect(page.locator(".cm-content")).toContainText("try rename");
+  await expect(bar).toHaveText(/Local disk.*notes.*todo\.txt/);
+  await expect(item("todo.txt")).toHaveAttribute("aria-selected", "true");
+});
+
+test("ignores a stale remembered location", async ({ page }) => {
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem("seeded")) {
+      sessionStorage.setItem("seeded", "1");
+      localStorage.setItem("fm:last", JSON.stringify({ mount: "local", path: "/gone-folder", file: "/gone-folder/gone.txt" }));
+    }
+  });
+  await startWithTree(page);
+  await page.goto("/");
+  const tree = page.getByRole("tree");
+  await expect(tree.getByRole("treeitem", { name: "Local disk", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText("Select a file in the tree to preview it")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Path" })).toHaveText("Local disk");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
 test("hides a drive via Manage drives and remembers it", async ({ page }) => {
   await startWithTree(page);
   await page.goto("/");
