@@ -867,3 +867,29 @@ test("resolves a save conflict by reloading from disk", async ({ page }) => {
   await expect(dialog.locator(".cm-content")).toHaveText("theirs");
   await expect(dialog.getByRole("button", { name: "Save" })).toHaveAttribute("aria-disabled", "true");
 });
+
+test("discarding through the guard drops the draft", async ({ page }) => {
+  await page.request.post("/api/fm/m/local/mkdir", {
+    data: { path: "/guard-e2e" },
+  });
+  for (const [name, text] of [
+    ["a.txt", "alpha original"],
+    ["b.txt", "beta"],
+  ])
+    await page.request.put(`/api/fm/m/local/write?path=${encodeURIComponent(`/guard-e2e/${name}`)}&conflict=overwrite`, { data: text });
+  await openTreeMount(page, "Local disk");
+  const item = (name: string) => page.getByRole("tree").getByRole("treeitem", { name, exact: true });
+  await item("guard-e2e").click();
+  await item("a.txt").click();
+  await expect(page.locator(".cm-content")).toContainText("alpha original");
+  await page.locator(".cm-content").click();
+  await page.keyboard.type("zz-guard-draft");
+  await item("b.txt").click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Discard" }).click();
+  await expect(page.locator(".cm-content")).toContainText("beta");
+  await page.waitForTimeout(500);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("fm:drafts") ?? "")).not.toContain("zz-guard-draft");
+  await item("a.txt").click();
+  await expect(page.locator(".cm-content")).toHaveText("alpha original");
+  await expect(page.getByText("Unsaved")).toHaveCount(0);
+});
