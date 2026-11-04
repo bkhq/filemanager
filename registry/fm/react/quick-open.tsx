@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from "react";
-import type { FmClient } from "../client/client";
+import type { FmClient, FmListFilter } from "../client/client";
 import type { FmEntry } from "../core/schema";
 import type { FmLabels } from "./labels";
 import { cn } from "cn";
@@ -17,10 +17,12 @@ export interface QuickOpenProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onPick: (entry: FmEntry) => void;
+  /** Hidden / ignored filter for the search. */
+  filter?: FmListFilter | undefined;
 }
 
 /** Fuzzy "go to file" over the whole mount. */
-export function QuickOpen({ client, mount, labels, open, onOpenChange, onPick }: QuickOpenProps) {
+export function QuickOpen({ client, mount, labels, open, onOpenChange, onPick, filter }: QuickOpenProps) {
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -32,7 +34,7 @@ export function QuickOpen({ client, mount, labels, open, onOpenChange, onPick }:
     return () => clearTimeout(timer);
   }, [input]);
 
-  const search = useSearch(client, mount, "/", query, open, "fuzzy");
+  const search = useSearch(client, mount, "/", query, open, "fuzzy", filter);
   const items = query
     ? search.data?.items ?? []
     : [];

@@ -387,6 +387,32 @@
       "devDependencies": [
         "@types/papaparse@5.5.2"
       ]
+    },
+    {
+      "name": "fm-plugin-markdown",
+      "type": "registry:block",
+      "title": "File manager: Markdown preview",
+      "description": "Optional plugin: rendered Markdown (GFM, highlighted code) with a Rendered / Source toggle. Pass markdownPlugin() to <FileManager plugins>.",
+      "dependencies": [
+        "react-markdown@10.1.0",
+        "remark-gfm@4.0.1",
+        "shiki@4.6.0"
+      ],
+      "registryDependencies": [
+        "@bkhq/fm-react"
+      ],
+      "files": [
+        {
+          "path": "registry/fm/plugins/markdown.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/plugins/markdown.ts"
+        },
+        {
+          "path": "registry/fm/plugins/markdown-view.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/plugins/markdown-view.tsx"
+        }
+      ]
     }
   ]
 }

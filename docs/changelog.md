@@ -164,6 +164,18 @@ Split layout keeps the open file: clicking folders or mounts only moves the tree
 
 Explorer parity requirements written from the bks / bkd comparison: campaign plan `20261104-0558-explorer-parity` with four workstream tasks and plans — editor (A1 Ctrl+S / unsaved marker, A2 wrap, B2 large files read-only, B3 conflict choices, B4 persisted drafts), browser-shell (A3 copy path / name, A4 folder-targeted new / upload, A5 collapse all, B7 remembered location, B8 phone tree / preview switch), listing (A6 hidden files toggle, B6 git-ignored entries), previews (A7 PDF toolbar off, B1 binary sniff, B5 Markdown plugin). Group C stays in existing tasks. Drafts awaiting the dispatch confirmation.
 
+## 2026-11-04 06:30 [progress]
+
+Listing (20261104-0558-listing): list and search take `hidden=0|1` / `ignored=0|1` (default 1); entries carry an optional `ignored` flag and listings an `ignored` count. The local driver with `gitIgnore` marks ignored entries with one `git check-ignore -z --stdin` per listing, sharing the hardened git spawn with search (fsmonitor and untracked cache off, minimal env); failures mark nothing. The tree toolbar adds "Show hidden files" (default off) and "Show git-ignored files" (default on, shown when a listing has ignored entries) toggles, persisted per `storageKey` and applied to the tree, list, path bar, search and quick open; ignored rows are dimmed. Verified: 229 unit tests (10 new), 39 Playwright e2e (1 new).
+
+## 2026-11-04 06:31 [progress]
+
+Previews (20261104-0558-previews): the PDF iframe hides the browser viewer's toolbar and sidebar (`#toolbar=0&navpanes=0`); files of unknown type up to 2 MiB, including extensionless ones such as `hosts` or `LICENSE`, are sniffed with a Range read of their first 8 KiB (`looksBinary` in `react/state.ts`, built-in `sniff` previewer) and open in the text editor unless a NUL byte marks them binary. New optional registry item `fm-plugin-markdown` (`react-markdown`, `remark-gfm`, lazily loaded `shiki`) renders `.md` / `.markdown` with GFM tables, task lists and highlighted code, no raw HTML, and a Rendered / Source toggle in the preview header (Source is the text editor); fm-web enables it and the fm-api seed gains a `samples/` folder. Verified: `bun run check`, 40 Playwright e2e.
+
 ## 2026-11-04 06:33 [progress]
 
 Editor workstream (20261104-0558-editor) delivered: Ctrl/Cmd+S save with an "Unsaved" marker and "Discard changes" (A1), persisted word wrap `fm:wrap` (A2), text files over 2 MiB open read-only from a Range read through `client.readText` with a range option, with a banner (B2), conflict banner with Overwrite / Reload from disk / Keep editing (B3), drafts persisted per mount + path in `fm:drafts` via the new `react/drafts.ts` (`loadDraft` / `saveDraft` / `clearDraft` / `clearDrafts`, 50 entries / ~5 MiB) and restored on reopen (B4); the unsaved-changes guard's "Discard" now drops the stored draft. Verified: `bun run check`, 45 Playwright e2e.
+
+## 2026-11-04 06:40 [progress]
+
+Browser shell (20261104-0558-browser-shell) delivered: entry menus copy the path / name (A3); tree folder / mount rows and list folder rows offer "New file here", "New folder here", "Upload here" without navigating (A4); tree expansion is owned by `FileManager` with "Collapse all" in the tree toolbar (A5); the last mount, folder and open file are restored from `${storageKey}:last`, stale parts ignored, the file reopened only in the tree layout (B7); in the split layout a container narrower than 640px shows the tree or the open file one at a time, with a guarded "Back to folders" button (B8; `single` and the picker keep the narrow list, the layout toggle stays hidden on narrow). Verified: `bun run check` (219 pass / 1 skip), 45 Playwright e2e passed.

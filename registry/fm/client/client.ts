@@ -27,11 +27,32 @@ export interface FmListParams {
   order?: "asc" | "desc";
   /** Case-insensitive name filter. */
   q?: string | undefined;
+  /** `false` drops dot entries. */
+  hidden?: boolean | undefined;
+  /** `false` drops entries the driver marks ignored. */
+  ignored?: boolean | undefined;
 }
 
 export interface FmSearchParams {
   limit?: number;
   mode?: FmSearchMode;
+  /** `false` drops results below a dot segment. */
+  hidden?: boolean | undefined;
+  /** `false` drops entries the driver marks ignored. */
+  ignored?: boolean | undefined;
+}
+
+/** Listing / search visibility filter; omitted fields keep the server default. */
+export interface FmListFilter {
+  hidden?: boolean | undefined;
+  ignored?: boolean | undefined;
+}
+
+/** Only `false` is sent; the server defaults both flags to on. */
+function off(v: boolean | undefined) {
+  return v === false
+    ? "0"
+    : undefined;
 }
 
 export interface FmWriteParams {
@@ -95,6 +116,8 @@ export function createFmClient(opts: FmClientOptions) {
       sort: p.sort,
       order: p.order,
       q: p.q || undefined,
+      hidden: off(p.hidden),
+      ignored: off(p.ignored),
     })),
     /** Name matches at any depth below `path`. */
     search: (mount: string, path: string, q: string, p: FmSearchParams = {}) => json<FmSearchResult>(url(`${m(mount)}/search`, {
@@ -102,6 +125,8 @@ export function createFmClient(opts: FmClientOptions) {
       q,
       limit: p.limit?.toString(),
       mode: p.mode,
+      hidden: off(p.hidden),
+      ignored: off(p.ignored),
     })),
     /** URL for `<img src>` / `<a href>`; `download` forces an attachment. */
     readUrl: (mount: string, path: string, o: { download?: boolean; version?: string } = {}) =>

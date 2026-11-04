@@ -1,11 +1,12 @@
 import type { FmClient } from "../client/client";
 import type { FmEntry } from "../core/schema";
 import type { FmLabels } from "./labels";
+import { useQuery } from "@tanstack/react-query";
 import { DownloadIcon } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { MediaStage } from "./media-stage";
-import { kindOf } from "./state";
+import { kindOf, looksBinary } from "./state";
 
 export interface PreviewProps {
   entry: FmEntry;
@@ -38,7 +39,7 @@ export function MediaPreview({ entry, client, labels, actions }: PreviewProps) {
 }
 
 export function PdfPreview({ entry, client }: PreviewProps) {
-  return <iframe title={entry.name} src={client.readUrl(entry.mount, entry.path, { version: entry.etag })} className="size-full border-0" />;
+  return <iframe title={entry.name} src={`${client.readUrl(entry.mount, entry.path, { version: entry.etag })}#toolbar=0&navpanes=0`} className="size-full border-0" />;
 }
 
 export function FallbackPreview({ entry, client, labels, message }: PreviewProps & { message?: string }) {
@@ -59,4 +60,38 @@ export function LazyTextPreview(props: PreviewProps) {
       <TextPreview {...props} />
     </Suspense>
   );
+}
+
+const SNIFF_BYTES = 8192;
+
+/** Reads the first bytes of an unknown file: text opens in the editor, binary falls back to download. */
+export function SniffPreview(props: PreviewProps) {
+  const { entry, client, labels } = props;
+  const binary = useQuery({
+    queryKey: [
+      "fm",
+      client.baseUrl,
+      "sniff",
+      entry.mount,
+      entry.path,
+      entry.etag,
+    ],
+    queryFn: async () => {
+      const res = await fetch(client.readUrl(entry.mount, entry.path, { version: entry.etag }), {
+        headers: {
+          ...client.headers(),
+          Range: `bytes=0-${SNIFF_BYTES - 1}`,
+        },
+      });
+      if (res.status !== 200 && res.status !== 206)
+        throw new Error(res.statusText);
+      return looksBinary(new Uint8Array(await res.arrayBuffer()).subarray(0, SNIFF_BYTES));
+    },
+  });
+
+  if (binary.isPending)
+    return <div className="p-4 text-sm text-muted-foreground">{labels.loading}</div>;
+  if (binary.isError || binary.data)
+    return <FallbackPreview {...props} />;
+  return <LazyTextPreview {...props} />;
 }

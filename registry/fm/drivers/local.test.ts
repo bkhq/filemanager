@@ -297,3 +297,119 @@ describe("localDriver gitIgnore search", () => {
     expect(localDriver({ root: "/tmp" }).search).toBeUndefined();
   });
 });
+
+describe("localDriver gitIgnore listing", () => {
+  const hasGit = Bun.which("git") !== null;
+  if (!hasGit)
+    console.warn("git is not on PATH; skipping gitIgnore listing tests");
+
+  const git = async (cwd: string, ...args: string[]) => {
+    const proc = Bun.spawn(["git", ...args], { cwd, stdout: "ignore", stderr: "ignore" });
+    expect(await proc.exited).toBe(0);
+  };
+
+  const fixture = async (root: string) => {
+    await writeFile(join(root, ".gitignore"), "dist/\n*.log\n");
+    await writeFile(join(root, "keep.txt"), "k");
+    await writeFile(join(root, "a.log"), "l");
+    await mkdir(join(root, "dist"));
+    await writeFile(join(root, "dist", "out.js"), "o");
+    await mkdir(join(root, "src"));
+    await writeFile(join(root, "src", "main.ts"), "m");
+    await writeFile(join(root, "src", "debug.log"), "d");
+  };
+
+  const marks = (entries: { path: string; ignored?: boolean }[]) =>
+    Object.fromEntries(entries.map(e => [e.path, e.ignored === true]));
+
+  it.skipIf(!hasGit)("marks entries git ignores", async () => {
+    const t = await tempRoot();
+    try {
+      await git(t.root, "init", "-q");
+      await fixture(t.root);
+      const driver = localDriver({ root: t.root, gitIgnore: true });
+
+      const top = marks(await driver.list("/"));
+      expect(top).toMatchObject({
+        "/dist": true,
+        "/a.log": true,
+        "/src": false,
+        "/.gitignore": false,
+        "/keep.txt": false,
+      });
+      expect(marks(await driver.list("/src"))).toEqual({ "/src/main.ts": false, "/src/debug.log": true });
+      expect(marks(await driver.list("/dist"))).toEqual({ "/dist/out.js": true });
+    }
+    finally {
+      await t.cleanup();
+    }
+  });
+
+  it.skipIf(!hasGit)("treats entry names as literal paths", async () => {
+    const t = await tempRoot();
+    try {
+      await git(t.root, "init", "-q");
+      await writeFile(join(t.root, ".gitignore"), "/dist\n");
+      await mkdir(join(t.root, ":(top)dist"));
+      await mkdir(join(t.root, "dist"));
+      const entries = await localDriver({ root: t.root, gitIgnore: true }).list("/");
+      expect(marks(entries)).toMatchObject({ "/dist": true, "/:(top)dist": false });
+    }
+    finally {
+      await t.cleanup();
+    }
+  });
+
+  it.skipIf(!hasGit)("marks nothing outside a work tree", async () => {
+    const t = await tempRoot();
+    try {
+      await fixture(t.root);
+      const entries = await localDriver({ root: t.root, gitIgnore: true }).list("/");
+      expect(entries.map(e => e.path).sort()).toEqual([
+        "/.gitignore",
+        "/a.log",
+        "/dist",
+        "/keep.txt",
+        "/src",
+      ]);
+      expect(entries.some(e => e.ignored)).toBe(false);
+    }
+    finally {
+      await t.cleanup();
+    }
+  });
+
+  it.skipIf(!hasGit)("marks nothing without gitIgnore", async () => {
+    const t = await tempRoot();
+    try {
+      await git(t.root, "init", "-q");
+      await fixture(t.root);
+      const entries = await localDriver({ root: t.root }).list("/");
+      expect(entries).toHaveLength(6);
+      expect(entries.some(e => "ignored" in e)).toBe(false);
+    }
+    finally {
+      await t.cleanup();
+    }
+  });
+
+  it.skipIf(!hasGit)("does not run a core.fsmonitor command from the repo config", async () => {
+    const t = await tempRoot();
+    try {
+      const marker = join(t.base, "pwned");
+      const hook = join(t.base, "hook.sh");
+      await writeFile(hook, `#!/bin/sh\ntouch "${marker}"\n`);
+      await chmod(hook, 0o755);
+      await git(t.root, "init", "-q");
+      await fixture(t.root);
+      await git(t.root, "config", "core.fsmonitor", hook);
+
+      const entries = await localDriver({ root: t.root, gitIgnore: true }).list("/");
+      expect(marks(entries)["/a.log"]).toBe(true);
+      expect(await Bun.file(marker).exists()).toBe(false);
+    }
+    finally {
+      await t.cleanup();
+    }
+  });
+});
