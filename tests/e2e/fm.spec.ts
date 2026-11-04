@@ -760,3 +760,21 @@ test("uploads a large file in parts", async ({ page }) => {
   await expect(row(page, "/big")).toBeVisible();
   await expect(row(page, "/.fm-uploads")).toHaveCount(0);
 });
+
+test("opens a large text file read-only", async ({ page }) => {
+  await page.request.post("/api/fm/m/local/mkdir", {
+    data: { path: "/large-e2e" },
+  });
+  const body = `first line of big log\n${"lorem ipsum dolor sit amet, consectetur adipiscing\n".repeat(52_000)}`;
+  const put = await page.request.put(`/api/fm/m/local/write?path=${encodeURIComponent("/large-e2e/big.log")}&conflict=overwrite`, { data: body });
+  expect(put.ok()).toBe(true);
+
+  await openMount(page, "Local disk");
+  await row(page, "/large-e2e").dblclick();
+  await row(page, "/large-e2e/big.log").dblclick();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Large file: showing the first 2 MB, read-only.")).toBeVisible();
+  await expect(dialog.locator(".cm-content")).toContainText("first line of big log");
+  await expect(dialog.getByRole("button", { name: "Save" })).toHaveCount(0);
+  await expect(dialog.getByRole("link", { name: "Download" })).toBeVisible();
+});
