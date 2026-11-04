@@ -11,6 +11,7 @@ import type { FmUndo } from "./undo";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "cn";
 import {
+  ArrowLeftIcon,
   ArrowUpDownIcon,
   ArrowUpIcon,
   ChevronDownIcon,
@@ -129,7 +130,8 @@ export interface FileManagerProps {
   storageKey?: string;
   /**
    * Initial layout: folder tree beside the list (`split`) or the list alone
-   * (`single`). Users can toggle it; containers narrower than 640px always use `single`.
+   * (`single`). Users can toggle it on containers 640px and wider; narrower ones show
+   * the tree or the open file one at a time (`split`) or the list (`single`).
    */
   layout?: "split" | "single";
   /** View-only preset: browse, preview, search and download. */
@@ -322,7 +324,11 @@ export function FileManager(props: FileManagerProps) {
   const [layout, setLayout] = useStoredChoice(`${storageKey}:layout`, ["split", "single"], props.layout ?? "split");
   const [rootRef, width] = useWidth();
   const narrow = width > 0 && width < NARROW;
-  const split = layout === "split" && !narrow;
+  // Narrow containers show the tree or the main pane, one at a time; the picker keeps the list.
+  const stacked = narrow && layout === "split" && !props.pick;
+  const split = layout === "split" && (!narrow || stacked);
+  const [narrowPane, setNarrowPane] = useState<"tree" | "main">("tree");
+  const treeOnly = stacked && narrowPane === "tree";
   const [sort, setSort] = useState<{ key: FmSortKey; order: "asc" | "desc" }>({ key: "name", order: "asc" });
   const [rawSelection, setRawSelection] = useState<FmSelection>(EMPTY_SELECTION);
   const [clipboard, setClipboard] = useState<FmClipboard>();
@@ -562,8 +568,10 @@ export function FileManager(props: FileManagerProps) {
   const pickQuickOpen = (e: FmEntry) => {
     if (e.kind === "dir")
       return navigate(e.mount, e.path);
-    if (explorer)
+    if (explorer) {
+      setNarrowPane("main");
       return reveal(maskEntry(e, features));
+    }
     navigate(e.mount, dirname(e.path));
     setPreview(maskEntry(e, features));
   };
@@ -1020,7 +1028,7 @@ export function FileManager(props: FileManagerProps) {
   const panes = useDefaultLayout({
     id: `${storageKey}:panels`,
     panelIds: [
-      ...(split
+      ...(split && !stacked
         ? ["tree"]
         : []),
       "main",
@@ -1033,90 +1041,104 @@ export function FileManager(props: FileManagerProps) {
       : {}),
   });
 
+  // Tree toolbar and folder tree; a side panel, or a full-size view on narrow containers.
+  const treePane = (
+    <>
+      {explorer && (
+        <div role="toolbar" aria-label={labels.folderActions} className="flex shrink-0 items-center gap-0.5 border-b px-2 py-1.5">
+          {canMkdir && <IconButton label={labels.newFolder} onClick={() => setDialog({ kind: "mkdir" })}><FolderPlusIcon /></IconButton>}
+          {canNewFile && <IconButton label={labels.newFile} onClick={() => setDialog({ kind: "newFile" })}><FilePlusIcon /></IconButton>}
+          {canUpload && uploadMenu}
+          {canPaste && <IconButton label={labels.paste} onClick={paste}><ClipboardPasteIcon /></IconButton>}
+          <span className="flex-1" />
+          <IconButton label={labels.collapseAll} onClick={collapseAll}><ChevronsDownUpIcon /></IconButton>
+          {canQuickOpen && <IconButton label={labels.quickOpen} onClick={() => setQuickOpen(true)}><FileSearchIcon /></IconButton>}
+          {refreshButton}
+        </div>
+      )}
+      <div className="min-h-0 flex-1 overflow-auto [scrollbar-width:thin]">
+        {shownMounts && (
+          <ContextMenu>
+            <ContextMenuTrigger
+              render={<div className="min-h-full" />}
+              onContextMenu={(e) => {
+                if (!treeTargetRef.current)
+                  e.preventBaseUIHandler();
+                treeTargetRef.current = undefined;
+              }}
+            >
+              <FileTree
+                client={client}
+                mounts={features.trash
+                  ? shownMounts
+                  : shownMounts.map(m => ({ ...m, trash: false }))}
+                mount={mount}
+                path={path}
+                inTrash={inTrash}
+                expanded={expanded}
+                onExpandedChange={setRowExpanded}
+                onNavigate={navigate}
+                onOpenTrash={(m) => {
+                  go(m, "/", true);
+                  setNarrowPane("main");
+                }}
+                onRevealFile={(e) => {
+                  reveal(e);
+                  setNarrowPane("main");
+                }}
+                selected={selected.length === 1
+                  ? selected[0]!.path
+                  : undefined}
+                onDropEntries={dropEntries}
+                readOnlyLabel={labels.readOnly}
+                trashLabel={labels.trash}
+                group={props.sidebar?.group}
+                groupLabel={labels.driverGroup}
+                manageLabel={labels.manageDrives}
+                onManage={() => setDialog({ kind: "manageDrives" })}
+                onContextTarget={(target) => {
+                  treeTargetRef.current = target;
+                  setTreeTarget(target);
+                  // File menus act on the current folder (copy contents), so show the file first;
+                  // folder and mount menus target their row directly.
+                  if (target?.entry?.kind === "file")
+                    reveal(target.entry);
+                }}
+              />
+            </ContextMenuTrigger>
+            {menuContent(treeTarget && (treeTarget.entry
+              ? entryMenu([treeTarget.entry], treeTarget.entry.kind === "dir"
+                  ? {
+                      mount: treeTarget.entry.mount,
+                      path: dirname(treeTarget.entry.path),
+                    }
+                  : undefined)
+              : mountMenu(treeTarget.mount)))}
+          </ContextMenu>
+        )}
+      </div>
+    </>
+  );
+
   if (mounts.data && mounts.data.length === 0)
     return <div className={cn("p-6 text-sm text-muted-foreground", props.className)}>{labels.noMounts}</div>;
 
   return (
     <div ref={rootRef} className={cn("relative flex h-full min-h-0 overflow-hidden rounded-lg border bg-background", props.className)}>
       <ResizablePanelGroup id={`${storageKey}:panels`} orientation="horizontal" className="min-w-0 flex-1" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
-        {split && (
+        {split && !stacked && (
           <ResizablePanel id="tree" defaultSize="224px" minSize="160px" maxSize="40%" className="flex flex-col">
-            {explorer && (
-              <div role="toolbar" aria-label={labels.folderActions} className="flex shrink-0 items-center gap-0.5 border-b px-2 py-1.5">
-                {canMkdir && <IconButton label={labels.newFolder} onClick={() => setDialog({ kind: "mkdir" })}><FolderPlusIcon /></IconButton>}
-                {canNewFile && <IconButton label={labels.newFile} onClick={() => setDialog({ kind: "newFile" })}><FilePlusIcon /></IconButton>}
-                {canUpload && uploadMenu}
-                {canPaste && <IconButton label={labels.paste} onClick={paste}><ClipboardPasteIcon /></IconButton>}
-                <span className="flex-1" />
-                <IconButton label={labels.collapseAll} onClick={collapseAll}><ChevronsDownUpIcon /></IconButton>
-                {canQuickOpen && <IconButton label={labels.quickOpen} onClick={() => setQuickOpen(true)}><FileSearchIcon /></IconButton>}
-                {refreshButton}
-              </div>
-            )}
-            <div className="min-h-0 flex-1 overflow-auto [scrollbar-width:thin]">
-              {shownMounts && (
-                <ContextMenu>
-                  <ContextMenuTrigger
-                    render={<div className="min-h-full" />}
-                    onContextMenu={(e) => {
-                      if (!treeTargetRef.current)
-                        e.preventBaseUIHandler();
-                      treeTargetRef.current = undefined;
-                    }}
-                  >
-                    <FileTree
-                      client={client}
-                      mounts={features.trash
-                        ? shownMounts
-                        : shownMounts.map(m => ({ ...m, trash: false }))}
-                      mount={mount}
-                      path={path}
-                      inTrash={inTrash}
-                      expanded={expanded}
-                      onExpandedChange={setRowExpanded}
-                      onNavigate={navigate}
-                      onOpenTrash={m => go(m, "/", true)}
-                      onRevealFile={reveal}
-                      selected={selected.length === 1
-                        ? selected[0]!.path
-                        : undefined}
-                      onDropEntries={dropEntries}
-                      readOnlyLabel={labels.readOnly}
-                      trashLabel={labels.trash}
-                      group={props.sidebar?.group}
-                      groupLabel={labels.driverGroup}
-                      manageLabel={labels.manageDrives}
-                      onManage={() => setDialog({ kind: "manageDrives" })}
-                      onContextTarget={(target) => {
-                        treeTargetRef.current = target;
-                        setTreeTarget(target);
-                        // File menus act on the current folder (copy contents), so show the file first;
-                        // folder and mount menus target their row directly.
-                        if (target?.entry?.kind === "file")
-                          reveal(target.entry);
-                      }}
-                    />
-                  </ContextMenuTrigger>
-                  {menuContent(treeTarget && (treeTarget.entry
-                    ? entryMenu([treeTarget.entry], treeTarget.entry.kind === "dir"
-                        ? {
-                            mount: treeTarget.entry.mount,
-                            path: dirname(treeTarget.entry.path),
-                          }
-                        : undefined)
-                    : mountMenu(treeTarget.mount)))}
-                </ContextMenu>
-              )}
-            </div>
+            {treePane}
           </ResizablePanel>
         )}
-        {split && <ResizableHandle withHandle aria-label={labels.resizeTree} />}
+        {split && !stacked && <ResizableHandle withHandle aria-label={labels.resizeTree} />}
 
         <ResizablePanel id="main" minSize="320px">
 
           <section
             className="flex h-full min-w-0 flex-col outline-none"
             tabIndex={0}
+            inert={treeOnly}
             onKeyDown={onKeyDown}
             onDragOver={onDragOver}
             onDragLeave={e => !e.currentTarget.contains(e.relatedTarget as Node) && setDropActive(false)}
@@ -1124,6 +1146,11 @@ export function FileManager(props: FileManagerProps) {
             aria-label={currentMount?.label}
           >
             <header className="flex flex-wrap items-center gap-1 border-b px-2 py-1.5">
+              {stacked && (
+                <IconButton label={labels.backToTree} onClick={() => guard(() => setNarrowPane("tree"))}>
+                  <ArrowLeftIcon />
+                </IconButton>
+              )}
               {explorer && !inTrash && mount && shownMounts
                 ? (
                     <PathBar
@@ -1499,6 +1526,8 @@ export function FileManager(props: FileManagerProps) {
           </ResizablePanel>
         )}
       </ResizablePanelGroup>
+
+      {treeOnly && <div className="absolute inset-0 z-10 flex flex-col bg-background">{treePane}</div>}
 
       {detailsEntry && narrow && (
         <DetailsPanel
