@@ -1081,3 +1081,22 @@ test("discarding through the guard drops the draft", async ({ page }) => {
   await expect(page.locator(".cm-content")).toHaveText("alpha original");
   await expect(page.getByText("Unsaved")).toHaveCount(0);
 });
+
+test("deleting a file drops its draft", async ({ page }) => {
+  const dialog = await openEditorFile(page, "/drafts-del-e2e", "n.txt", "server text");
+  await expect(dialog.locator(".cm-content")).toContainText("server text");
+  await typeAtEnd(page, " unsaved draft");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("fm:drafts") ?? "")).toContain("unsaved draft");
+  await page.reload();
+  await openMount(page, "Local disk");
+  await row(page, "/drafts-del-e2e").dblclick();
+  await row(page, "/drafts-del-e2e/n.txt").click();
+  await page.keyboard.press("Delete");
+  await expect(row(page, "/drafts-del-e2e/n.txt")).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("fm:drafts") ?? "")).not.toContain("unsaved draft");
+  const put = await page.request.put(`/api/fm/m/local/write?path=${encodeURIComponent("/drafts-del-e2e/n.txt")}&conflict=overwrite`, { data: "" });
+  expect(put.ok()).toBe(true);
+  const again = await reopenEditorFile(page, "/drafts-del-e2e", "n.txt");
+  await expect(again.locator(".cm-content")).not.toContainText("unsaved draft");
+  await expect(again.getByText("Unsaved")).toHaveCount(0);
+});
