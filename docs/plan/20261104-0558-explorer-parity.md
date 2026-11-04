@@ -1,6 +1,6 @@
 # 20261104-0558-explorer-parity Explorer parity campaign (bks / bkd review)
 
-- **status**: implementing
+- **status**: completed
 - **createdAt**: 2026-11-04 05:58
 - **approvedAt**: 2026-11-04 06:09
 - **relatedTask**: (campaign; covers the four tasks below)
@@ -59,6 +59,8 @@ Four L2 workstreams, all parallel: [editor](20261104-0558-editor.md), [browser-s
 - 2026-11-04 integration trial (listing -> previews -> editor -> browser-shell in a scratch worktree): conflicts resolved in `file-manager.tsx` (listing toggles + `filter` moved into browser-shell's `treePane`), `file-tree.tsx` (`dimmed` + lifted expansion), `client.test.ts` (missing `});` between appended tests), changelog (both entries). Result: `bun run check` 242 pass, registry smoke OK, e2e 50 / 51 — B7 reopened the preview dialog on reload in the list layout. User confirmed (`ok`): browser-shell restores the open file only in the tree + preview layout; then merge all four; follow-up: `client.read(..., { range })` for the sniff and sheet reads, `clearDrafts` on rename / delete.
 
 - 2026-11-04 merged into local `main` (user `ok`): scratch branch from `a01aebd` with listing, previews, editor, browser-shell (B7 fixed: list layout restores the folder only); `bun run check` 242 pass / 1 skip, registry smoke OK, 56 e2e green; `main` fast-forwarded to `34d551d`. listing and previews L2 + L3s closed. Follow-up open: `client.read(..., { range })` for the sniff / sheet reads and `clearDrafts` on rename / delete (editor).
+
+- 2026-11-04 follow-up merged (`fe61759`, user `ok`): `client.read(..., { range })` used by the sniff, the sheet plugin and `readText`; `clearDrafts` after delete / rename / move. On `main`: `bun run check` 243 pass / 1 skip, registry smoke OK, 57 e2e green. All four L2s and their L3s closed. Not pushed (user: merge locally only).
 
 ## Status
 

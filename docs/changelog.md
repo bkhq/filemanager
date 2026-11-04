@@ -180,3 +180,7 @@ Follow-up: `client.read` returns the raw response (range / version) for the snif
 ## 2026-11-04 06:40 [progress]
 
 Browser shell (20261104-0558-browser-shell) delivered: entry menus copy the path / name (A3); tree folder / mount rows and list folder rows offer "New file here", "New folder here", "Upload here" without navigating (A4); tree expansion is owned by `FileManager` with "Collapse all" in the tree toolbar (A5); the last mount, folder and open file are restored from `${storageKey}:last`, stale parts ignored, the file reopened only in the tree layout (B7); in the split layout a container narrower than 640px shows the tree or the open file one at a time, with a guarded "Back to folders" button (B8; `single` and the picker keep the narrow list, the layout toggle stays hidden on narrow). Verified: `bun run check` (219 pass / 1 skip), 45 Playwright e2e passed.
+
+## 2026-11-04 08:20 [progress]
+
+Explorer parity campaign `l1-d4j0p0gu-20261104060841` complete (plan 20261104-0558-explorer-parity): A1-A7 and B1-B8 from the bks / bkd comparison merged into local `main` (listing `4e612f2`, previews `00a9d20`, editor `4d3ffee`, browser-shell `34d551d`, editor follow-up `fe61759`). Final on `main`: `bun run check` 243 pass / 1 skip, registry smoke OK, 57 Playwright e2e. Not pushed.
