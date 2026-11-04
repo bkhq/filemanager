@@ -686,6 +686,19 @@ test("ignores a stale remembered location", async ({ page }) => {
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
+test("restores only the folder in the list layout after a reload", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await row(page, "/notes").dblclick();
+  await row(page, "/notes/todo.txt").dblclick();
+  await expect(page.getByRole("dialog").getByRole("heading", { name: "todo.txt" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("fm:last") ?? "{}").file)).toBe("/notes/todo.txt");
+  // Reload with the preview still open: the remembered file must not pop a dialog.
+  await page.reload();
+  await expect(row(page, "/notes/todo.txt")).toBeVisible();
+  await expect(row(page, "/notes/config.json")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
 test("hides a drive via Manage drives and remembers it", async ({ page }) => {
   await startWithTree(page);
   await page.goto("/");

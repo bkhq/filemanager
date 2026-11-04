@@ -56,6 +56,8 @@ Four L2 workstreams, all parallel: [editor](20261104-0558-editor.md), [browser-s
 - decision: A — message `ahizn0ph`: `client.readText` gains a `range` option; the large-file read uses it so a host `fetch` applies (editor scope extended to `client.ts`).
 - listing: `git check-ignore` rejects `--literal-pathspecs`; names are passed with a `./` prefix instead (test covers `:(top)` names). Accepted.
 
+- 2026-11-04 integration trial (listing -> previews -> editor -> browser-shell in a scratch worktree): conflicts resolved in `file-manager.tsx` (listing toggles + `filter` moved into browser-shell's `treePane`), `file-tree.tsx` (`dimmed` + lifted expansion), `client.test.ts` (missing `});` between appended tests), changelog (both entries). Result: `bun run check` 242 pass, registry smoke OK, e2e 50 / 51 — B7 reopened the preview dialog on reload in the list layout. User confirmed (`ok`): browser-shell restores the open file only in the tree + preview layout; then merge all four; follow-up: `client.read(..., { range })` for the sniff and sheet reads, `clearDrafts` on rename / delete.
+
 ## Status
 
 | Workstream | L2 issue | State | Merge SHA |
