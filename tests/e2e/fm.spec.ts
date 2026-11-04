@@ -786,7 +786,7 @@ async function openEditorFile(page: Page, dir: string, name: string, body: strin
   });
   const put = await page.request.put(`/api/fm/m/local/write?path=${encodeURIComponent(`${dir}/${name}`)}&conflict=overwrite`, { data: body });
   expect(put.ok()).toBe(true);
-  await reopenEditorFile(page, dir, name);
+  return reopenEditorFile(page, dir, name);
 }
 
 async function reopenEditorFile(page: Page, dir: string, name: string) {
