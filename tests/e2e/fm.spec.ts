@@ -778,3 +778,92 @@ test("opens a large text file read-only", async ({ page }) => {
   await expect(dialog.getByRole("button", { name: "Save" })).toHaveCount(0);
   await expect(dialog.getByRole("link", { name: "Download" })).toBeVisible();
 });
+
+/** Creates `dir/name` with `body` through the API and opens it in the preview dialog. */
+async function openEditorFile(page: Page, dir: string, name: string, body: string) {
+  await page.request.post("/api/fm/m/local/mkdir", {
+    data: { path: dir },
+  });
+  const put = await page.request.put(`/api/fm/m/local/write?path=${encodeURIComponent(`${dir}/${name}`)}&conflict=overwrite`, { data: body });
+  expect(put.ok()).toBe(true);
+  await reopenEditorFile(page, dir, name);
+}
+
+async function reopenEditorFile(page: Page, dir: string, name: string) {
+  await openMount(page, "Local disk");
+  await row(page, dir).dblclick();
+  await row(page, `${dir}/${name}`).dblclick();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.locator(".cm-content")).toBeVisible();
+  return dialog;
+}
+
+const readFile = async (page: Page, path: string) => (await page.request.get(`/api/fm/m/local/read?path=${encodeURIComponent(path)}`)).text();
+
+async function typeAtEnd(page: Page, text: string) {
+  await page.getByRole("dialog").locator(".cm-content").click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type(text);
+}
+
+test("saves with Ctrl+S", async ({ page }) => {
+  await openEditorFile(page, "/editor-e2e-save", "note.txt", "save me");
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.locator(".cm-content")).toContainText("save me");
+  await typeAtEnd(page, " now");
+  await expect(dialog.getByText("Unsaved")).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect(dialog.getByText("Saved")).toBeVisible();
+  expect(await readFile(page, "/editor-e2e-save/note.txt")).toBe("save me now");
+});
+
+test("keeps the word wrap choice", async ({ page }) => {
+  const dialog = await openEditorFile(page, "/editor-e2e-wrap", "note.txt", "wrap me");
+  const wrap = dialog.getByRole("button", { name: "Word wrap" });
+  await expect(wrap).toHaveAttribute("aria-pressed", "true");
+  await wrap.click();
+  await expect(wrap).toHaveAttribute("aria-pressed", "false");
+  await page.reload();
+  const again = await reopenEditorFile(page, "/editor-e2e-wrap", "note.txt");
+  await expect(again.getByRole("button", { name: "Word wrap" })).toHaveAttribute("aria-pressed", "false");
+});
+
+test("restores an unsaved draft after a reload", async ({ page }) => {
+  const dialog = await openEditorFile(page, "/editor-e2e-draft", "note.txt", "server text");
+  await expect(dialog.locator(".cm-content")).toContainText("server text");
+  await typeAtEnd(page, " draft42");
+  await expect(dialog.getByText("Unsaved")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("fm:drafts") ?? "")).toContain("server text draft42");
+  await page.reload();
+  const again = await reopenEditorFile(page, "/editor-e2e-draft", "note.txt");
+  await expect(again.locator(".cm-content")).toContainText("server text draft42");
+  await expect(again.getByText("Unsaved")).toBeVisible();
+  await again.getByRole("button", { name: "More" }).click();
+  await page.getByRole("menuitem", { name: "Discard changes" }).click();
+  await expect(again.locator(".cm-content")).toHaveText("server text");
+  await expect(again.getByRole("button", { name: "Save" })).toHaveAttribute("aria-disabled", "true");
+});
+
+test("resolves a save conflict by overwriting", async ({ page }) => {
+  const dialog = await openEditorFile(page, "/editor-e2e-overwrite", "note.txt", "original");
+  await expect(dialog.locator(".cm-content")).toContainText("original");
+  await typeAtEnd(page, " mine");
+  await page.request.put(`/api/fm/m/local/write?path=${encodeURIComponent("/editor-e2e-overwrite/note.txt")}&conflict=overwrite`, { data: "theirs" });
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog.getByText("The file changed on disk since you opened it.")).toBeVisible();
+  await dialog.getByRole("button", { name: "Overwrite" }).click();
+  await expect(dialog.getByText("Saved")).toBeVisible();
+  expect(await readFile(page, "/editor-e2e-overwrite/note.txt")).toBe("original mine");
+});
+
+test("resolves a save conflict by reloading from disk", async ({ page }) => {
+  const dialog = await openEditorFile(page, "/editor-e2e-reload", "note.txt", "original");
+  await expect(dialog.locator(".cm-content")).toContainText("original");
+  await typeAtEnd(page, " mine");
+  await page.request.put(`/api/fm/m/local/write?path=${encodeURIComponent("/editor-e2e-reload/note.txt")}&conflict=overwrite`, { data: "theirs" });
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog.getByText("The file changed on disk since you opened it.")).toBeVisible();
+  await dialog.getByRole("button", { name: "Reload from disk" }).click();
+  await expect(dialog.locator(".cm-content")).toHaveText("theirs");
+  await expect(dialog.getByRole("button", { name: "Save" })).toHaveAttribute("aria-disabled", "true");
+});
