@@ -1,7 +1,7 @@
 import type { ComponentType } from "react";
 import type { FmEntry } from "../core/schema";
 import type { PreviewProps } from "./previewers";
-import { FallbackPreview, ImagePreview, LazyTextPreview, MediaPreview, PdfPreview } from "./previewers";
+import { FallbackPreview, ImagePreview, LazyTextPreview, MediaPreview, PdfPreview, SniffPreview } from "./previewers";
 import { kindOf } from "./state";
 
 export interface FmPreviewer {
@@ -32,6 +32,11 @@ const previewers: FmPreviewer[] = [
     id: "text",
     match: e => kindOf(e) === "text",
     component: LazyTextPreview,
+  },
+  {
+    id: "sniff",
+    match: e => kindOf(e) === "other" && e.size <= 2 * 1024 * 1024,
+    component: SniffPreview,
   },
 ];
 

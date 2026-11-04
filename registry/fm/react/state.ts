@@ -96,6 +96,11 @@ export function formatSize(bytes: number): string {
     : Math.round(n)} ${units[i]}`;
 }
 
+/** True when the bytes contain a NUL, the usual sign of a binary file. */
+export function looksBinary(bytes: Uint8Array): boolean {
+  return bytes.includes(0);
+}
+
 export type FmFileKind = "dir" | "image" | "video" | "audio" | "pdf" | "text" | "archive" | "other";
 
 const TEXT_NAMES = /\.(?:txt|md|markdown|json|jsonc|ya?ml|toml|ini|env|csv|tsv|log|xml|html?|css|scss|less|[cm]?[jt]sx?|vue|svelte|py|rb|go|rs|java|kt|swift|c|h|cc|cpp|hpp|cs|php|sh|bash|zsh|fish|sql|graphql|proto|dockerfile|makefile|gitignore|editorconfig|conf|lock)$/i;

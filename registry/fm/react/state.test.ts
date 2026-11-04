@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { EMPTY_SELECTION, formatSize, kindOf, prune, select, step } from "./state";
+import { EMPTY_SELECTION, formatSize, kindOf, looksBinary, prune, select, step } from "./state";
 
 const order = ["/a", "/b", "/c", "/d"];
 const paths = (s: { paths: ReadonlySet<string> }) => [...s.paths].sort();
@@ -52,5 +52,15 @@ describe("format helpers", () => {
     expect(kindOf({ kind: "file", name: "Dockerfile" })).toBe("text");
     expect(kindOf({ kind: "file", name: "a.zip", mime: "application/zip" })).toBe("archive");
     expect(kindOf({ kind: "file", name: "a.bin" })).toBe("other");
+  });
+});
+
+describe("looksBinary", () => {
+  it("detects NUL bytes", () => {
+    expect(looksBinary(new Uint8Array())).toBe(false);
+    expect(looksBinary(new TextEncoder().encode("127.0.0.1 localhost\n"))).toBe(false);
+    expect(looksBinary(new TextEncoder().encode("héllo 世界 🌊"))).toBe(false);
+    expect(looksBinary(Uint8Array.from([0, 0x41, 0x42]))).toBe(true);
+    expect(looksBinary(Uint8Array.from([0x7F, 0x45, 0, 0x46]))).toBe(true);
   });
 });
