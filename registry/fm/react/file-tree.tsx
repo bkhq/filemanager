@@ -1,5 +1,5 @@
 import type { DragEvent, KeyboardEvent, ReactNode } from "react";
-import type { FmClient } from "../client/client";
+import type { FmClient, FmListFilter } from "../client/client";
 import type { FmEntry, FmMountInfo } from "../core/schema";
 import { cn } from "cn";
 import { ChevronRightIcon, FolderIcon, HardDriveIcon, LockIcon, SettingsIcon, Trash2Icon } from "lucide-react";
@@ -34,10 +34,14 @@ interface TreeProps {
   /** Entries of the current mount dropped onto `folder` of `mount`. */
   /** Entries dropped onto `folder` of `mount`; `from` is their mount (the current one when absent). */
   onDropEntries?: ((paths: string[], mount: string, folder: string, from?: string) => void) | undefined;
+  /** Hidden / ignored filter applied to every folder listing. */
+  filter?: FmListFilter | undefined;
 }
 
 const ROW = "w-full justify-start font-normal aria-expanded:bg-transparent aria-expanded:hover:bg-muted dark:aria-expanded:hover:bg-muted/50";
 const ACTIVE = "bg-accent text-accent-foreground aria-expanded:bg-accent aria-expanded:hover:bg-accent";
+/** Rows of entries the driver marks ignored. */
+const IGNORED = "opacity-60";
 const ROW_BUTTON = "[role=treeitem] > button";
 /** Source mount of entries dragged from the tree; list drags come from the current mount. */
 const MOUNT_TYPE = "application/x-fm-mount";
@@ -94,7 +98,7 @@ function onTreeKeyDown(e: KeyboardEvent<HTMLElement>) {
 
 /** Folders and files of `path`, loaded when the parent opens; follows every page of the listing. */
 function Children({ t, mount, path }: { t: TreeProps; mount: string; path: string }) {
-  const listing = useListing(t.client, mount, path, "name", "asc");
+  const listing = useListing(t.client, mount, path, "name", "asc", "", t.filter);
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = listing;
   useEffect(() => {
     if (hasNextPage && !isFetchingNextPage)
@@ -117,7 +121,7 @@ function FileLeaf({ t, entry }: { t: TreeProps; entry: FmEntry }) {
         : undefined}
       onContextMenu={() => t.onContextTarget?.({ mount: entry.mount, entry })}
     >
-      <Button variant="ghost" size="sm" className={cn(ROW, active && ACTIVE)} onClick={() => t.onRevealFile(entry)} onKeyDown={e => onRowKeyDown(e)}>
+      <Button variant="ghost" size="sm" className={cn(ROW, active && ACTIVE, entry.ignored && IGNORED)} onClick={() => t.onRevealFile(entry)} onKeyDown={e => onRowKeyDown(e)}>
         <EntryIcon entry={entry} />
         <span className="truncate">{entry.name}</span>
       </Button>
@@ -181,10 +185,11 @@ function Item({ label, active, expanded, title, drag, onDrop, onContextMenu, chi
  * Collapsible tree row: chevron, icon and label in one trigger button. A click
  * toggles the row and runs `onClick` (navigation).
  */
-function Branch({ label, icon, active, open, onOpenChange, onClick, drag, onDrop, onContextMenu, title, children }: {
+function Branch({ label, icon, active, dimmed, open, onOpenChange, onClick, drag, onDrop, onContextMenu, title, children }: {
   label: string;
   icon: ReactNode;
   active: boolean;
+  dimmed?: boolean | undefined;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onClick?: (() => void) | undefined;
@@ -202,7 +207,7 @@ function Branch({ label, icon, active, open, onOpenChange, onClick, drag, onDrop
             <Button
               variant="ghost"
               size="sm"
-              className={cn(ROW, active && ACTIVE)}
+              className={cn(ROW, active && ACTIVE, dimmed && IGNORED)}
               onClick={onClick}
               onKeyDown={e => onRowKeyDown(e, onOpenChange)}
             >
@@ -250,6 +255,7 @@ function Node({ t, entry }: { t: TreeProps; entry: FmEntry }) {
       label={basename(path)}
       icon={<FolderIcon className="text-sky-500" />}
       active={t.mount === mount && !t.inTrash && t.path === path}
+      dimmed={entry.ignored}
       open={open}
       onOpenChange={setOpen}
       onClick={() => t.onNavigate(mount, path)}

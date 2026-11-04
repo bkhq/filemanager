@@ -49,6 +49,33 @@ describe("fm client against the router", () => {
     expect(seen.every(h => h.get("authorization") === "Bearer t")).toBe(true);
   });
 
+  it("sends hidden / ignored only when off", async () => {
+    const urls: string[] = [];
+    const c = createFmClient({
+      baseUrl: "http://x/api/fm",
+      fetch: async (input) => {
+        urls.push(input);
+        return Response.json({ items: [] });
+      },
+    });
+    await c.list("m", "/");
+    await c.list("m", "/", { hidden: true, ignored: true });
+    await c.list("m", "/", { hidden: false, ignored: false });
+    await c.search("m", "/", "a");
+    await c.search("m", "/", "a", { hidden: false, ignored: false });
+    const query = urls.map(u => new URL(u).searchParams);
+    expect(query.slice(0, 2).every(q => !q.has("hidden") && !q.has("ignored"))).toBe(true);
+    expect([
+      query[2]!.get("hidden"),
+      query[2]!.get("ignored"),
+    ]).toEqual(["0", "0"]);
+    expect(query[3]!.has("hidden") || query[3]!.has("ignored")).toBe(false);
+    expect([
+      query[4]!.get("hidden"),
+      query[4]!.get("ignored"),
+    ]).toEqual(["0", "0"]);
+  });
+
   it("raises typed errors", async () => {
     const { c } = client();
     const err = await c.stat("m", "/missing").catch(e => e);
