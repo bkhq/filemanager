@@ -23,11 +23,7 @@ export function SheetPreview(props: PreviewProps) {
     ],
     enabled: entry.size <= MAX_BYTES,
     queryFn: async () => {
-      const res = await fetch(client.readUrl(entry.mount, entry.path, { version: entry.etag }), {
-        headers: client.headers(),
-      });
-      if (!res.ok)
-        throw new Error(res.statusText);
+      const res = await client.read(entry.mount, entry.path, { version: entry.etag });
       return parseSheet(entry.name, await res.arrayBuffer());
     },
   });

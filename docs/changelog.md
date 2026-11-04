@@ -175,6 +175,7 @@ Previews (20261104-0558-previews): the PDF iframe hides the browser viewer's too
 ## 2026-11-04 06:33 [progress]
 
 Editor workstream (20261104-0558-editor) delivered: Ctrl/Cmd+S save with an "Unsaved" marker and "Discard changes" (A1), persisted word wrap `fm:wrap` (A2), text files over 2 MiB open read-only from a Range read through `client.readText` with a range option, with a banner (B2), conflict banner with Overwrite / Reload from disk / Keep editing (B3), drafts persisted per mount + path in `fm:drafts` via the new `react/drafts.ts` (`loadDraft` / `saveDraft` / `clearDraft` / `clearDrafts`, 50 entries / ~5 MiB) and restored on reopen (B4); the unsaved-changes guard's "Discard" now drops the stored draft. Verified: `bun run check`, 45 Playwright e2e.
+Follow-up: `client.read` returns the raw response (range / version) for the sniff and sheet previews; delete, rename and move drop the drafts of the source paths.
 
 ## 2026-11-04 06:40 [progress]
 
