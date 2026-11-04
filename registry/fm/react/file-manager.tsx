@@ -81,7 +81,7 @@ import { basename, dirname, joinPath } from "../core/path";
 import { acceptsEntry } from "./accept";
 import { DetailsPanel } from "./details-panel";
 import { ConfirmDeleteDialog, ManageDrivesDialog, NameDialog, UploadConflictDialog } from "./dialogs";
-import { clearDraft } from "./drafts";
+import { clearDraft, clearDrafts } from "./drafts";
 import { filesFromDrop, filesFromInput } from "./drop";
 import { maskEntry, resolveFeatures } from "./features";
 import { FileList } from "./file-list";
@@ -513,6 +513,12 @@ export function FileManager(props: FileManagerProps) {
       ? { mount: from, req }
       : req, {
       onSuccess: (res) => {
+        if (m && req.op !== "copy") {
+          for (const r of res.results) {
+            if (r.ok)
+              clearDrafts(m, r.path);
+          }
+        }
         setError(failedMessage(res.results));
         const undo = m && !crossMount && undoFor(req, res.results);
         setNotice(undo

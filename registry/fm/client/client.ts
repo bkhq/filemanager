@@ -104,6 +104,14 @@ export function createFmClient(opts: FmClientOptions) {
       body: JSON.stringify(body),
     });
 
+  /** Raw bytes of a file; `range` holds inclusive byte offsets. */
+  const read = (mount: string, path: string, o: { range?: { start: number; end: number }; version?: string } = {}) =>
+    request(url(`${m(mount)}/read`, { path, v: o.version }), o.range
+      ? {
+          headers: { range: `bytes=${o.range.start}-${o.range.end}` },
+        }
+      : {});
+
   return {
     baseUrl: base,
     headers: () => opts.headers?.() ?? {},
@@ -135,15 +143,14 @@ export function createFmClient(opts: FmClientOptions) {
         download: o.download ? "1" : undefined,
         v: o.version,
       }),
+    read,
     archiveUrl: (mount: string, paths: string[]) => url(`${m(mount)}/archive`, { path: paths }),
     writeUrl: (mount: string, path: string, conflict: FmConflict = "overwrite") => url(`${m(mount)}/write`, { path, conflict }),
     /** `range` holds inclusive byte offsets; the text is decoded from at most that many bytes. */
     readText: async (mount: string, path: string, o: { range?: { start: number; end: number } } = {}) => {
       const r = o.range;
-      const res = await request(url(`${m(mount)}/read`, { path }), r
-        ? {
-            headers: { range: `bytes=${r.start}-${r.end}` },
-          }
+      const res = await read(mount, path, r
+        ? { range: r }
         : {});
       const etag = (res.headers.get("etag") ?? "").replace(/"/g, "");
       if (!r)
