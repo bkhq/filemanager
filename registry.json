@@ -215,7 +215,7 @@
         "progress",
         "tooltip",
         "resizable",
-        "collapsible",
+        "checkbox",
         "@bkhq/fm-client"
       ],
       "files": [

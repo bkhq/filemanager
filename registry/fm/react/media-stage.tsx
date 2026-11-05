@@ -45,6 +45,47 @@ export function MediaStage({ kind, src, alt, labels, actions }: {
     ...v,
     zoom: clampZoom(z),
   }));
+
+  // Image keys: + / - zoom, 0 fit, R / Shift+R rotate, F flip. Active while focus is in the
+  // preview's dialog or pane (not the tree, not text fields).
+  const [root, setRoot] = useState<HTMLElement | null>(null);
+  const scale = layout?.scale;
+  useEffect(() => {
+    if (!isImage || !root)
+      return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      const scope = root.closest("[role=dialog], section") ?? root;
+      const target = e.target as HTMLElement;
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || !scope.contains(target)
+        || target.closest("input, textarea, select, [contenteditable=true], [role=menu]")) {
+        return;
+      }
+      const key = e.key.toLowerCase();
+      if ((key === "+" || key === "=") && scale) {
+        zoomTo(scale * ZOOM_STEP);
+      }
+      else if (key === "-" && scale) {
+        zoomTo(scale / ZOOM_STEP);
+      }
+      else if (key === "0") {
+        setView(v => ({ ...v, zoom: undefined }));
+      }
+      else if (key === "r") {
+        setView(v => rotateBy(v, e.shiftKey
+          ? -90
+          : 90));
+      }
+      else if (key === "f") {
+        setView(v => ({ ...v, flip: !v.flip }));
+      }
+      else {
+        return;
+      }
+      e.preventDefault();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [isImage, root, scale]);
   const style = layout && natural
     ? {
         position: "absolute" as const,
@@ -77,7 +118,7 @@ export function MediaStage({ kind, src, alt, labels, actions }: {
   );
 
   return (
-    <div className={cn("flex h-full overflow-auto", isImage ? "bg-muted/30" : "bg-black/90")} style={{ padding: PAD }}>
+    <div ref={setRoot} className={cn("flex h-full overflow-auto", isImage ? "bg-muted/30" : "bg-black/90")} style={{ padding: PAD }}>
       {actions && createPortal(tools, actions)}
       <div ref={stageRef} className="flex min-h-0 min-w-0 flex-1">
         <div

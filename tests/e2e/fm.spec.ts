@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { Buffer } from "node:buffer";
+import { mkdir, writeFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 
 const row = (page: Page, path: string) => page.locator(`[data-path="${path}"]`);
@@ -384,6 +385,44 @@ test("moves the selection to the trash, undoes, restores and purges", async ({ p
   await switchMount(page, "Local disk");
   await row(page, "/e2e").dblclick();
   await expect(row(page, "/e2e/hello.txt")).toBeVisible();
+});
+
+test("restores and deletes several trash items at once", async ({ page }) => {
+  await page.request.post("/api/fm/m/local/mkdir", {
+    data: { path: "/trash-multi-e2e" },
+  });
+  for (const name of ["t1.txt", "t2.txt", "t3.txt"]) {
+    await page.request.put(`/api/fm/m/local/write?path=${encodeURIComponent(`/trash-multi-e2e/${name}`)}&conflict=overwrite`, { data: name });
+    await page.request.post("/api/fm/m/local/ops", {
+      data: {
+        op: "delete",
+        paths: [`/trash-multi-e2e/${name}`],
+      },
+    });
+  }
+  await openMount(page, "Local disk");
+  await openTrash(page);
+  await expect(page.getByText("Items in the trash are deleted forever after 30 days.")).toBeVisible();
+  const trashRow = (name: string) => page.locator("[data-trash-id]").filter({ hasText: name });
+  await expect(trashRow("t1.txt")).toContainText("In 30 days");
+  await trashRow("t1.txt").getByRole("checkbox").click();
+  await trashRow("t2.txt").click({
+    modifiers: ["ControlOrMeta"],
+  });
+  const bar = page.getByRole("toolbar", { name: "2 selected" });
+  await bar.getByRole("button", { name: "Restore" }).click();
+  await expect(trashRow("t1.txt")).toHaveCount(0);
+  await expect(trashRow("t2.txt")).toHaveCount(0);
+
+  await trashRow("t3.txt").click();
+  await page.keyboard.press("Delete");
+  await page.getByRole("alertdialog").getByRole("button", { name: "Delete" }).click();
+  await expect(trashRow("t3.txt")).toHaveCount(0);
+  await switchMount(page, "Local disk");
+  await row(page, "/trash-multi-e2e").dblclick();
+  await expect(row(page, "/trash-multi-e2e/t1.txt")).toBeVisible();
+  await expect(row(page, "/trash-multi-e2e/t2.txt")).toBeVisible();
+  await expect(row(page, "/trash-multi-e2e/t3.txt")).toHaveCount(0);
 });
 
 test("filters the current folder by name", async ({ page }) => {
@@ -830,9 +869,15 @@ test("groups drives by driver kind", async ({ page }) => {
   const tree = page.getByRole("tree");
   await expect(tree.getByRole("treeitem", { name: "Local", exact: true })).toBeVisible();
   await expect(tree.getByRole("treeitem", { name: "Memory", exact: true })).toBeVisible();
-  await expect(tree.getByRole("group", { name: "Local" })).toContainText("Local disk");
-  await expect(tree.getByRole("group", { name: "Local" })).toContainText("Read-only view");
-  await expect(tree.getByRole("group", { name: "Memory" })).toContainText("Scratch (memory)");
+  // Driver sections are level-1 rows with their drives below at level 2.
+  const levels = await tree.getByRole("treeitem").evaluateAll(rows => rows.filter(r => Number(r.getAttribute("aria-level")) <= 2).map(r => `${r.getAttribute("aria-level")} ${r.getAttribute("aria-label")}`));
+  expect(levels).toEqual([
+    "1 Local",
+    "2 Local disk",
+    "2 Read-only view",
+    "1 Memory",
+    "2 Scratch (memory)",
+  ]);
   await page.getByRole("button", { name: "Hide sidebar" }).click();
   await page.getByRole("button", { name: "Storage" }).click();
   await expect(page.getByRole("menu").getByRole("group", { name: "Memory" }).getByRole("menuitemradio", { name: "Scratch (memory)" })).toBeVisible();
@@ -1212,4 +1257,95 @@ test("explorer refresh reveals the selected file after collapse all", async ({ p
   await header.getByRole("button", { name: "Refresh" }).click();
   await expect(item("guide.md")).toBeInViewport();
   await expect(item("guide.md")).toHaveAttribute("aria-selected", "true");
+});
+
+test("image keys zoom, fit, rotate and flip", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await row(page, "/images").dblclick();
+  await row(page, "/images/dot.png").dblclick();
+  const dialog = page.getByRole("dialog");
+  const img = dialog.locator("img[alt='dot.png']");
+  await expect(dialog.getByRole("button", { name: "100%" })).toBeVisible();
+  await page.keyboard.press("+");
+  await expect(dialog.getByRole("button", { name: "125%" })).toBeVisible();
+  await page.keyboard.press("0");
+  await expect(dialog.getByRole("button", { name: "100%" })).toBeVisible();
+  await page.keyboard.press("r");
+  await page.keyboard.press("f");
+  await expect(img).toHaveAttribute("style", /rotate\(90deg\) scaleX\(-1\)/);
+  await page.keyboard.press("Shift+R");
+  await expect(img).toHaveAttribute("style", /rotate\(0deg\)/);
+});
+
+test("selects rows with a marquee", async ({ page }) => {
+  await page.request.post("/api/fm/m/local/mkdir", {
+    data: { path: "/marquee-e2e" },
+  });
+  for (const n of [1, 2, 3, 4, 5])
+    await page.request.put(`/api/fm/m/local/write?path=${encodeURIComponent(`/marquee-e2e/m${n}.txt`)}&conflict=overwrite`, { data: "m" });
+  await openMount(page, "Local disk");
+  await row(page, "/marquee-e2e").dblclick();
+  const last = await row(page, "/marquee-e2e/m5.txt").boundingBox();
+  const third = await row(page, "/marquee-e2e/m3.txt").boundingBox();
+  await page.mouse.move(last!.x + 40, last!.y + last!.height + 40);
+  await page.mouse.down();
+  await page.mouse.move(third!.x + 40, third!.y + third!.height / 2, { steps: 5 });
+  await expect(page.locator("[data-fm-marquee]")).toBeVisible();
+  await page.mouse.up();
+  await expect(page.getByText("3 selected")).toBeVisible();
+  await expect(page.locator("[data-fm-marquee]")).toHaveCount(0);
+  await expect(row(page, "/marquee-e2e/m3.txt")).toHaveAttribute("aria-selected", "true");
+  await expect(row(page, "/marquee-e2e/m2.txt")).toHaveAttribute("aria-selected", "false");
+});
+
+test("uploads files pasted from the OS clipboard", async ({ page }) => {
+  await page.request.post("/api/fm/m/local/mkdir", {
+    data: { path: "/paste-e2e" },
+  });
+  await openMount(page, "Local disk");
+  await row(page, "/paste-e2e").dblclick();
+  await expect(page.getByText("This folder is empty")).toBeVisible();
+  await page.locator("section").first().evaluate((el) => {
+    const dt = new DataTransfer();
+    dt.items.add(new File(["shot"], "screenshot.png", { type: "image/png" }));
+    el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  await expect(row(page, "/paste-e2e/screenshot.png")).toBeVisible();
+});
+
+test("dragging a file row offers it as a desktop download", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await row(page, "/notes").dblclick();
+  const data = await row(page, "/notes/todo.txt").evaluate((el) => {
+    const dt = new DataTransfer();
+    el.dispatchEvent(new DragEvent("dragstart", { dataTransfer: dt, bubbles: true }));
+    return dt.getData("DownloadURL");
+  });
+  expect(data).toMatch(/^text\/plain[^:]*:todo\.txt:http:\/\/.+\/read\?.*download=1/);
+});
+
+test("the tree renders only a window of a large folder", async ({ page }) => {
+  const dir = ".tmp/e2e-root/big-tree-e2e";
+  await mkdir(dir, { recursive: true });
+  await Promise.all(Array.from({ length: 2000 }, (_, i) => writeFile(`${dir}/f${String(i).padStart(4, "0")}.txt`, "")));
+  await openTreeMount(page, "Local disk");
+  const tree = page.getByRole("tree");
+  await tree.getByRole("treeitem", { name: "big-tree-e2e", exact: true }).click();
+  await expect(tree.getByRole("treeitem", { name: "f0000.txt", exact: true })).toBeVisible();
+  expect(await tree.getByRole("treeitem").count()).toBeLessThan(200);
+  await tree.getByRole("treeitem", { name: "f0000.txt", exact: true }).getByRole("button").focus();
+  await page.keyboard.press("End");
+  await expect(tree.getByRole("treeitem", { name: "Read-only view", exact: true }).getByRole("button")).toBeFocused();
+  await expect(tree.getByRole("treeitem", { name: "f0000.txt", exact: true })).toHaveCount(0);
+});
+
+test("shows an error with retry when the server is unreachable", async ({ page }) => {
+  await page.route("**/api/fm/mounts", route => route.abort());
+  await page.goto("/");
+  const alert = page.getByRole("alert");
+  await expect(alert).toContainText("Cannot reach the file server");
+  await page.unroute("**/api/fm/mounts");
+  await alert.getByRole("button", { name: "Retry" }).click();
+  await expect(row(page, "/notes")).toBeVisible();
+  await expect(alert).toHaveCount(0);
 });

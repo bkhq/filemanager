@@ -7,7 +7,14 @@ import { readAll } from "./driver";
 /** Hidden per-mount folder: `<id>/<name>` holds the entry, `<id>.json` its metadata. */
 export const TRASH_DIR = "/.fm-trash";
 
-type Meta = Omit<FmTrashItem, "id">;
+type Meta = Omit<FmTrashItem, "id" | "expiresAt">;
+
+const DAY_MS = 86_400_000;
+
+/** When `item` expires under a retention of `days`. */
+export function expiresAt(item: FmTrashItem, days: number): string {
+  return new Date(Date.parse(item.deletedAt) + days * DAY_MS).toISOString();
+}
 
 const metaPath = (id: string) => `${TRASH_DIR}/${id}.json`;
 
@@ -78,4 +85,18 @@ export async function listTrash(d: FmDriver): Promise<FmTrashItem[]> {
 export async function dropTrashItem(d: FmDriver, id: string): Promise<void> {
   await d.remove(`${TRASH_DIR}/${id}`).catch(() => {});
   await d.remove(metaPath(id));
+}
+
+/** Deletes items older than `days` (best effort, per item) and returns the remaining ones and the count removed. */
+export async function purgeExpiredItems(d: FmDriver, days: number, now = Date.now()): Promise<{ kept: FmTrashItem[]; purged: number }> {
+  const kept: FmTrashItem[] = [];
+  let purged = 0;
+  for (const item of await listTrash(d)) {
+    if (Date.parse(expiresAt(item, days)) > now) {
+      kept.push(item);
+      continue;
+    }
+    await dropTrashItem(d, item.id).then(() => purged++, () => kept.push(item));
+  }
+  return { kept, purged };
 }

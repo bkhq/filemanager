@@ -14,7 +14,7 @@ export function createApp(config: Config) {
       id: "local",
       label: "Local disk",
       driver: localDriver({ root: config.root }),
-      trash: true,
+      trash: { retentionDays: 30 },
     },
     {
       id: "scratch",

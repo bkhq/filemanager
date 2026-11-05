@@ -35,6 +35,8 @@ export const enLabels = {
   folderActions: "Folder actions",
   path: "Path",
   noMounts: "No storage available",
+  serverUnreachable: "Cannot reach the file server",
+  retry: "Retry",
   loading: "Loading…",
   readOnly: "Read-only",
   uploads: "Uploads",
@@ -76,6 +78,16 @@ export const enLabels = {
   confirmEmptyTrash: "Empty the trash?",
   deletedAt: "Deleted",
   originalLocation: "Original location",
+  selectAll: "Select all",
+  expires: "Expires",
+  expiresIn: (days: number) => (days === 0
+    ? "Today"
+    : `In ${days} ${days === 1
+      ? "day"
+      : "days"}`),
+  trashRetention: (days: number) => `Items in the trash are deleted forever after ${days} ${days === 1
+    ? "day"
+    : "days"}.`,
   movedToTrash: (n: number) => (n === 1
     ? "Moved to trash"
     : `${n} items moved to trash`),
@@ -180,6 +192,8 @@ export const zhLabels: FmLabels = {
   folderActions: "文件夹操作",
   path: "路径",
   noMounts: "没有可用的存储",
+  serverUnreachable: "无法连接文件服务器",
+  retry: "重试",
   loading: "加载中…",
   readOnly: "只读",
   uploads: "上传",
@@ -221,6 +235,12 @@ export const zhLabels: FmLabels = {
   confirmEmptyTrash: "确定清空回收站？",
   deletedAt: "删除时间",
   originalLocation: "原位置",
+  selectAll: "全选",
+  expires: "到期",
+  expiresIn: days => (days === 0
+    ? "今天"
+    : `${days} 天后`),
+  trashRetention: days => `回收站中的项目会在 ${days} 天后永久删除。`,
   movedToTrash: n => (n === 1
     ? "已移到回收站"
     : `已将 ${n} 项移到回收站`),

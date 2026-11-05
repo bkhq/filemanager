@@ -31,7 +31,7 @@ import {
 import { collect, zipStream } from "./archive";
 import { readAll } from "./driver";
 import { inlineType, mimeOf } from "./mime";
-import { dropTrashItem, getTrashItem, listTrash, moveToTrash, TRASH_DIR, trashedPath } from "./trash";
+import { dropTrashItem, expiresAt, getTrashItem, listTrash, moveToTrash, purgeExpiredItems, TRASH_DIR, trashedPath } from "./trash";
 
 export interface FmMount {
   id: string;
@@ -40,9 +40,29 @@ export interface FmMount {
   readOnly?: boolean;
   /**
    * Deletes move into a hidden `/.fm-trash` folder on the same driver. On a
-   * read-only mount this only hides that folder.
+   * read-only mount this only hides that folder. With `retentionDays`, older
+   * items are deleted for good when the trash is listed or by `purgeExpired`.
    */
-  trash?: boolean;
+  trash?: boolean | { retentionDays: number };
+}
+
+/** Retention of a mount's trash in days, if any. */
+function retentionOf(m: FmMount): number | undefined {
+  return typeof m.trash === "object"
+    ? m.trash.retentionDays
+    : undefined;
+}
+
+/**
+ * Deletes trash items past the mount's retention; returns how many. For hosts
+ * that purge on a schedule (also done lazily when the trash is listed).
+ */
+export async function purgeExpired(mount: FmMount, now = Date.now()): Promise<number> {
+  const days = retentionOf(mount);
+  // Read-only views only hide the trash folder; they never delete from it.
+  if (!days || mount.readOnly || !mount.driver.caps.delete)
+    return 0;
+  return (await purgeExpiredItems(mount.driver, days, now)).purged;
 }
 
 export interface FmLimits {
@@ -502,6 +522,11 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
           driver: mount.driver.name,
           caps,
           trash: hasTrash(mount),
+          ...(hasTrash(mount) && retentionOf(mount)
+            ? {
+                trashRetentionDays: retentionOf(mount),
+              }
+            : {}),
         });
       }
     }
@@ -978,7 +1003,7 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
   app.get("/m/:mount/trash", describeRoute({
     tags: [TAG],
     summary: "List the trash",
-    description: "Newest first; only items whose original path the caller may read.",
+    description: "Newest first; only items whose original path the caller may read. Items past the mount's retention are deleted first.",
     responses: {
       200: ok(z.object({
         items: z.array(trashItemSchema),
@@ -988,10 +1013,20 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
     },
   }), async (c) => {
     const mount = await trashMount(c, c.req.param("mount"));
+    const days = retentionOf(mount);
+    const all = days
+      ? (await purgeExpiredItems(mount.driver, days)).kept
+      : await listTrash(mount.driver);
     const items: FmTrashItem[] = [];
-    for (const item of await listTrash(mount.driver)) {
-      if (await resolve(c, mount.id, item.path).then(() => true, () => false))
-        items.push(item);
+    for (const item of all) {
+      if (await resolve(c, mount.id, item.path).then(() => true, () => false)) {
+        items.push(days
+          ? {
+              ...item,
+              expiresAt: expiresAt(item, days),
+            }
+          : item);
+      }
     }
     return c.json({ items });
   });

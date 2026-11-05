@@ -208,3 +208,19 @@ Demo header: title on the left; on the right a view-only shadcn Checkbox, a lang
 ## 2026-11-04 10:50 [progress]
 
 Explorer refresh also reveals the selected row (or the current folder): its ancestors expand and the row scrolls into view once rendered, as in VS Code.
+
+## 2026-11-04 11:50 [progress]
+
+Trash retention and multi-select delivered (20261104-1110-trash-retention): `trash: { retentionDays }` with lazy purge on listing and exported `purgeExpired`, trash view selection with bulk restore / delete forever, sorting and expiry column.
+
+## 2026-11-04 12:40 [progress]
+
+UI polish delivered (20261104-1110-ui-polish): marquee selection, virtualized tree, drag out to desktop (`DownloadURL`), paste upload, image keys, bundle measured (warning limit raised with numbers), CI `setup-bun` pinned and runners on `ubuntu-24.04`.
+
+## 2026-11-04 12:40 [pitfall]
+
+A Ctrl+V keydown handler that calls `preventDefault` suppresses the browser `paste` event, so OS clipboard files never arrive; only claim the key when there is something to paste internally. Virtualized trees cannot use DOM order for keyboard nav (off-screen rows are absent); navigate by row index and scroll before focusing.
+
+## 2026-11-05 01:55 [progress]
+
+When the mounts request fails (API down), `<FileManager />` shows "Cannot reach the file server" with the error and a Retry button instead of loading forever.

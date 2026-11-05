@@ -73,6 +73,8 @@ export const mountInfoSchema = z.object({
   caps: capsSchema,
   /** Deletes go to a restorable trash. */
   trash: z.boolean(),
+  /** Trash items older than this many days are deleted for good. */
+  trashRetentionDays: z.number().int().positive().optional(),
 });
 export type FmMountInfo = z.infer<typeof mountInfoSchema>;
 
@@ -154,6 +156,8 @@ export const trashItemSchema = z.object({
   kind: entryKindSchema,
   size: z.number().int().nonnegative(),
   deletedAt: z.string(),
+  /** Set when the mount has a retention period. */
+  expiresAt: z.string().optional(),
 });
 export type FmTrashItem = z.infer<typeof trashItemSchema>;
 

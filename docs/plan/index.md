@@ -55,3 +55,5 @@ Each plan is a single line linking to its detail file. All detailed information 
 - [x] [**20261104-0558-listing Listing: hidden files toggle and git-ignored entries**](20261104-0558-listing.md) `2026-11-04`
 - [x] [**20261104-0558-previews Previews: binary sniff, PDF toolbar, Markdown plugin**](20261104-0558-previews.md) `2026-11-04`
 - [x] [**20261104-0843-dropzone-streamdown Dropzone uploads, streamdown live preview, dependency catalog**](20261104-0843-dropzone-streamdown.md) `2026-11-04`
+- [x] [**20261104-1110-ui-polish UI polish: marquee, virtual tree, drag out, paste upload, image keys, bundle, CI pin**](20261104-1110-ui-polish.md) `2026-11-04`
+- [x] [**20261104-1110-trash-retention Trash retention and multi-select actions**](20261104-1110-trash-retention.md) `2026-11-04`

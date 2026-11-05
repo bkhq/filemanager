@@ -86,6 +86,10 @@ import { FileManager } from "@/fm/react/file-manager";
 `readOnly` / `features` only hide UI actions. Enforce access on the server with
 `readOnly` mounts or `authorize`.
 
+Dragging a file row onto the desktop (Chromium) downloads it from its read URL
+without the client's `headers`, so it only works when the API authenticates by
+cookie or not at all.
+
 ### Plugins
 
 Optional file-type support is shipped as plugins: extra previewers and
@@ -150,6 +154,11 @@ createFmRouter({
   },
 });
 ```
+
+Trash: `trash: true` moves deletes into a hidden `/.fm-trash` folder on the
+same storage. `trash: { retentionDays: 30 }` also deletes items older than
+that for good, lazily whenever the trash is listed; hosts that prefer a
+schedule call `purgeExpired(mount)` (from `@/fm/server/router`) from a cron job.
 
 On S3 parts go through the server by default. `s3Driver({ ..., presignUploads: true })`
 is opt-in and lets browsers `PUT` parts straight to the bucket via presigned

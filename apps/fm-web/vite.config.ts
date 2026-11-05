@@ -17,6 +17,12 @@ export default defineConfig({
       { find: /^@\//, replacement: `${resolve(import.meta.dirname, "src")}/` },
     ],
   },
+  build: {
+    // Measured 2026-11-04: the entry chunk is the runtime (react-dom, Base UI, TanStack, panels;
+    // ~672 kB, 217 kB gzip), the Markdown plugin chunk is streamdown's pipeline (~708 kB) and the
+    // largest lazy chunks are single shiki grammars (~790 kB). All are already split or loaded on demand.
+    chunkSizeWarningLimit: 800,
+  },
   // The app is reached through nsl / reverse-proxy hostnames that vary per machine.
   server: { host: "0.0.0.0", allowedHosts: true },
 });

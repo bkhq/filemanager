@@ -13,7 +13,7 @@ import { ALL_CAPS, READ_ONLY_CAPS } from "../core/schema";
 import { localDriver } from "../drivers/local";
 import { memoryDriver } from "../drivers/memory";
 import { readAll } from "./driver";
-import { createFmRouter } from "./router";
+import { createFmRouter, purgeExpired } from "./router";
 
 const NONE: FmCaps = {
   read: false,
@@ -767,6 +767,40 @@ describe("trash", () => {
     expect(restored.map((r: { entry: { path: string } }) => r.entry.path)).toEqual(["/a (1).txt", "/d"]);
     expect((await driver.stat("/d/b.txt")).size).toBe(1);
     expect((await (await req("/m/m/trash")).json()).items).toEqual([]);
+  });
+
+  it("purges expired items on listing and through purgeExpired", async () => {
+    const driver = memoryDriver({
+      files: { "/a.txt": "a", "/b.txt": "b" },
+    });
+    const mount = {
+      id: "m",
+      label: "Main",
+      driver,
+      trash: { retentionDays: 7 },
+    };
+    const { req, json } = setup({
+      mounts: [mount],
+    });
+    expect((await (await req("/mounts")).json()).mounts[0]).toMatchObject({ trash: true, trashRetentionDays: 7 });
+    const del = (await (await json("POST", "/m/m/ops", {
+      op: "delete",
+      paths: ["/a.txt", "/b.txt"],
+    })).json()).results;
+    const old = new Date(Date.now() - 8 * 86_400_000).toISOString();
+    const meta = `/.fm-trash/${del[0].trashId}.json`;
+    const body = JSON.parse(new TextDecoder().decode(await readAll((await driver.read(meta)).body)));
+    await driver.write(meta, new TextEncoder().encode(JSON.stringify({ ...body, deletedAt: old })));
+
+    const { items } = await (await req("/m/m/trash")).json();
+    expect(items.map((i: { path: string }) => i.path)).toEqual(["/b.txt"]);
+    expect(Date.parse(items[0].expiresAt) - Date.parse(items[0].deletedAt)).toBe(7 * 86_400_000);
+    expect(await driver.list("/.fm-trash")).toHaveLength(2);
+
+    expect(await purgeExpired(mount, Date.now() + 6 * 86_400_000)).toBe(0);
+    expect(await purgeExpired(mount, Date.now() + 8 * 86_400_000)).toBe(1);
+    expect(await driver.list("/.fm-trash")).toEqual([]);
+    expect(await purgeExpired({ ...mount, trash: true })).toBe(0);
   });
 
   it("purges selected items or everything, and deletes permanently on request", async () => {

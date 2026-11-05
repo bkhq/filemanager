@@ -1,4 +1,4 @@
-import type { ChangeEvent, KeyboardEvent, ReactNode } from "react";
+import type { ChangeEvent, ClipboardEvent, KeyboardEvent, ReactNode } from "react";
 import type { FmClient } from "../client/client";
 import type { FmUploadFile, FmUploadTask } from "../client/upload";
 import type { FmEntry, FmOpsRequest, FmSortKey } from "../core/schema";
@@ -853,7 +853,8 @@ export function FileManager(props: FileManagerProps) {
           copyToClipboard("cut", selected);
         break;
       case "v":
-        if (!mod)
+        // Without entries cut / copied here, let the browser fire `paste` (OS files upload).
+        if (!mod || !clipboard)
           return;
         paste();
         break;
@@ -861,6 +862,15 @@ export function FileManager(props: FileManagerProps) {
         return;
     }
     e.preventDefault();
+  };
+
+  // Files on the OS clipboard (screenshots, files copied in a file browser) upload into the current folder.
+  const onPasteFiles = (e: ClipboardEvent<HTMLDivElement>) => {
+    const files = e.clipboardData.files;
+    if (!canUpload || files.length === 0 || (e.target as HTMLElement).closest("input, textarea, [contenteditable=true]"))
+      return;
+    e.preventDefault();
+    void upload(filesFromInput(files));
   };
 
   // OS files (and folders) dropped anywhere on the right side upload into the current folder.
@@ -1010,7 +1020,7 @@ export function FileManager(props: FileManagerProps) {
     </DropdownMenu>
   );
   // Explorer refresh also reveals the selected row (or the current folder) like VS Code:
-  // its ancestors open and the row scrolls into view once rendered.
+  // its ancestors open and the tree scrolls the row into view once it is loaded.
   const treeScrollRef = useRef<HTMLDivElement>(null);
   const [revealTick, setRevealTick] = useState(0);
   const refreshTree = () => {
@@ -1028,23 +1038,6 @@ export function FileManager(props: FileManagerProps) {
     ]));
     setRevealTick(t => t + 1);
   };
-  useEffect(() => {
-    if (!revealTick)
-      return;
-    let frame = 0;
-    let tries = 0;
-    const scroll = () => {
-      const rows = treeScrollRef.current?.querySelectorAll<HTMLElement>("[role=treeitem][aria-selected=true]");
-      const row = rows?.[rows.length - 1];
-      if (row)
-        (row.firstElementChild ?? row).scrollIntoView({ block: "nearest" });
-      // Rows of freshly opened folders may still be loading.
-      else if (++tries < 60)
-        frame = requestAnimationFrame(scroll);
-    };
-    frame = requestAnimationFrame(scroll);
-    return () => cancelAnimationFrame(frame);
-  }, [revealTick]);
   const refreshButton = (
     <IconButton
       label={labels.refresh}
@@ -1176,6 +1169,8 @@ export function FileManager(props: FileManagerProps) {
                 groupLabel={labels.driverGroup}
                 manageLabel={labels.manageDrives}
                 onManage={() => setDialog({ kind: "manageDrives" })}
+                scrollRef={treeScrollRef}
+                revealTick={revealTick}
                 onContextTarget={(target) => {
                   treeTargetRef.current = target;
                   setTreeTarget(target);
@@ -1200,11 +1195,24 @@ export function FileManager(props: FileManagerProps) {
     </>
   );
 
+  if (!mounts.data && mounts.isError) {
+    return (
+      <div role="alert" className={cn("flex flex-col items-center justify-center gap-2 rounded-lg border p-6 text-center text-sm", props.className)}>
+        <div className="font-medium">{labels.serverUnreachable}</div>
+        <div className="text-xs text-muted-foreground">{mounts.error.message}</div>
+        <Button size="sm" variant="outline" disabled={mounts.isFetching} onClick={() => void mounts.refetch()}>
+          <RefreshCwIcon />
+          {labels.retry}
+        </Button>
+      </div>
+    );
+  }
+
   if (mounts.data && mounts.data.length === 0)
     return <div className={cn("p-6 text-sm text-muted-foreground", props.className)}>{labels.noMounts}</div>;
 
   return (
-    <div ref={rootRef} className={cn("relative flex h-full min-h-0 overflow-hidden rounded-lg border bg-background", props.className)}>
+    <div ref={rootRef} className={cn("relative flex h-full min-h-0 overflow-hidden rounded-lg border bg-background", props.className)} onPaste={onPasteFiles}>
       <ResizablePanelGroup id={`${storageKey}:panels`} orientation="horizontal" className="min-w-0 flex-1" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
         {split && !stacked && (
           <ResizablePanel id="tree" defaultSize="224px" minSize="160px" maxSize="40%" className="flex flex-col">
@@ -1466,6 +1474,7 @@ export function FileManager(props: FileManagerProps) {
                   <TrashView
                     mount={mount}
                     mountLabel={currentMount?.label ?? mount}
+                    retentionDays={currentMount?.trashRetentionDays}
                     client={client}
                     labels={labels}
                     onError={setError}
@@ -1544,6 +1553,12 @@ export function FileManager(props: FileManagerProps) {
                           }))}
                           onSelect={onSelect}
                           onClearSelection={() => setRawSelection(EMPTY_SELECTION)}
+                          onSelectPaths={pick && !pick.multiple
+                            ? undefined
+                            : paths => setRawSelection({
+                              paths: new Set(paths),
+                              anchor: paths[0],
+                            })}
                           onOpen={openEntry}
                           onEntryContextMenu={e => !selection.paths.has(e.path) && setRawSelection({
                             paths: new Set([e.path]),

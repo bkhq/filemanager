@@ -1,4 +1,4 @@
-import type { DragEvent, MouseEvent, ReactNode } from "react";
+import type { DragEvent, MouseEvent, ReactNode, PointerEvent as ReactPointerEvent } from "react";
 import type { FmClient } from "../client/client";
 import type { FmEntry, FmSortKey } from "../core/schema";
 import type { FmLabels } from "./labels";
@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { dirname } from "../core/path";
+import { setDownloadUrl } from "./drop";
 import { formatSize, kindOf } from "./state";
 
 export const DRAG_TYPE = "application/x-fm-paths";
@@ -57,6 +58,8 @@ export interface FileListProps {
   onSort: (key: FmSortKey) => void;
   onSelect: (path: string, mode: FmSelectMode) => void;
   onClearSelection: () => void;
+  /** Marquee selection: replaces the selection with `paths`; absent turns the marquee off. */
+  onSelectPaths?: ((paths: string[]) => void) | undefined;
   onOpen: (entry: FmEntry) => void;
   /** Right-click on an entry (before the context menu opens). */
   onEntryContextMenu: (entry: FmEntry) => void;
@@ -108,7 +111,9 @@ function useEntryHandlers(p: FileListProps, entry: FmEntry) {
           ? [...p.selection.paths]
           : [entry.path];
         e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(paths));
-        e.dataTransfer.effectAllowed = "move";
+        if (paths.length === 1)
+          setDownloadUrl(e.dataTransfer, p.client, entry);
+        e.dataTransfer.effectAllowed = "copyMove";
       },
       "onDragOver": (e: DragEvent) => {
         if (!isDir || !entry.caps.write || !e.dataTransfer.types.includes(DRAG_TYPE))
@@ -214,6 +219,20 @@ function SortHeader({ p }: { p: FileListProps }) {
 const ROW = 36;
 const CELL_W = 120;
 const CELL_H = 132;
+/** Padding of the scroll container (`p-1`). */
+const PAD = 4;
+/** Pointer travel before a press on empty space becomes a marquee. */
+const MARQUEE_MIN = 4;
+
+interface Marquee {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  /** Selection kept under the rectangle (Ctrl / Cmd adds to it). */
+  base: string[];
+  active: boolean;
+}
 
 /** Virtualized list / grid of entries. */
 export function FileList(p: FileListProps) {
@@ -242,6 +261,98 @@ export function FileList(p: FileListProps) {
   });
   useEffect(() => virtualizer.measure(), [p.view, cols, virtualizer]);
 
+  // Marquee: drag on empty space selects every entry the rectangle touches, rendered or not.
+  const [marquee, setMarquee] = useState<Marquee>();
+  const marqueeRef = useRef<Marquee | undefined>(undefined);
+  const draggedRef = useRef(false);
+  const hits = (m: Marquee) => {
+    const top = Math.min(m.y0, m.y1) - PAD;
+    const bottom = Math.max(m.y0, m.y1) - PAD;
+    const left = Math.min(m.x0, m.x1) - PAD;
+    const right = Math.max(m.x0, m.x1) - PAD;
+    const rowH = p.view === "grid"
+      ? CELL_H
+      : ROW;
+    const cellW = width / cols;
+    const out: string[] = [];
+    for (let r = Math.max(0, Math.floor(top / rowH)); r <= Math.min(rows - 1, Math.floor(bottom / rowH)); r++) {
+      for (let c = 0; c < cols; c++) {
+        const entry = p.entries[r * cols + c];
+        if (entry && (cols === 1 || (c * cellW < right && (c + 1) * cellW > left)) && !p.disabled?.(entry))
+          out.push(entry.path);
+      }
+    }
+    return out;
+  };
+  const toContent = (e: { clientX: number; clientY: number }) => {
+    const el = scrollRef.current!;
+    const box = el.getBoundingClientRect();
+    return { x: e.clientX - box.left + el.scrollLeft, y: e.clientY - box.top + el.scrollTop };
+  };
+  const update = (m: Marquee) => {
+    marqueeRef.current = m;
+    setMarquee(m);
+    if (m.active) {
+      p.onSelectPaths?.([
+        ...new Set([
+          ...m.base,
+          ...hits(m),
+        ]),
+      ]);
+    }
+  };
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    draggedRef.current = false;
+    if (!p.onSelectPaths || e.button !== 0 || e.pointerType === "touch" || (e.target as HTMLElement).closest("[data-path]"))
+      return;
+    const at = toContent(e);
+    e.currentTarget.setPointerCapture(e.pointerId);
+    update({
+      x0: at.x,
+      y0: at.y,
+      x1: at.x,
+      y1: at.y,
+      base: e.ctrlKey || e.metaKey
+        ? [...p.selection.paths]
+        : [],
+      active: false,
+    });
+  };
+  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const m = marqueeRef.current;
+    if (!m)
+      return;
+    const el = scrollRef.current!;
+    const box = el.getBoundingClientRect();
+    // Auto-scroll near the edges.
+    if (e.clientY < box.top + 24)
+      el.scrollTop -= 16;
+    else if (e.clientY > box.bottom - 24)
+      el.scrollTop += 16;
+    const at = toContent(e);
+    const active = m.active || Math.hypot(at.x - m.x0, at.y - m.y0) > MARQUEE_MIN;
+    update({ ...m, x1: at.x, y1: at.y, active });
+  };
+  const endMarquee = () => {
+    draggedRef.current = !!marqueeRef.current?.active;
+    marqueeRef.current = undefined;
+    setMarquee(undefined);
+  };
+  useEffect(() => {
+    if (!marquee)
+      return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "Escape")
+        return;
+      e.stopPropagation();
+      p.onSelectPaths?.(marqueeRef.current?.base ?? []);
+      marqueeRef.current = undefined;
+      setMarquee(undefined);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [marquee, p]);
+
   const items = virtualizer.getVirtualItems();
   const last = items.at(-1);
   const { hasMore, onLoadMore } = p;
@@ -253,7 +364,32 @@ export function FileList(p: FileListProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col" role="grid" aria-multiselectable>
       {p.view === "list" && <SortHeader p={p} />}
-      <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-auto p-1" onClick={p.onClearSelection}>
+      <div
+        ref={scrollRef}
+        className="relative min-h-0 flex-1 overflow-auto p-1"
+        onClick={() => {
+          // The click that ends a marquee keeps its selection.
+          if (!draggedRef.current)
+            p.onClearSelection();
+          draggedRef.current = false;
+        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endMarquee}
+        onPointerCancel={endMarquee}
+      >
+        {marquee?.active && (
+          <div
+            data-fm-marquee=""
+            className="pointer-events-none absolute z-10 border border-primary bg-primary/10"
+            style={{
+              left: Math.min(marquee.x0, marquee.x1),
+              top: Math.min(marquee.y0, marquee.y1),
+              width: Math.abs(marquee.x1 - marquee.x0),
+              height: Math.abs(marquee.y1 - marquee.y0),
+            }}
+          />
+        )}
         {p.entries.length === 0
           ? p.empty
           : (
