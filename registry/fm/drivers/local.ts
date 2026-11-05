@@ -363,10 +363,11 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
       const show = (rel: string) => gitOut(["show", "--no-textconv", `${base}:./${rel}`]);
       // Same path first; a renamed file's base lives under its previous name.
       let bytes = await show(path.replace(/^\/+/, ""));
+      let from: string | undefined;
       if (!bytes) {
-        const renamed = (await changes.list()).find(c => c.path === path)?.previousPath;
-        bytes = renamed
-          ? await show(renamed.slice(1))
+        from = (await changes.list()).find(c => c.path === path)?.previousPath;
+        bytes = from
+          ? await show(from.slice(1))
           : null;
       }
       if (!bytes)
@@ -374,6 +375,9 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
       return {
         body: new Blob([bytes as Uint8Array<ArrayBuffer>]).stream(),
         size: bytes.length,
+        ...(from
+          ? { from }
+          : {}),
       };
     },
   };

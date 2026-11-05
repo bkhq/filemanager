@@ -478,7 +478,9 @@ describe("localDriver gitChanges", () => {
     try {
       const d = localDriver({ root: t.root, gitChanges: true });
       expect(await text((await d.changes!.readBase("/edit.txt"))!.body)).toBe("one\ntwo\n");
-      expect(await text((await d.changes!.readBase("/new-name.txt"))!.body)).toContain("rename me");
+      const renamed = (await d.changes!.readBase("/new-name.txt"))!;
+      expect(renamed.from).toBe("/old-name.txt");
+      expect(await text(renamed.body)).toContain("rename me");
       expect(await d.changes!.readBase("/src/new.ts")).toBeNull();
       await git(t.root, "add", "-A");
       await git(t.root, "commit", "-qm", "second");

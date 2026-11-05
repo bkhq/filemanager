@@ -66,8 +66,12 @@ export interface FmChange {
 /** Optional review capability: what changed against a baseline, and the baseline's bytes. */
 export interface FmChanges {
   list: () => Promise<FmChange[]>;
-  /** The baseline version of `path` (its previous path for renames), or null when it has none. */
-  readBase: (path: string) => Promise<FmReadResult | null>;
+  /**
+   * The baseline version of `path` (its previous path for renames), or null when it
+   * has none. `from` names the baseline path when it differs from `path`, so the
+   * router can authorize it too.
+   */
+  readBase: (path: string) => Promise<(FmReadResult & { from?: string }) | null>;
 }
 
 /** One stored part of a multipart upload. */

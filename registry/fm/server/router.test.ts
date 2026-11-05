@@ -2186,3 +2186,46 @@ describe("changes", () => {
     expect((await req("/m/plain/changes")).status).toBe(405);
   });
 });
+
+describe("changes with renames across permissions", () => {
+  it("hides previous paths and baselines the caller may not read", async () => {
+    const base = memoryDriver({
+      files: { "/pub/a.txt": "now", "/pub/b.txt": "b" },
+    });
+    const driver: FmDriver = {
+      ...base,
+      changes: {
+        list: async () => [
+          { path: "/pub/a.txt", status: "renamed", previousPath: "/secret/a.txt" },
+          { path: "/pub/b.txt", status: "renamed", previousPath: "/pub/old-b.txt" },
+        ],
+        readBase: async p => (p === "/pub/a.txt"
+          ? {
+              body: new Blob(["secret before"]).stream(),
+              size: 13,
+              from: "/secret/a.txt",
+            }
+          : {
+              body: new Blob(["old b"]).stream(),
+              size: 5,
+              from: "/pub/old-b.txt",
+            }),
+      },
+    };
+    const { req } = setup({
+      mounts: [
+        { id: "m", label: "M", driver },
+      ],
+      authorize: p => (p.startsWith("/secret")
+        ? NONE
+        : READ_ONLY_CAPS),
+    });
+    const { changes } = await (await req("/m/m/changes")).json();
+    expect(changes).toEqual([
+      { path: "/pub/a.txt", status: "added" },
+      { path: "/pub/b.txt", status: "renamed", previousPath: "/pub/old-b.txt" },
+    ]);
+    expect((await req(`/m/m/changes/base?path=${q("/pub/a.txt")}`)).status).toBe(404);
+    expect(await (await req(`/m/m/changes/base?path=${q("/pub/b.txt")}`)).text()).toBe("old b");
+  });
+});

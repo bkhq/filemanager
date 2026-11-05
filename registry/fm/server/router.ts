@@ -733,11 +733,17 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
   }), async (c) => {
     const { mount, changes } = await changesOf(c, c.req.param("mount"));
     const out = [];
+    const readable = async (path: string) => !hidden(mount, path) && await resolve(c, mount.id, path).then(() => true, () => false);
     for (const change of await changes.list()) {
-      if (hidden(mount, change.path))
+      if (!await readable(change.path))
         continue;
-      if (await resolve(c, mount.id, change.path).then(() => true, () => false))
-        out.push(change);
+      // A rename out of a place the caller may not read shows as a new file.
+      if (change.previousPath && !await readable(change.previousPath)) {
+        const { previousPath: _hidden, ...rest } = change;
+        out.push({ ...rest, status: "added" });
+        continue;
+      }
+      out.push(change);
     }
     return c.json({ changes: out });
   });
@@ -757,6 +763,12 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
     const base = await changes.readBase(t.path);
     if (!base)
       throw new FmError("NOT_FOUND", "Not in the baseline");
+    // The baseline of a rename lives at its previous path: authorize that too.
+    if (base.from && base.from !== t.path
+      && (hidden(mount, base.from) || !await resolve(c, mount.id, base.from).then(() => true, () => false))) {
+      await base.body.cancel().catch(() => {});
+      throw new FmError("NOT_FOUND", "Not in the baseline");
+    }
     const type = inlineType(mimeOf(basename(t.path)));
     return new Response(base.body, {
       headers: {

@@ -304,3 +304,7 @@ Security review: with `gitChanges` but without `gitIgnore`, users could write `.
 ## 2026-11-05 17:20 [decision]
 
 `fm-plugin-review` renders diffs with `@pierre/diffs` (as bkd does) instead of `@codemirror/merge`: `MultiFileDiff` from the base and current texts, split / unified, bars, collapsed unchanged runs, github light / dark themes; review-all scrolls in its `Virtualizer`, so only visible lines render. Highlighting runs on the main thread (no worker pool), keeping the plugin free of bundler-specific worker imports.
+
+## 2026-11-05 17:50 [pitfall]
+
+Security review: the baseline of a renamed file is read from its previous path, which the caller might not be allowed to read (rename out of a restricted folder). `readBase` now reports `from`; `/changes/base` authorizes it (and the hidden-folder rule) before streaming, and `/changes` turns such a rename into "added" without `previousPath`.
