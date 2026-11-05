@@ -6,6 +6,7 @@ import { localDriver } from "@/fm/drivers/local";
 import { memoryDriver } from "@/fm/drivers/memory";
 import { s3Driver } from "@/fm/drivers/s3";
 import { createFmRouter } from "@/fm/server/router";
+import { bunThumbnail } from "@/fm/thumbnails/bun";
 import { SEED } from "./seed";
 
 export function createApp(config: Config) {
@@ -44,6 +45,7 @@ export function createApp(config: Config) {
   const app = new Hono();
   app.route("/fm", createFmRouter({
     mounts: () => mounts,
+    thumbnail: bunThumbnail(),
     ...(config.uploadPartSize
       ? {
           limits: { uploadPartSize: config.uploadPartSize },

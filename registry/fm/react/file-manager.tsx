@@ -1725,6 +1725,7 @@ export function FileManager(props: FileManagerProps) {
                             conflict: "rename",
                           })}
                           showParent={below}
+                          thumbnails={!!currentMount?.thumbnails}
                           hasMore={!below && !!listing.hasNextPage && !listing.isFetchingNextPage}
                           onLoadMore={() => void listing.fetchNextPage()}
                           disabled={pick && (e => e.kind === "file" && !acceptsEntry(e, pick.accept))}
@@ -1826,7 +1827,8 @@ export function FileManager(props: FileManagerProps) {
 
       {preview && (
         <PreviewDialog
-          entry={preview}
+          // The listing's copy carries the latest etag after a save from the preview.
+          entry={(preview.mount === mount && byPath.get(preview.path)) || preview}
           siblings={entries.filter(e => e.kind === "file")}
           client={client}
           labels={labels}

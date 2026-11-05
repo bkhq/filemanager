@@ -3,6 +3,7 @@
   "name": "fm-worker",
   "main": "src/index.ts",
   "compatibility_date": "2026-11-03",
+  "images": { "binding": "IMAGES" },
   "r2_buckets": [
     { "binding": "FM_BUCKET", "bucket_name": "fm-files" }
   ],

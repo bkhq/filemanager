@@ -144,6 +144,12 @@ export function createFmClient(opts: FmClientOptions) {
         v: o.version,
       }),
     read,
+    /** Resized image for mounts with `thumbnails`; 404 when none can be made. */
+    thumbUrl: (mount: string, path: string, width: 128 | 256 | 512, version?: string) => url(`${m(mount)}/thumb`, {
+      path,
+      w: String(width),
+      v: version,
+    }),
     archiveUrl: (mount: string, paths: string[]) => url(`${m(mount)}/archive`, { path: paths }),
     writeUrl: (mount: string, path: string, conflict: FmConflict = "overwrite") => url(`${m(mount)}/write`, { path, conflict }),
     /** `range` holds inclusive byte offsets; the text is decoded from at most that many bytes. */

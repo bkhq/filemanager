@@ -24,7 +24,7 @@ const NONE: FmCaps = {
   copy: false,
 };
 
-function setup(opts: { files?: Record<string, string>; mounts?: FmMount[]; authorize?: (path: string) => FmCaps; maxUploadBytes?: number; onEvent?: FmRouterOptions<Env>["onEvent"]; limits?: FmRouterOptions<Env>["limits"] } = {}) {
+function setup(opts: { files?: Record<string, string>; mounts?: FmMount[]; authorize?: (path: string) => FmCaps; maxUploadBytes?: number; onEvent?: FmRouterOptions<Env>["onEvent"]; limits?: FmRouterOptions<Env>["limits"]; thumbnail?: FmRouterOptions<Env>["thumbnail"] } = {}) {
   const driver = memoryDriver({ files: opts.files ?? {} });
   const mounts = opts.mounts ?? [
     { id: "m", label: "Main", driver },
@@ -39,6 +39,9 @@ function setup(opts: { files?: Record<string, string>; mounts?: FmMount[]; autho
       : {}),
     ...(opts.onEvent
       ? { onEvent: opts.onEvent }
+      : {}),
+    ...(opts.thumbnail
+      ? { thumbnail: opts.thumbnail }
       : {}),
     limits: { maxUploadBytes: opts.maxUploadBytes ?? 1024, archiveMaxEntries: 10, ...opts.limits },
   }));
@@ -1893,5 +1896,66 @@ describe("upload sessions with presigned parts", () => {
       body: "0123",
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("thumbnails", () => {
+  const files = {
+    "/a.png": "png-bytes",
+    "/b.svg": "<svg/>",
+    "/c.txt": "text",
+    "/big.jpg": "x".repeat(64),
+    "/locked/d.png": "png",
+  };
+  const hook = async (_c: unknown, input: { entry: { name: string }; width: number; read: () => Promise<ReadableStream<Uint8Array>> }) => ({
+    body: `${input.entry.name}@${input.width}:${new TextDecoder().decode(await readAll(await input.read()))}`,
+    type: "image/webp",
+  });
+
+  it("serves resized images through the hook with caching", async () => {
+    const { req } = setup({ files, thumbnail: hook });
+    expect((await (await req("/mounts")).json()).mounts[0].thumbnails).toBe(true);
+    const res = await req(`/m/m/thumb?path=${q("/a.png")}&w=256`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/webp");
+    expect(res.headers.get("cache-control")).toContain("max-age");
+    expect(await res.text()).toBe("a.png@256:png-bytes");
+    const etag = res.headers.get("etag")!;
+    expect(etag).toContain("256");
+    expect((await req(`/m/m/thumb?path=${q("/a.png")}&w=256`, {
+      headers: { "if-none-match": etag },
+    })).status).toBe(304);
+  });
+
+  it("answers 404 for other widths, non-images, SVG, large sources, a declining hook or no hook", async () => {
+    const { req } = setup({
+      files,
+      thumbnail: hook,
+      limits: { thumbnailMaxBytes: 32 },
+    });
+    expect((await req(`/m/m/thumb?path=${q("/a.png")}&w=300`)).status).toBe(422);
+    for (const p of ["/b.svg", "/c.txt", "/big.jpg"])
+      expect((await req(`/m/m/thumb?path=${q(p)}&w=128`)).status).toBe(404);
+    const declining = setup({
+      files,
+      thumbnail: async () => undefined,
+    });
+    expect((await declining.req(`/m/m/thumb?path=${q("/a.png")}&w=128`)).status).toBe(404);
+    const none = setup({ files });
+    expect((await none.req("/mounts")).status).toBe(200);
+    expect((await (await none.req("/mounts")).json()).mounts[0].thumbnails).toBe(false);
+    expect((await none.req(`/m/m/thumb?path=${q("/a.png")}&w=128`)).status).toBe(404);
+  });
+
+  it("authorizes like read", async () => {
+    const { req } = setup({
+      files,
+      thumbnail: hook,
+      authorize: p => (p.startsWith("/locked")
+        ? NONE
+        : READ_ONLY_CAPS),
+    });
+    expect((await req(`/m/m/thumb?path=${q("/locked/d.png")}&w=128`)).status).toBe(404);
+    expect((await req(`/m/m/thumb?path=${q("/a.png")}&w=128`)).status).toBe(200);
   });
 });

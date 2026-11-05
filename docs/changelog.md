@@ -240,3 +240,11 @@ Starred / recent are configurable: `features.starred` / `features.recent` (host,
 ## 2026-11-05 04:20 [progress]
 
 Starred / Recent render as trees: section → drive → folders (single-child chains compacted to `a/b`) → entries; starred folders expand into their contents like drive rows. Rows inside host lists are never "active" and their accessible name carries the location. e2e keeps the demo meta off by default (`fm-demo:meta-off`) and turns it on per test, so host-list rows do not duplicate drive rows elsewhere.
+
+## 2026-11-05 06:30 [progress]
+
+Thumbnails and image saving delivered (20261105-0440-thumbnails): router `thumbnail` hook and `/thumb` route, `fm-thumbnail-bun` (Bun.Image) and `fm-thumbnail-cloudflare` (Images binding) registry items, grid thumbnails, Save rotation / flip from the image preview.
+
+## 2026-11-05 06:30 [pitfall]
+
+Bun 1.4 has a built-in `Bun.Image` (decode, resize, WebP / AVIF / PNG / JPEG encode), so image work on Bun needs no native dependency. `wrangler dev` emulates the Images binding locally (sharp in miniflare). The preview dialog held the entry captured on open; anything that rewrites the file must read the listing's copy to see the new etag.

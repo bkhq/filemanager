@@ -1484,3 +1484,56 @@ test("hides the starred and recent sections from the explorer menu", async ({ pa
   await more.click();
   await expect(page.getByRole("menuitemcheckbox", { name: "Show starred" })).toHaveAttribute("aria-checked", "false");
 });
+
+/** Uploads a solid `w`×`h` PNG drawn in the page. */
+async function putPng(page: Page, path: string, w: number, h: number) {
+  await page.goto("/");
+  await page.request.post("/api/fm/m/local/mkdir", {
+    data: {
+      path: path.slice(0, path.lastIndexOf("/")),
+    },
+  });
+  const ok = await page.evaluate(async ({ path, w, h }) => {
+    const canvas = Object.assign(document.createElement("canvas"), { width: w, height: h });
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#3b82f6";
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = "#ef4444";
+    ctx.fillRect(0, 0, w / 4, h / 4);
+    const blob = await new Promise<Blob>(done => canvas.toBlob(b => done(b!), "image/png"));
+    const res = await fetch(`/api/fm/m/local/write?path=${encodeURIComponent(path)}&conflict=overwrite`, { method: "PUT", body: blob });
+    return res.ok;
+  }, { path, w, h });
+  expect(ok).toBe(true);
+}
+
+test("the grid shows server thumbnails", async ({ page }) => {
+  await putPng(page, "/thumbs-e2e/wide.png", 600, 300);
+  await openMount(page, "Local disk");
+  await row(page, "/thumbs-e2e").dblclick();
+  await page.getByRole("button", { name: "Grid view" }).click();
+  const img = row(page, "/thumbs-e2e/wide.png").locator("img");
+  await expect(img).toHaveAttribute("src", /\/thumb\?.*w=256/);
+  await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBe(256);
+  await page.getByRole("button", { name: "List view" }).click();
+});
+
+test("saves a rotated image", async ({ page }) => {
+  await putPng(page, "/rotate-e2e/wide.png", 60, 30);
+  await openMount(page, "Local disk");
+  await row(page, "/rotate-e2e").dblclick();
+  await row(page, "/rotate-e2e/wide.png").dblclick();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("button", { name: "Save" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Rotate right" }).click();
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog.getByRole("button", { name: "Save" })).toHaveCount(0);
+  const size = await page.evaluate(async () => {
+    const img = new Image();
+    img.src = `/api/fm/m/local/read?path=${encodeURIComponent("/rotate-e2e/wide.png")}&t=${Date.now()}`;
+    await img.decode();
+    return [img.naturalWidth, img.naturalHeight];
+  });
+  expect(size).toEqual([30, 60]);
+  await expect(dialog.locator("img[alt='wide.png']")).toHaveAttribute("style", /rotate\(0deg\)/);
+});

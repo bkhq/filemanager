@@ -57,7 +57,12 @@ export default antfu({
 }, {
   // Code shipped to hosts must run on Bun and Cloudflare Workers alike.
   files: ["registry/fm/**/*.{ts,tsx}"],
-  ignores: ["registry/fm/drivers/local.ts", "registry/fm/server/contract.ts", "**/*.test.ts"],
+  ignores: [
+    "registry/fm/drivers/local.ts",
+    "registry/fm/thumbnails/bun.ts",
+    "registry/fm/server/contract.ts",
+    "**/*.test.ts",
+  ],
   rules: {
     "no-restricted-imports": [
       "error",

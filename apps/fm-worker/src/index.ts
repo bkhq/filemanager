@@ -1,11 +1,13 @@
 import { Hono } from "hono";
 import { r2Driver } from "@/fm/drivers/r2";
 import { createFmRouter } from "@/fm/server/router";
+import { cloudflareThumbnail } from "@/fm/thumbnails/cloudflare";
 
 interface Env {
   Bindings: {
     FM_BUCKET: R2Bucket;
     ASSETS: Fetcher;
+    IMAGES: ImagesBinding;
   };
 }
 
@@ -20,6 +22,7 @@ app.route("/api/fm", createFmRouter<Env>({
       trash: true,
     },
   ],
+  thumbnail: cloudflareThumbnail<Env>(c => c.env.IMAGES),
 }));
 
 app.onError((err, c) => {

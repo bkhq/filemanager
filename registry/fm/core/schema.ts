@@ -73,6 +73,8 @@ export const mountInfoSchema = z.object({
   caps: capsSchema,
   /** Deletes go to a restorable trash. */
   trash: z.boolean(),
+  /** `GET /thumb` serves resized images. */
+  thumbnails: z.boolean(),
   /** Trash items older than this many days are deleted for good. */
   trashRetentionDays: z.number().int().positive().optional(),
 });

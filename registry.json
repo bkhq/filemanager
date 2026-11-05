@@ -159,6 +159,38 @@
       ]
     },
     {
+      "name": "fm-thumbnail-bun",
+      "type": "registry:lib",
+      "title": "Thumbnails (Bun)",
+      "description": "Thumbnail hook for createFmRouter using Bun's built-in Bun.Image (WebP).",
+      "registryDependencies": [
+        "@bkhq/fm-server"
+      ],
+      "files": [
+        {
+          "path": "registry/fm/thumbnails/bun.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/thumbnails/bun.ts"
+        }
+      ]
+    },
+    {
+      "name": "fm-thumbnail-cloudflare",
+      "type": "registry:lib",
+      "title": "Thumbnails (Cloudflare Images)",
+      "description": "Thumbnail hook for createFmRouter using the Workers Images binding (WebP).",
+      "registryDependencies": [
+        "@bkhq/fm-server"
+      ],
+      "files": [
+        {
+          "path": "registry/fm/thumbnails/cloudflare.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/thumbnails/cloudflare.ts"
+        }
+      ]
+    },
+    {
       "name": "fm-client",
       "type": "registry:lib",
       "title": "File manager client",

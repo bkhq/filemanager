@@ -185,6 +185,20 @@ same storage. `trash: { retentionDays: 30 }` also deletes items older than
 that for good, lazily whenever the trash is listed; hosts that prefer a
 schedule call `purgeExpired(mount)` (from `@/fm/server/router`) from a cron job.
 
+Thumbnails: the grid view asks `GET /m/:mount/thumb?path&w=128|256|512` when
+the router has a `thumbnail` hook, and falls back to the full image otherwise.
+
+```ts
+import { bunThumbnail } from "@/fm/thumbnails/bun";             // bunx shadcn add @bkhq/fm-thumbnail-bun
+createFmRouter({ mounts, thumbnail: bunThumbnail() });          // Bun.Image, no dependency
+
+import { cloudflareThumbnail } from "@/fm/thumbnails/cloudflare"; // bunx shadcn add @bkhq/fm-thumbnail-cloudflare
+createFmRouter<Env>({ mounts, thumbnail: cloudflareThumbnail<Env>(c => c.env.IMAGES) }); // "images": { "binding": "IMAGES" }
+```
+
+Saving a rotated / flipped image from the preview re-encodes it in the browser
+(PNG / JPEG / WebP, same type) and drops its metadata such as EXIF.
+
 On S3 parts go through the server by default. `s3Driver({ ..., presignUploads: true })`
 is opt-in and lets browsers `PUT` parts straight to the bucket via presigned
 URLs. It requires both:

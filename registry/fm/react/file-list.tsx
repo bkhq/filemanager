@@ -71,6 +71,8 @@ export interface FileListProps {
   disabled?: ((entry: FmEntry) => boolean) | undefined;
   /** Show each entry's parent folder (search results from several folders). */
   showParent?: boolean;
+  /** The mount serves `/thumb`; grid images use it. */
+  thumbnails?: boolean;
 }
 
 function modeOf(e: MouseEvent): FmSelectMode {
@@ -188,13 +190,22 @@ function GridCell({ p, entry }: { p: FileListProps; entry: FmEntry }) {
     >
       <div className="flex h-20 w-full items-center justify-center overflow-hidden rounded-md">
         {thumb
-          ? <img src={p.client.readUrl(entry.mount, entry.path, { version: entry.etag })} alt="" loading="lazy" draggable={false} className="max-h-full max-w-full object-contain" />
+          ? <GridImage p={p} entry={entry} />
           : <EntryIcon entry={entry} className="size-10" />}
       </div>
       <span className={cn("line-clamp-2 w-full text-center break-all", p.showParent && "line-clamp-1")}>{entry.name}</span>
       {p.showParent && <span className="w-full truncate text-center text-muted-foreground">{dirname(entry.path)}</span>}
     </div>
   );
+}
+
+/** Grid image: the server thumbnail when the mount has them, the full image otherwise or on error. */
+function GridImage({ p, entry }: { p: FileListProps; entry: FmEntry }) {
+  const [full, setFull] = useState(!p.thumbnails);
+  const src = full
+    ? p.client.readUrl(entry.mount, entry.path, { version: entry.etag })
+    : p.client.thumbUrl(entry.mount, entry.path, 256, entry.etag);
+  return <img src={src} alt="" loading="lazy" draggable={false} className="max-h-full max-w-full object-contain" onError={() => setFull(true)} />;
 }
 
 function SortHeader({ p }: { p: FileListProps }) {

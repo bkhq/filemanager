@@ -14,5 +14,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["registry/fm/core", "registry/fm/server", "registry/fm/drivers", "registry/fm/client", "scripts"]
+  "include": ["registry/fm/core", "registry/fm/server", "registry/fm/drivers", "registry/fm/client", "registry/fm/thumbnails", "scripts"]
 }

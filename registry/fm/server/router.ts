@@ -78,7 +78,24 @@ export interface FmLimits {
   maxSessionUploadBytes: number;
   /** Lifetime of an upload session in milliseconds. */
   uploadSessionTtlMs: number;
+  /** Largest source image the thumbnail hook is given. */
+  thumbnailMaxBytes: number;
 }
+
+/** Widths `/thumb` serves. */
+export const FM_THUMB_WIDTHS = [128, 256, 512] as const;
+export type FmThumbWidth = typeof FM_THUMB_WIDTHS[number];
+
+/** Input of the thumbnail hook: a raster image of the mount. */
+export interface FmThumbnailInput {
+  entry: FmDriverEntry;
+  width: FmThumbWidth;
+  /** The source bytes. */
+  read: () => Promise<ReadableStream<Uint8Array>>;
+}
+
+/** A thumbnail, or undefined to decline (the UI then shows the full image). */
+export type FmThumbnailHook<E extends Env = Env> = (c: Context<E>, input: FmThumbnailInput) => Promise<{ body: BodyInit; type: string } | undefined>;
 
 export const DEFAULT_LIMITS: FmLimits = {
   maxUploadBytes: 100 * 1024 * 1024,
@@ -88,6 +105,7 @@ export const DEFAULT_LIMITS: FmLimits = {
   uploadPartSize: 8 * 1024 * 1024,
   maxSessionUploadBytes: 10 * 1024 * 1024 * 1024,
   uploadSessionTtlMs: 24 * 60 * 60 * 1000,
+  thumbnailMaxBytes: 32 * 1024 * 1024,
 };
 
 export interface FmRouterOptions<E extends Env> {
@@ -104,6 +122,11 @@ export interface FmRouterOptions<E extends Env> {
    * Awaited; a throwing hook is logged and never changes the response.
    */
   onEvent?: (c: Context<E>, event: FmChangeEvent) => void | Promise<void>;
+  /**
+   * Resizes images for `GET /m/:mount/thumb` (grid view). Web-API only here; see
+   * `fm/thumbnails/bun` and `fm/thumbnails/cloudflare` for implementations.
+   */
+  thumbnail?: FmThumbnailHook<E>;
 }
 
 export interface FmChangeEvent {
@@ -522,6 +545,7 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
           driver: mount.driver.name,
           caps,
           trash: hasTrash(mount),
+          thumbnails: !!options.thumbnail,
           ...(hasTrash(mount) && retentionOf(mount)
             ? {
                 trashRetentionDays: retentionOf(mount),
@@ -654,6 +678,46 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
     }
     headers.set("Content-Length", String(res.size));
     return new Response(res.body, { status: 200, headers });
+  });
+
+  app.get("/m/:mount/thumb", describeRoute({
+    tags: [TAG],
+    summary: "Image thumbnail",
+    description: "Resized raster image (not SVG) from the router's `thumbnail` hook; 404 when there is no hook, the file is not an image, too large or the hook declines.",
+    responses: {
+      200: { description: "Thumbnail bytes" },
+      304: { description: "Not modified" },
+      ...ERRORS,
+    },
+  }), v("query", pathQuery.extend({
+    w: z.enum(FM_THUMB_WIDTHS.map(String) as [string, ...string[]]),
+  })), async (c) => {
+    const q = c.req.valid("query");
+    const t = await resolve(c, c.req.param("mount"), q.path);
+    const d = t.mount.driver;
+    const e = await d.stat(t.path);
+    const width = Number(q.w) as FmThumbWidth;
+    const mime = e.mime ?? mimeOf(e.name) ?? "";
+    const none = () => new FmError("NOT_FOUND", "No thumbnail");
+    if (!options.thumbnail || e.kind !== "file" || !mime.startsWith("image/") || mime === "image/svg+xml" || e.size > limits.thumbnailMaxBytes)
+      throw none();
+    const etag = `"${e.etag}-w${width}"`;
+    const headers = new Headers({
+      "ETag": etag,
+      "Cache-Control": "private, max-age=86400",
+      "X-Content-Type-Options": "nosniff",
+    });
+    if (c.req.header("if-none-match") === etag)
+      return new Response(null, { status: 304, headers });
+    const thumb = await options.thumbnail(host(c), {
+      entry: e,
+      width,
+      read: async () => (await d.read(t.path)).body,
+    });
+    if (!thumb)
+      throw none();
+    headers.set("Content-Type", thumb.type);
+    return new Response(thumb.body, { status: 200, headers });
   });
 
   app.put("/m/:mount/write", describeRoute({
