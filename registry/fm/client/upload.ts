@@ -86,6 +86,8 @@ export interface FmUploadQueueOptions {
   client?: FmClient;
   /** Files of at least this size use a session when `client` is set. Default 16 MiB. */
   sessionThreshold?: number;
+  /** Whether a mount accepts upload sessions (`FmMountInfo.uploadSessions`); default all. */
+  sessions?: (mount: string) => boolean;
   partTransport?: FmPartTransport;
   /** Retries per part. Default 3. */
   retries?: number;
@@ -257,7 +259,7 @@ export function createUploadQueue(opts: FmUploadQueueOptions) {
       patch(task.id, { status: "uploading" });
       try {
         const file = files.get(task.id)!;
-        if (opts.client && file.size >= threshold)
+        if (opts.client && file.size >= threshold && (opts.sessions?.(task.mount) ?? true))
           await runSession(opts.client, task, file, controller.signal);
         else
           await opts.transport(task, file, loaded => patch(task.id, { loaded }), controller.signal);

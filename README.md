@@ -213,6 +213,13 @@ same storage. `trash: { retentionDays: 30 }` also deletes items older than
 that for good, lazily whenever the trash is listed; hosts that prefer a
 schedule call `purgeExpired(mount)` (from `@/fm/server/router`) from a cron job.
 
+Flat storages (folders implied by file paths, every write recorded — e.g. a
+commit per change) set `implicitFolders: true` (the UI keeps a new empty
+folder until a file lands in it) and `uploads: false` (no resumable sessions;
+every upload is one `PUT /write`, bounded by `maxUploadBytes`). Drivers for
+them can still run the behaviour suite with
+`runDriverContract(label, make, { seeded: ["/SKILL.md"], emptyDirs: false, copyDirs: false })`.
+
 Thumbnails: the grid view asks `GET /m/:mount/thumb?path&w=128|256|512` when
 the router has a `thumbnail` hook, and falls back to the full image otherwise.
 

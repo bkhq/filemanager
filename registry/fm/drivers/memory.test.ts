@@ -7,6 +7,17 @@ runDriverContract("memory", async () => ({
   driver: memoryDriver(),
 }));
 
+// The options a flat, seeded storage (e.g. a skill that always holds SKILL.md) needs.
+runDriverContract("memory, seeded root and no empty / copied folders", async () => ({
+  driver: memoryDriver({
+    files: { "/SKILL.md": "# Skill" },
+  }),
+}), {
+  seeded: ["/SKILL.md"],
+  emptyDirs: false,
+  copyDirs: false,
+});
+
 describe("memoryDriver seed", () => {
   it("creates seeded files with parents", async () => {
     const d = memoryDriver({

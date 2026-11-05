@@ -47,6 +47,17 @@ export interface FmMount {
    * items are deleted for good when the trash is listed or by `purgeExpired`.
    */
   trash?: boolean | { retentionDays: number };
+  /**
+   * Folders are implied by file paths (a flat file list): an empty folder cannot
+   * be stored. The UI keeps folders created here until a file lands in them.
+   */
+  implicitFolders?: boolean;
+  /**
+   * Resumable upload sessions (default true). Without driver multipart their parts
+   * are stored through the driver, so turn them off for storages where every write
+   * counts (commits, remote workspaces): uploads then go in one request each.
+   */
+  uploads?: boolean;
 }
 
 /** Retention of a mount's trash in days, if any. */
@@ -577,6 +588,8 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
           trash: hasTrash(mount),
           thumbnails: !!options.thumbnail,
           changes: !!mount.driver.changes,
+          implicitFolders: !!mount.implicitFolders,
+          uploadSessions: mount.uploads !== false,
           ...(hasTrash(mount) && retentionOf(mount)
             ? {
                 trashRetentionDays: retentionOf(mount),
@@ -1394,6 +1407,8 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
     const t = await resolve(c, c.req.param("mount"), body.path, "write");
     if (t.path === "/")
       throw new FmError("INVALID", "Invalid path");
+    if (t.mount.uploads === false)
+      throw new FmError("UNSUPPORTED", "Upload sessions are off for this mount");
     if (body.size > limits.maxSessionUploadBytes)
       throw new FmError("TOO_LARGE", `Upload exceeds ${limits.maxSessionUploadBytes} bytes`);
     const d = t.mount.driver;

@@ -2229,3 +2229,28 @@ describe("changes with renames across permissions", () => {
     expect(await (await req(`/m/m/changes/base?path=${q("/pub/b.txt")}`)).text()).toBe("old b");
   });
 });
+
+describe("mount options for flat storages", () => {
+  it("reports implicit folders and refuses upload sessions when uploads are off", async () => {
+    const driver = memoryDriver({ files: {} });
+    const { req, json } = setup({
+      mounts: [
+        {
+          id: "m",
+          label: "M",
+          driver,
+          implicitFolders: true,
+          uploads: false,
+        },
+        { id: "n", label: "N", driver },
+      ],
+    });
+    const info = (await (await req("/mounts")).json()).mounts;
+    expect(info.map((m: { implicitFolders: boolean; uploadSessions: boolean }) => [m.implicitFolders, m.uploadSessions])).toEqual([
+      [true, false],
+      [false, true],
+    ]);
+    expect((await json("POST", "/m/m/uploads", { path: "/big.bin", size: 100 })).status).toBe(405);
+    expect((await json("POST", "/m/n/uploads", { path: "/big.bin", size: 100 })).status).toBe(201);
+  });
+});

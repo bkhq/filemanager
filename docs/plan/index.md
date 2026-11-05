@@ -64,3 +64,4 @@ Each plan is a single line linking to its detail file. All detailed information 
 - [ ] [**20261105-1120-managed-store Managed store (generic, phase 1)**](20261105-1120-managed-store.md) `2026-11-05`
 - [x] [**20261105-1300-change-message Change messages (commit notes) for writes**](20261105-1300-change-message.md) `2026-11-05`
 - [x] [**20261105-1400-review-changes Changes / review, external edits, SVG preview**](20261105-1400-review-changes.md) `2026-11-05`
+- [x] [**20261105-1830-adoption-fixes Upstream fixes from the bks adoption review**](20261105-1830-adoption-fixes.md) `2026-11-05`

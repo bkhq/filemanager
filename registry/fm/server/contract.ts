@@ -51,10 +51,29 @@ function concat(...chunks: Uint8Array[]): Uint8Array<ArrayBuffer> {
   return out;
 }
 
-const names = async (driver: FmDriver, path: string) => (await driver.list(path)).map(e => e.name).sort();
+/** What a driver's storage model does not support; the matching cases are skipped or adjusted. */
+export interface FmDriverContractOptions {
+  /** Paths a fresh driver already holds (e.g. a required `SKILL.md`); ignored in listings. */
+  seeded?: string[];
+  /** Empty directories exist on their own (default true). False for storages whose folders are implied by file paths. */
+  emptyDirs?: boolean;
+  /** `copy` copies directories (default true). */
+  copyDirs?: boolean;
+}
 
 /** Behavioural contract every driver must pass. Run it from a `*.test.ts` file. */
-export function runDriverContract(label: string, make: () => Promise<FmDriverFixture>): void {
+export function runDriverContract(label: string, make: () => Promise<FmDriverFixture>, opts: FmDriverContractOptions = {}): void {
+  const seeded = new Set(opts.seeded ?? []);
+  const names = async (driver: FmDriver, path: string) => (await driver.list(path))
+    .filter(e => !seeded.has(e.path))
+    .map(e => e.name)
+    .sort();
+  const itEmptyDirs = opts.emptyDirs === false
+    ? it.skip
+    : it;
+  const itCopyDirs = opts.copyDirs === false
+    ? it.skip
+    : it;
   describe(`driver contract: ${label}`, () => {
     let fx: FmDriverFixture;
     let d: FmDriver;
@@ -111,7 +130,7 @@ export function runDriverContract(label: string, make: () => Promise<FmDriverFix
       await expectCode(d.write("/x.txt", enc.encode("2"), { exclusive: true }), "EXISTS");
     });
 
-    it("creates empty directories that show up in listings", async () => {
+    itEmptyDirs("creates empty directories that show up in listings", async () => {
       const e = await d.mkdir("/empty");
       expect(e.kind).toBe("dir");
       expect(await names(d, "/")).toEqual(["empty"]);
@@ -137,7 +156,7 @@ export function runDriverContract(label: string, make: () => Promise<FmDriverFix
       expect(await text(d, "/deep/er/f3.txt")).toBe("f");
     });
 
-    it("copies directories and keeps the source", async () => {
+    itCopyDirs("copies directories and keeps the source", async () => {
       await d.write("/c/a.txt", enc.encode("a"));
       await d.write("/c/d/b.txt", enc.encode("b"));
       await d.copy("/c", "/c2");
@@ -163,11 +182,11 @@ export function runDriverContract(label: string, make: () => Promise<FmDriverFix
       await expectCode(d.stat("/r/s/b.txt"), "NOT_FOUND");
       expect(await names(d, "/")).toEqual(["keep.txt"]);
       await d.remove("/keep.txt");
-      expect(await d.list("/")).toEqual([]);
+      expect(await names(d, "/")).toEqual([]);
     });
 
     it("rejects reading a directory as a file", async () => {
-      await d.mkdir("/dir");
+      await d.write("/dir/f.txt", enc.encode("f"));
       await expectCode(d.read("/dir"), "IS_A_DIR");
     });
 

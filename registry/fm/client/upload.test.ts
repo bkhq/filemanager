@@ -174,6 +174,28 @@ describe("upload sessions", () => {
     expect(calls).toEqual([]);
   });
 
+  it("sends large files with one PUT to mounts without upload sessions", async () => {
+    const { client, calls } = fakeClient();
+    const used: string[] = [];
+    const q = createUploadQueue({
+      ...base,
+      client,
+      storage: memoryStorage(),
+      sessions: mount => mount !== "flat",
+      transport: async (task) => {
+        used.push(task.path);
+      },
+    });
+    q.getState().enqueue("flat", "/", [
+      {
+        file: file("big.bin", 99),
+      },
+    ]);
+    expect(await settle(q)).toMatchObject({ status: "done" });
+    expect(used).toEqual(["/big.bin"]);
+    expect(calls).toEqual([]);
+  });
+
   it("uploads all parts of a chunked session and completes", async () => {
     const { client, calls } = fakeClient();
     const { partTransport, puts } = recordingParts();

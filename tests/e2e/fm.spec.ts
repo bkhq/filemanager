@@ -1732,3 +1732,52 @@ test("decorates changed files and shows their diffs", async ({ page }) => {
     await rm(`${root}/.git`, { recursive: true, force: true });
   }
 });
+
+test("keeps folders created on implicit-folder mounts until a file lands in them", async ({ page }) => {
+  // Simulate a flat storage on the scratch mount: the server forgets empty folders.
+  await page.route("**/api/fm/mounts", async (route) => {
+    const res = await route.fetch();
+    const body = await res.json();
+    for (const m of body.mounts) {
+      if (m.id === "scratch")
+        m.implicitFolders = true;
+    }
+    await route.fulfill({ response: res, json: body });
+  });
+  // Until a file is written into it, the folder does not exist for the server.
+  let hasFile = false;
+  page.on("requestfinished", (r) => {
+    if (r.url().includes("/m/scratch/write") && r.url().includes(encodeURIComponent("/flat-e2e/")))
+      hasFile = true;
+  });
+  await page.route("**/api/fm/m/scratch/list?*", async (route) => {
+    const url = new URL(route.request().url());
+    if (!hasFile && url.searchParams.get("path") === "/flat-e2e") {
+      return route.fulfill({
+        status: 404,
+        json: {
+          error: { code: "NOT_FOUND", message: "Not found" },
+        },
+      });
+    }
+    const res = await route.fetch();
+    const body = await res.json();
+    if (!hasFile)
+      body.items = body.items.filter((e: { path: string }) => e.path !== "/flat-e2e");
+    await route.fulfill({ response: res, json: body });
+  });
+  await openMount(page, "Scratch (memory)");
+  await page.getByRole("button", { name: "New folder" }).click();
+  await page.getByRole("dialog").getByRole("textbox").fill("flat-e2e");
+  await page.getByRole("button", { name: "Create" }).click();
+  await expect(row(page, "/flat-e2e")).toBeVisible();
+  await row(page, "/flat-e2e").dblclick();
+  await expect(page.getByText("This folder is empty")).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.locator("input[type=file]:not([webkitdirectory])").setInputFiles({
+    name: "in-flat.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("x"),
+  });
+  await expect(row(page, "/flat-e2e/in-flat.txt")).toBeVisible();
+});

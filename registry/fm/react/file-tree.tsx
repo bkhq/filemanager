@@ -43,7 +43,7 @@ interface TreeProps {
   /** Hidden / ignored filter applied to every folder listing. */
   filter?: FmListFilter | undefined;
   /** Narrows the file rows of a folder (folders always stay). */
-  filterEntries?: ((mount: string, entries: readonly FmEntry[]) => readonly FmEntry[]) | undefined;
+  filterEntries?: ((mount: string, entries: readonly FmEntry[], parent: string) => readonly FmEntry[]) | undefined;
   /** Review decorations of a mount (status letters, dots on folders). */
   changesOf?: ((mount: string) => FmChangeIndex | undefined) | undefined;
 }
@@ -99,8 +99,10 @@ function FolderLoader({ t, mount, path, onEntries }: { t: TreeProps; mount: stri
 }
 
 /** Tree item wrapper: accessible name / state, drag source and an optional drop target. */
-function Item({ row, label, active, expanded, title, drag, onDrop, onContextMenu, children }: {
+function Item({ row, at, label, active, expanded, title, drag, onDrop, onContextMenu, children }: {
   row: { depth: number; index: number; start: number };
+  /** Entry or mount root the row stands for (`data-tree-path` / `data-tree-mount`, for tests and hosts). */
+  at?: { mount: string; path: string } | undefined;
   label: string;
   active: boolean;
   expanded?: boolean | undefined;
@@ -121,6 +123,8 @@ function Item({ row, label, active, expanded, title, drag, onDrop, onContextMenu
       aria-expanded={expanded}
       aria-selected={active}
       data-index={row.index}
+      data-tree-path={at?.path}
+      data-tree-mount={at?.mount}
       title={title}
       className={cn("absolute inset-x-0 top-0 rounded-md", over && "ring-2 ring-primary")}
       style={{ height: ROW_H, transform: `translateY(${row.start - PAD}px)`, paddingLeft: row.depth * 16 }}
@@ -249,7 +253,7 @@ export function FileTree(props: TreeProps & {
     const folder = (mount: string, path: string, depth: number, prefix = "") => {
       open.push({ mount, path });
       const entries = listings.get(treeKey(mount, path)) ?? [];
-      for (const entry of filterEntries?.(mount, entries) ?? entries) {
+      for (const entry of filterEntries?.(mount, entries, path) ?? entries) {
         if (pushEntry(entry, depth, prefix))
           folder(mount, entry.path, depth + 1, prefix);
       }
@@ -554,6 +558,7 @@ export function FileTree(props: TreeProps & {
           <Item
             key={row.key}
             row={at}
+            at={{ mount: info.id, path: "/" }}
             label={info.label}
             active={active}
             expanded={row.open}
@@ -592,6 +597,7 @@ export function FileTree(props: TreeProps & {
               : entry.name}
             active={active}
             expanded={row.open}
+            at={entry}
             drag={entry.caps.move || entry.caps.copy
               ? { mount: entry.mount, path: entry.path }
               : undefined}
@@ -626,6 +632,7 @@ export function FileTree(props: TreeProps & {
               ? `${entry.name}, ${row.where}`
               : entry.name}
             active={active}
+            at={entry}
             drag={entry.caps.move || entry.caps.copy
               ? {
                   mount: entry.mount,

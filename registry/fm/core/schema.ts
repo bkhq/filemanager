@@ -77,6 +77,10 @@ export const mountInfoSchema = z.object({
   thumbnails: z.boolean(),
   /** `GET /changes` lists files that differ from a baseline (review). */
   changes: z.boolean(),
+  /** Folders are implied by file paths; empty ones live only in the UI until a file lands in them. */
+  implicitFolders: z.boolean(),
+  /** `POST /uploads` sessions are available (else uploads are one request each). */
+  uploadSessions: z.boolean(),
   /** Trash items older than this many days are deleted for good. */
   trashRetentionDays: z.number().int().positive().optional(),
 });

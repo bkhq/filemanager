@@ -86,10 +86,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { createFmClient } from "../client/client";
+import { createFmClient, FmApiError } from "../client/client";
 import { changesQuery, fmKeys, useFmMutations, useListing, useMounts, useSearch, useTrash } from "../client/hooks";
 import { createUploadQueue, xhrTransport } from "../client/upload";
-import { basename, dirname, joinPath } from "../core/path";
+import { basename, dirname, isWithin, joinPath } from "../core/path";
+import { READ_ONLY_CAPS } from "../core/schema";
 import { acceptsEntry } from "./accept";
 import { ChangeMessageContext, useChangeMessageState } from "./change-message";
 import { ChangeMessageDialog } from "./change-message-dialog";
@@ -420,6 +421,53 @@ export function FileManager(props: FileManagerProps) {
   // Target folder of the next file picker upload; unset uploads into the current folder.
   const uploadToRef = useRef<FolderRef | undefined>(undefined);
 
+  // Folders created on mounts whose folders are implied by file paths (`implicitFolders`):
+  // kept here, merged into listings, until a file lands in them or they go away.
+  const [pendingFolders, setPendingFolders] = useState<ReadonlyMap<string, ReadonlySet<string>>>(() => new Map());
+  const pendingIn = useCallback((m: string, parent: string): FmEntry[] => {
+    const info = mounts.data?.find(x => x.id === m);
+    return [
+      ...pendingFolders.get(m) ?? [],
+    ].filter(p => dirname(p) === parent).map(p => ({
+      mount: m,
+      path: p,
+      name: basename(p),
+      kind: "dir",
+      size: 0,
+      mtime: new Date(0).toISOString(),
+      etag: "",
+      caps: info?.caps ?? READ_ONLY_CAPS,
+    }));
+  }, [pendingFolders, mounts.data]);
+  const isPending = (m: string | undefined, p: string) => !!m && !!pendingFolders.get(m)?.has(p);
+  const addPendingFolder = (m: string, p: string) => {
+    if (mounts.data?.find(x => x.id === m)?.implicitFolders) {
+      setPendingFolders(all => new Map(all).set(m, new Set([
+        ...all.get(m) ?? [],
+        p,
+      ])));
+    }
+  };
+  /** Drops pending folders at or below `paths` (deleted, renamed, moved away). */
+  const dropPendingFolders = (m: string, paths: readonly string[]) => setPendingFolders((all) => {
+    const set = all.get(m);
+    if (!set)
+      return all;
+    const kept = [...set].filter(p => !paths.some(gone => isWithin(p, gone)));
+    return kept.length === set.size
+      ? all
+      : new Map(all).set(m, new Set(kept));
+  });
+  const withPending = (m: string, parent: string, es: readonly FmEntry[]) => {
+    const extra = pendingIn(m, parent).filter(f => !es.some(e => e.path === f.path));
+    return extra.length
+      ? [
+          ...es,
+          ...extra,
+        ]
+      : es;
+  };
+
   const listing = useListing(client, mount, path, sort.key, sort.order, query.trim(), filter);
   const below = features.search && searchScope === "below" && !!query.trim();
   const search = useSearch(client, mount, path, query.trim(), below, "substring", filter);
@@ -429,12 +477,53 @@ export function FileManager(props: FileManagerProps) {
   const [filtersFor, setFiltersFor] = useStoredFilters(`${storageKey}:filters`);
   const filters = filtersFor(mount);
   const changeFilters = (f: FmListFilters) => mount && setFiltersFor(mount, f);
-  const unfiltered = useMemo(() => items?.map(e => maskEntry(e, features)) ?? [], [items, features]);
+  // A pending folder the driver does not know yet lists as empty.
+  const pendingHere = isPending(mount, path) && listing.error instanceof FmApiError && listing.error.status === 404;
+  const unfiltered = useMemo(() => {
+    const own = (items ?? []).map(e => maskEntry(e, features));
+    return mount && !below && !query.trim()
+      ? withPending(mount, path, own)
+      : own;
+  // eslint-disable-next-line react/exhaustive-deps -- `withPending` reads `pendingIn`.
+  }, [
+    items,
+    features,
+    mount,
+    path,
+    below,
+    query,
+    pendingIn,
+  ]);
   const entries = useMemo(() => applyFilters(unfiltered, filters), [unfiltered, filters]);
-  const treeFilter = useCallback((m: string, es: readonly FmEntry[]) => applyFilters(es, filtersFor(m), { keepFolders: true }), [filtersFor]);
+  const treeFilter = useCallback((m: string, es: readonly FmEntry[], parent: string) => {
+    const extra = pendingIn(m, parent).filter(f => !es.some(e => e.path === f.path));
+    return applyFilters(extra.length
+      ? [
+          ...es,
+          ...extra,
+        ]
+      : es, filtersFor(m), { keepFolders: true });
+  }, [filtersFor, pendingIn]);
   const rawDir = listing.data?.pages[0]?.entry;
   const hasIgnored = listing.data?.pages.some(p => (p.ignored ?? 0) > 0) ?? false;
-  const dir = useMemo(() => rawDir && maskEntry(rawDir, features), [rawDir, features]);
+  const dir = useMemo(() => {
+    if (rawDir)
+      return maskEntry(rawDir, features);
+    // Inside a pending folder: act as the folder exists, with the mount's caps.
+    return pendingHere && mount
+      ? maskEntry({
+          ...pendingIn(mount, dirname(path)).find(e => e.path === path)!,
+          path,
+        }, features)
+      : undefined;
+  }, [
+    rawDir,
+    features,
+    pendingHere,
+    mount,
+    path,
+    pendingIn,
+  ]);
   const order = useMemo(() => entries.map(e => e.path), [entries]);
   const byPath = useMemo(() => new Map(entries.map(e => [e.path, e])), [entries]);
   const { pick } = props;
@@ -611,13 +700,17 @@ export function FileManager(props: FileManagerProps) {
 
   const onUploadedRef = useRef((_task: FmUploadTask) => {});
   onUploadedRef.current = task => void refreshMount(task.mount);
+  const mountsRef = useRef(mounts.data);
+  mountsRef.current = mounts.data;
   const [queue] = useState(() => createUploadQueue({
     transport: xhrTransport(client),
     client,
+    // Mounts with `uploads: false` take every file in one request.
+    sessions: m => mountsRef.current?.find(x => x.id === m)?.uploadSessions !== false,
     onUploaded: task => onUploadedRef.current(task),
   }));
 
-  const shownError = error ?? listing.error?.message ?? (below
+  const shownError = error ?? (pendingHere ? undefined : listing.error?.message) ?? (below
     ? search.error?.message
     : undefined);
   const currentMount = mounts.data?.find(m => m.id === mount);
@@ -705,6 +798,7 @@ export function FileManager(props: FileManagerProps) {
             if (r.ok)
               clearDrafts(m, r.path);
           }
+          dropPendingFolders(m, res.results.filter(r => r.ok).map(r => r.path));
         }
         setError(failedMessage(res.results));
         const undo = m && !crossMount && undoFor(req, res.results);
@@ -2044,6 +2138,7 @@ export function FileManager(props: FileManagerProps) {
                   return;
                 client.mkdir(to.mount, joinPath(to.path, name), { message }).then(() => {
                   used();
+                  addPendingFolder(to.mount, joinPath(to.path, name));
                   void refreshMount(to.mount);
                 }, (e: Error) => setError(e.message));
               });

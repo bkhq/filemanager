@@ -308,3 +308,7 @@ Security review: with `gitChanges` but without `gitIgnore`, users could write `.
 ## 2026-11-05 17:50 [pitfall]
 
 Security review: the baseline of a renamed file is read from its previous path, which the caller might not be allowed to read (rename out of a restricted folder). `readBase` now reports `from`; `/changes/base` authorizes it (and the hidden-folder rule) before streaming, and `/changes` turns such a rename into "added" without `previousPath`.
+
+## 2026-11-05 19:30 [progress]
+
+Adoption fixes from the bks review (20261105-1830-adoption-fixes): `implicitFolders` and `uploads: false` mount options, `runDriverContract` options for flat / seeded storages, `data-tree-path` / `data-tree-mount` on tree rows.
