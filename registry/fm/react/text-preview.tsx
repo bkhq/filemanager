@@ -1,53 +1,29 @@
-import type { Extension } from "@codemirror/state";
 import type { PreviewProps } from "./previewers";
-import { LanguageDescription } from "@codemirror/language";
-import { languages } from "@codemirror/language-data";
 import { useQuery } from "@tanstack/react-query";
 import CodeMirror, { EditorView, keymap, Prec } from "@uiw/react-codemirror";
 import { DownloadIcon, LockIcon, MoreHorizontalIcon, SaveIcon, WrapTextIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { FmApiError } from "../client/client";
 import { fmKeys, useFileText, useFmMutations } from "../client/hooks";
+import { useChangeMessage } from "./change-message";
+import { useDarkMode, useLanguage } from "./code-language";
 import { clearDraft, loadDraft, saveDraft } from "./drafts";
 import { IconButton } from "./icon-button";
 import { MAX_TEXT_BYTES } from "./previewers";
 
-function useLanguage(name: string): Extension[] {
-  const [ext, setExt] = useState<Extension[]>([]);
-  useEffect(() => {
-    let alive = true;
-    const desc = LanguageDescription.matchFilename(languages, name);
-    void desc?.load().then(support => alive && setExt([support]));
-    return () => {
-      alive = false;
-    };
-  }, [name]);
-  return ext;
-}
-
 const WRAP_KEY = "fm:wrap";
 const DRAFT_DELAY = 300;
-
-const isDark = () => typeof document !== "undefined" && document.documentElement.classList.contains("dark");
-
-/** Follows the host's `.dark` class on <html>, so the editor switches with the page theme. */
-function subscribeTheme(onChange: () => void) {
-  const observer = new MutationObserver(onChange);
-  observer.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["class"],
-  });
-  return () => observer.disconnect();
-}
+/** How often an open text file is checked for changes made elsewhere. */
+const WATCH_MS = 5000;
 
 /** Read-only highlighted text, e.g. a file inside an archive; the language follows `name`. */
 export function CodeView({ name, text }: { name: string; text: string }) {
   const language = useLanguage(name);
-  const dark = useSyncExternalStore(subscribeTheme, isDark, () => false);
+  const dark = useDarkMode();
   const extensions = useMemo(() => [...language, EditorView.lineWrapping], [language]);
   return (
     <ScrollArea className="h-full">
@@ -98,17 +74,46 @@ export function TextPreview({ entry, client, labels, actions, onDirtyChange, onT
 
   const base = full.data;
   const text = draft ?? (truncated ? head.data : base?.text) ?? "";
-  const dark = useSyncExternalStore(subscribeTheme, isDark, () => false);
+  const dark = useDarkMode();
   useEffect(() => {
     onTextChange?.(text);
   }, [text, onTextChange]);
   const dirty = draft !== undefined && draft !== base?.text;
-  const conflict = stale || (save.error instanceof FmApiError && save.error.status === 412);
   const baseEtag = etag ?? base?.etag;
 
   useEffect(() => {
     onDirtyChange?.(dirty);
   }, [dirty, onDirtyChange]);
+
+  // Edits made elsewhere (agents, other tabs): re-check the version every few seconds and on focus.
+  // Unchanged editor → reload quietly; unsaved edits → the conflict banner.
+  const remote = useQuery({
+    queryKey: [
+      ...fmKeys.all(client),
+      "watch",
+      entry.mount,
+      entry.path,
+    ],
+    queryFn: () => client.stat(entry.mount, entry.path),
+    enabled: !truncated && !!base,
+    refetchInterval: WATCH_MS,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  });
+  const remoteEtag = remote.data?.etag;
+  const { refetch: refetchText, isFetching: textFetching } = full;
+  const saving = save.isPending;
+  const changedElsewhere = !!remoteEtag && !!baseEtag && remoteEtag !== baseEtag && !saving;
+  const conflict = stale || (changedElsewhere && dirty) || (save.error instanceof FmApiError && save.error.status === 412);
+  useEffect(() => {
+    if (changedElsewhere && !dirty && !textFetching)
+      void refetchText().then(() => setEtag(undefined));
+  }, [
+    changedElsewhere,
+    dirty,
+    textFetching,
+    refetchText,
+  ]);
 
   const restoredForRef = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -163,9 +168,19 @@ export function TextPreview({ entry, client, labels, actions, onDirtyChange, onT
     };
   }, []);
 
-  const write = (ifMatch: string) => {
-    save.mutate({ path: entry.path, text, etag: ifMatch }, {
+  const { ask, used } = useChangeMessage();
+  const write = async (ifMatch: string) => {
+    const message = await ask();
+    if (message === null)
+      return;
+    save.mutate({
+      path: entry.path,
+      text,
+      etag: ifMatch,
+      message,
+    }, {
       onSuccess: (e) => {
+        used();
         pendingDraftRef.current = undefined;
         clearDraft(entry.mount, entry.path);
         setEtag(e.etag);
@@ -177,7 +192,7 @@ export function TextPreview({ entry, client, labels, actions, onDirtyChange, onT
   };
   const onSave = () => {
     if (editable && dirty && !save.isPending)
-      write(baseEtag!);
+      void write(baseEtag!);
   };
   const saveRef = useRef(onSave);
   saveRef.current = onSave;
@@ -205,9 +220,12 @@ export function TextPreview({ entry, client, labels, actions, onDirtyChange, onT
     await full.refetch();
   };
 
+  /** Keep the unsaved text; the next Save replaces the version on disk. */
   const keepEditing = () => {
     save.reset();
     setStale(false);
+    if (remoteEtag)
+      setEtag(remoteEtag);
   };
 
   const toggleWrap = () => {
@@ -291,7 +309,7 @@ export function TextPreview({ entry, client, labels, actions, onDirtyChange, onT
             ? (
                 <>
                   {labels.conflict}
-                  <Button size="sm" variant="outline" disabled={save.isPending} onClick={() => write("")}>{labels.overwrite}</Button>
+                  <Button size="sm" variant="outline" disabled={save.isPending} onClick={() => void write("")}>{labels.overwrite}</Button>
                   <Button size="sm" variant="outline" onClick={() => void reload()}>{labels.reloadFromDisk}</Button>
                   <Button size="sm" variant="ghost" onClick={keepEditing}>{labels.keepEditing}</Button>
                 </>

@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { Buffer } from "node:buffer";
-import { mkdir, utimes, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 
 const row = (page: Page, path: string) => page.locator(`[data-path="${path}"]`);
@@ -1602,4 +1603,132 @@ test("browses a zip archive and previews its entries", async ({ page }) => {
   await tree.getByRole("treeitem", { name: "images" }).click();
   await tree.getByRole("treeitem", { name: "dot.png" }).click();
   await expect.poll(() => dialog.locator("img[alt='dot.png']").evaluate((el: HTMLImageElement) => el.naturalWidth)).toBe(2);
+});
+
+test("asks for a change note and sends it with the change", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("fm-demo:ask-message", "1"));
+  await putText(page, "/note-e2e/a.txt", "a");
+  const notes: string[] = [];
+  page.on("request", (r) => {
+    const h = r.headers()["x-fm-message"];
+    if (h)
+      notes.push(`${new URL(r.url()).pathname.split("/").pop()}:${decodeURIComponent(h)}`);
+  });
+  await page.goto("/?ask=required");
+  await switchMount(page, "Local disk");
+  await row(page, "/note-e2e").dblclick();
+  await contextAction(page, "/note-e2e/a.txt", "Rename");
+  await page.getByRole("dialog").getByRole("textbox").fill("b.txt");
+  await page.getByRole("button", { name: "Rename", exact: true }).click();
+  const prompt = page.getByRole("dialog", { name: "Describe the change" });
+  await expect(prompt).toBeVisible();
+  await expect(prompt.getByRole("button", { name: "Continue" })).toBeDisabled();
+  await prompt.getByRole("textbox").fill("Rename for the e2e");
+  await prompt.getByRole("button", { name: "Continue" }).click();
+  await expect(row(page, "/note-e2e/b.txt")).toBeVisible();
+
+  // Cancelling the prompt cancels the change.
+  await contextAction(page, "/note-e2e/b.txt", "Delete");
+  await prompt.getByRole("button", { name: "Cancel" }).click();
+  await expect(row(page, "/note-e2e/b.txt")).toBeVisible();
+  expect(notes).toEqual(["ops:Rename for the e2e"]);
+});
+
+test("previews SVG as an image with a source toggle", async ({ page }) => {
+  await putText(page, "/svg-e2e/logo.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"20\"><rect width=\"40\" height=\"20\" fill=\"tomato\"/></svg>");
+  await openMount(page, "Local disk");
+  // The root holds many test folders by now; filter so the row is rendered.
+  await page.getByRole("searchbox", { name: "Search in this folder" }).fill("svg-e2e");
+  await row(page, "/svg-e2e").dblclick();
+  await row(page, "/svg-e2e/logo.svg").dblclick();
+  const dialog = page.getByRole("dialog");
+  const img = dialog.locator("img[alt='logo.svg']");
+  await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBe(40);
+  await dialog.getByRole("button", { name: "Reopen as source" }).click();
+  await expect(dialog.locator(".cm-content")).toContainText("tomato");
+  await dialog.getByRole("button", { name: "Open preview" }).click();
+  await expect(img).toBeVisible();
+});
+
+test("follows changes made on disk while a file is open", async ({ page }) => {
+  await putText(page, "/watch-e2e/a.txt", "first");
+  await openMount(page, "Local disk");
+  await page.getByRole("searchbox", { name: "Search in this folder" }).fill("watch-e2e");
+  await row(page, "/watch-e2e").dblclick();
+  await row(page, "/watch-e2e/a.txt").dblclick();
+  const editor = page.getByRole("dialog").locator(".cm-content");
+  await expect(editor).toHaveText("first");
+  // Unchanged editor: reloads by itself.
+  await putText(page, "/watch-e2e/a.txt", "second");
+  await expect(editor).toHaveText("second", { timeout: 15_000 });
+  // Unsaved edits: a banner instead of losing them.
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type(" mine");
+  await putText(page, "/watch-e2e/a.txt", "third");
+  await expect(page.getByText("The file changed on disk since you opened it.")).toBeVisible({ timeout: 15_000 });
+  await expect(editor).toHaveText("second mine");
+  await page.getByRole("button", { name: "Keep editing" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText("Unsaved")).toHaveCount(0);
+  expect(await readText(page, "/watch-e2e/a.txt")).toBe("second mine");
+});
+
+test("decorates changed files and shows their diffs", async ({ page }) => {
+  const root = ".tmp/e2e-root";
+  const git = (...args: string[]) => execFileSync("git", [
+    "-c",
+    "user.name=e2e",
+    "-c",
+    "user.email=e2e@x",
+    ...args,
+  ], { cwd: root, stdio: "ignore" });
+  await putText(page, "/review-e2e/a.ts", "const a = 1;\nexport { a };\n");
+  await putText(page, "/review-e2e/gone.txt", "bye\n");
+  git("init", "-q");
+  git("add", "-A");
+  git("commit", "-qm", "base");
+  try {
+    await putText(page, "/review-e2e/a.ts", "const a = 2;\nexport { a };\n");
+    await putText(page, "/review-e2e/new.ts", "export const b = 1;\n");
+    await page.request.post("/api/fm/m/local/ops", {
+      data: {
+        op: "delete",
+        paths: ["/review-e2e/gone.txt"],
+        permanent: true,
+      },
+    });
+
+    await startWithTree(page);
+    await page.goto("/");
+    const tree = page.getByRole("tree");
+    const drive = tree.locator("[role=treeitem][aria-level='1'][aria-label='Local disk']");
+    await expect(tree.getByRole("treeitem", { name: "Changes", exact: true })).toBeVisible();
+    const changed = (name: string) => tree.locator(`[role=treeitem][aria-label='${name}, Local disk/review-e2e']`);
+    await expect(changed("a.ts").locator("[data-fm-change]")).toHaveAttribute("data-fm-change", "modified");
+    await expect(changed("new.ts").locator("[data-fm-change]")).toHaveAttribute("data-fm-change", "untracked");
+    await expect(changed("gone.txt").locator("[data-fm-change]")).toHaveAttribute("data-fm-change", "deleted");
+    // The drive row's folder gets a dot.
+    await expect(drive).toBeVisible();
+    await expect(tree.locator("[role=treeitem][aria-level='2'][aria-label='review-e2e'] [data-fm-change=dir]")).toBeVisible();
+
+    await changed("a.ts").click();
+    const review = page.locator("[data-fm-review]");
+    const diff = review.locator("[data-fm-diff='/review-e2e/a.ts']");
+    await expect(diff).toContainText("const a = 1;");
+    await expect(diff).toContainText("const a = 2;");
+    await expect(diff.locator("diffs-container")).toHaveCount(1);
+    await page.getByRole("button", { name: "Inline" }).click();
+    await expect(diff).toContainText("const a = 1;");
+    await page.getByRole("button", { name: "Side by side" }).click();
+
+    await page.getByRole("toolbar", { name: "Folder actions" }).locator("..").getByRole("button", { name: "More" }).click();
+    await page.getByRole("menuitem", { name: "Review all changes" }).click();
+    await expect(review.locator("[data-fm-diff]")).toHaveCount(3);
+    await expect(page.getByText("3 changed files")).toBeVisible();
+    await expect(review.locator("[data-fm-diff='/review-e2e/new.ts']")).toContainText("export const b = 1;");
+  }
+  finally {
+    await rm(`${root}/.git`, { recursive: true, force: true });
+  }
 });

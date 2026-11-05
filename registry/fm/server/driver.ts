@@ -27,7 +27,13 @@ export interface FmReadResult {
   range?: FmByteRange;
 }
 
-export interface FmWriteOptions {
+/** Context of a change requested by a user; drivers that keep history (commits, versions) may record it. */
+export interface FmChangeContext {
+  /** The note the user gave with the change (`X-Fm-Message`). */
+  message?: string;
+}
+
+export interface FmWriteOptions extends FmChangeContext {
   /** Fail with ETAG_MISMATCH unless the current etag matches. */
   ifMatch?: string;
   /** Fail with EXISTS when the target exists. */
@@ -45,6 +51,23 @@ export interface FmSearchOptions {
    */
   mode?: FmSearchMode;
   signal?: AbortSignal;
+}
+
+/** A file that differs from the driver's baseline (a git commit, a previous version …). */
+export interface FmChange {
+  path: string;
+  status: "added" | "modified" | "deleted" | "renamed" | "untracked";
+  /** Path in the baseline, for renames. */
+  previousPath?: string;
+  additions?: number;
+  deletions?: number;
+}
+
+/** Optional review capability: what changed against a baseline, and the baseline's bytes. */
+export interface FmChanges {
+  list: () => Promise<FmChange[]>;
+  /** The baseline version of `path` (its previous path for renames), or null when it has none. */
+  readBase: (path: string) => Promise<FmReadResult | null>;
 }
 
 /** One stored part of a multipart upload. */
@@ -105,10 +128,10 @@ export interface FmDriver {
   list: (path: string) => Promise<FmDriverEntry[]>;
   read: (path: string, range?: FmByteRange) => Promise<FmReadResult>;
   write: (path: string, body: ReadableStream<Uint8Array> | Uint8Array, opts?: FmWriteOptions) => Promise<FmDriverEntry>;
-  mkdir: (path: string) => Promise<FmDriverEntry>;
-  move: (from: string, to: string) => Promise<FmDriverEntry>;
-  copy: (from: string, to: string) => Promise<FmDriverEntry>;
-  remove: (path: string) => Promise<void>;
+  mkdir: (path: string, ctx?: FmChangeContext) => Promise<FmDriverEntry>;
+  move: (from: string, to: string, ctx?: FmChangeContext) => Promise<FmDriverEntry>;
+  copy: (from: string, to: string, ctx?: FmChangeContext) => Promise<FmDriverEntry>;
+  remove: (path: string, ctx?: FmChangeContext) => Promise<void>;
   /**
    * Entries below `dir` (any depth, `dir` itself excluded) matching `q` per
    * `opts.mode`, at most `limit`. `null` means the driver cannot
@@ -117,6 +140,8 @@ export interface FmDriver {
   search?: (dir: string, q: string, opts: FmSearchOptions) => Promise<FmDriverEntry[] | null>;
   /** Optional; without it the router stores parts as hidden files and assembles them itself. */
   multipart?: FmMultipart;
+  /** Changes against a baseline (review / diff), e.g. git status of a work tree. */
+  changes?: FmChanges;
 }
 
 export async function readAll(body: ReadableStream<Uint8Array> | Uint8Array): Promise<Uint8Array<ArrayBuffer>> {

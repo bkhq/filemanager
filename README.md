@@ -36,6 +36,7 @@ bunx shadcn add @bkhq/fm-react                        # UI + client
 | `fm-client` | typed fetch client, TanStack Query hooks, upload queue |
 | `fm-react` | `<FileManager />`: tree, list/grid, previews (image / video rotate, flip, zoom), uploads, trash, undo |
 | `fm-plugin-sheet` | optional plugin: CSV / TSV / XLSX table (virtualized rows, typed cells); CSV / TSV cells editable and saved with `If-Match` |
+| `fm-plugin-review` | optional plugin: diffs of changed files (side by side / inline, CodeMirror merge) and a stacked "Review all changes" view, for mounts whose driver reports changes |
 | `fm-plugin-archive` | optional plugin: browse `.zip` / `.jar` without extracting (folder tree, inline text / image preview, per-entry download) via `GET /m/:mount/zip/entries` and `/zip/read` |
 | `fm-plugin-markdown` | optional plugin: Markdown opens in the editor with a live rendered preview (streamdown: GFM, highlighted code) |
 
@@ -90,6 +91,31 @@ import { FileManager } from "@/fm/react/file-manager";
 Dragging a file row onto the desktop (Chromium) downloads it from its read URL
 without the client's `headers`, so it only works when the API authenticates by
 cookie or not at all.
+
+### Change notes
+
+Hosts that keep history (commits, audit logs) can collect a note with every
+change. The client sends it as `X-Fm-Message`; drivers get it as
+`ctx.message` on `write` / `mkdir` / `move` / `copy` / `remove`, and `onEvent`
+sees `event.message`.
+
+```tsx
+<FileManager changeMessage={{ mode: "required" }} />                    // the manager asks before each change
+<FileManager changeMessage={{ get: () => note, onUsed: () => setNote("") }} />  // the host owns the field
+```
+
+### Review (changes and diffs)
+
+A driver may report what changed against a baseline (`FmDriver.changes`):
+`localDriver({ root, gitChanges: true })` uses git (`HEAD` by default, or
+`gitChanges: { base: () => issue.baseCommit }`). The router then serves
+`GET /m/:mount/changes` and `/changes/base?path`; the tree and list mark changed
+files (A / M / D / R / U, a dot on folders) and the tree gets a "Changes"
+section. With `reviewPlugin()` (`@bkhq/fm-plugin-review`) a changed file opens
+as a diff and "Review all changes" (explorer More menu) stacks every diff.
+
+Open text files are re-checked every few seconds: an untouched editor reloads
+changes made elsewhere, an edited one shows the conflict banner.
 
 ### Starred and recent
 

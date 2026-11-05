@@ -416,6 +416,36 @@
           "path": "registry/fm/react/menu-scroll.tsx",
           "type": "registry:file",
           "target": "~/src/fm/react/menu-scroll.tsx"
+        },
+        {
+          "path": "registry/fm/react/change-message.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/change-message.ts"
+        },
+        {
+          "path": "registry/fm/react/change-message-dialog.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/change-message-dialog.tsx"
+        },
+        {
+          "path": "registry/fm/react/changes.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/changes.ts"
+        },
+        {
+          "path": "registry/fm/react/change-badge.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/change-badge.tsx"
+        },
+        {
+          "path": "registry/fm/react/review-dialog.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/review-dialog.tsx"
+        },
+        {
+          "path": "registry/fm/react/code-language.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/code-language.ts"
         }
       ]
     },
@@ -475,6 +505,30 @@
           "path": "registry/fm/plugins/archive-tree.ts",
           "type": "registry:file",
           "target": "~/src/fm/plugins/archive-tree.ts"
+        }
+      ]
+    },
+    {
+      "name": "fm-plugin-review",
+      "type": "registry:block",
+      "title": "File manager: change review (diffs)",
+      "description": "Optional plugin: side-by-side / inline diffs of changed files and a stacked 'Review all changes' view for mounts whose driver reports changes (e.g. localDriver({ gitChanges: true })). Pass reviewPlugin() to <FileManager plugins>.",
+      "dependencies": [
+        "@pierre/diffs"
+      ],
+      "registryDependencies": [
+        "@bkhq/fm-react"
+      ],
+      "files": [
+        {
+          "path": "registry/fm/plugins/review.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/plugins/review.ts"
+        },
+        {
+          "path": "registry/fm/plugins/review-view.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/plugins/review-view.tsx"
         }
       ]
     },

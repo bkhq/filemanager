@@ -226,6 +226,16 @@ describe("read", () => {
     expect(dl.headers.get("content-disposition")).toStartWith("attachment");
   });
 
+  it("serves SVG as an image inside the sandbox CSP", async () => {
+    const { req } = setup({
+      files: { "/i.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"><script>alert(1)</script></svg>" },
+    });
+    const svg = await req("/m/m/read?path=/i.svg");
+    expect(svg.headers.get("content-type")).toBe("image/svg+xml");
+    expect(svg.headers.get("content-security-policy")).toContain("sandbox");
+    expect(svg.headers.get("content-security-policy")).toContain("default-src 'none'");
+  });
+
   it("supports ranges, etags and 304", async () => {
     const { req } = setup({
       files: { "/r.txt": "0123456789" },
@@ -2013,5 +2023,166 @@ describe("zip browsing", () => {
     expect(list).toMatchObject({ truncated: true });
     const small = await zipSetup(undefined, { archiveMaxBytes: 10 });
     expect((await small.req(`/m/m/zip/entries?path=${q("/z.zip")}`)).status).toBe(413);
+  });
+});
+
+describe("change messages", () => {
+  function recording() {
+    const base = memoryDriver({
+      files: { "/a.txt": "a", "/b.txt": "b" },
+    });
+    const calls: string[] = [];
+    const note = (op: string) => (ctx?: { message?: string }) => calls.push(`${op}:${ctx?.message ?? "-"}`);
+    const driver: FmDriver = {
+      ...base,
+      write: (p, body, o) => {
+        note("write")(o);
+        return base.write(p, body, o);
+      },
+      mkdir: (p, ctx) => {
+        note("mkdir")(ctx);
+        return base.mkdir(p);
+      },
+      move: (a, b, ctx) => {
+        note("move")(ctx);
+        return base.move(a, b);
+      },
+      copy: (a, b, ctx) => {
+        note("copy")(ctx);
+        return base.copy(a, b);
+      },
+      remove: (p, ctx) => {
+        note("remove")(ctx);
+        return base.remove(p);
+      },
+    };
+    const events: FmChangeEvent[] = [];
+    const ctx = setup({
+      mounts: [
+        { id: "m", label: "M", driver },
+      ],
+      onEvent: (_c, e) => void events.push(e),
+    });
+    return { ...ctx, calls, events };
+  }
+  const msg = (m: string) => ({
+    "x-fm-message": encodeURIComponent(m),
+  });
+
+  it("passes X-Fm-Message to every changing driver call and to onEvent", async () => {
+    const { req, calls, events } = recording();
+    const h = msg("Fix typo · 修正");
+    await req(`/m/m/write?path=${q("/a.txt")}`, { method: "PUT", body: "x", headers: h });
+    await req("/m/m/mkdir", {
+      method: "POST",
+      body: JSON.stringify({ path: "/d" }),
+      headers: { ...h, "content-type": "application/json" },
+    });
+    const ops = (body: unknown) => req("/m/m/ops", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { ...h, "content-type": "application/json" },
+    });
+    await ops({ op: "rename", path: "/a.txt", name: "c.txt" });
+    await ops({
+      op: "copy",
+      paths: ["/b.txt"],
+      dest: "/d",
+    });
+    await ops({
+      op: "move",
+      paths: ["/b.txt"],
+      dest: "/d",
+      conflict: "rename",
+    });
+    await ops({
+      op: "delete",
+      paths: ["/c.txt"],
+      permanent: true,
+    });
+    expect(calls).toEqual([
+      "write:Fix typo · 修正",
+      "mkdir:Fix typo · 修正",
+      "move:Fix typo · 修正",
+      "copy:Fix typo · 修正",
+      "move:Fix typo · 修正",
+      "remove:Fix typo · 修正",
+    ]);
+    expect(events.map(e => e.message)).toEqual(Array.from<string>({ length: 6 }).fill("Fix typo · 修正"));
+  });
+
+  it("leaves the message out without the header and rejects long ones", async () => {
+    const { req, calls, events } = recording();
+    await req(`/m/m/write?path=${q("/a.txt")}`, { method: "PUT", body: "x" });
+    expect(calls).toEqual(["write:-"]);
+    expect(events[0]!.message).toBeUndefined();
+    const res = await req(`/m/m/write?path=${q("/a.txt")}`, {
+      method: "PUT",
+      body: "x",
+      headers: msg("x".repeat(1001)),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("changes", () => {
+  function changesSetup(authorize?: (path: string) => FmCaps) {
+    const base = memoryDriver({
+      files: { "/a.txt": "new a", "/secret/s.txt": "s", "/b.txt": "b" },
+    });
+    const driver: FmDriver = {
+      ...base,
+      changes: {
+        list: async () => [
+          {
+            path: "/a.txt",
+            status: "modified",
+            additions: 1,
+            deletions: 1,
+          },
+          { path: "/secret/s.txt", status: "added" },
+          { path: "/b.txt", status: "renamed", previousPath: "/old-b.txt" },
+          { path: "/.fm-trash/x/y", status: "added" },
+        ],
+        readBase: async p => (p === "/a.txt"
+          ? {
+              body: new Blob(["old a"]).stream(),
+              size: 5,
+            }
+          : null),
+      },
+    };
+    return setup({
+      mounts: [
+        {
+          id: "m",
+          label: "M",
+          driver,
+          trash: true,
+        },
+        { id: "plain", label: "P", driver: base },
+      ],
+      ...(authorize
+        ? { authorize }
+        : {}),
+    });
+  }
+
+  it("lists changes the caller may read and serves base versions", async () => {
+    const { req } = changesSetup(p => (p.startsWith("/secret")
+      ? NONE
+      : READ_ONLY_CAPS));
+    const mounts = (await (await req("/mounts")).json()).mounts;
+    expect(mounts.map((m: { changes: boolean }) => m.changes)).toEqual([true, false]);
+    const { changes } = await (await req("/m/m/changes")).json();
+    expect(changes.map((c: { path: string }) => c.path)).toEqual(["/a.txt", "/b.txt"]);
+    expect(changes[1]).toMatchObject({ status: "renamed", previousPath: "/old-b.txt" });
+    const base = await req(`/m/m/changes/base?path=${q("/a.txt")}`);
+    expect(base.status).toBe(200);
+    expect(base.headers.get("content-security-policy")).toContain("sandbox");
+    expect(await base.text()).toBe("old a");
+    expect((await req(`/m/m/changes/base?path=${q("/b.txt")}`)).status).toBe(404);
+    expect((await req(`/m/m/changes/base?path=${q("/secret/s.txt")}`)).status).toBe(404);
+    expect((await req("/m/plain/changes")).status).toBe(405);
   });
 });

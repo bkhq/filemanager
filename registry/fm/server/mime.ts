@@ -52,12 +52,16 @@ export function mimeOf(name: string): string | undefined {
     : undefined;
 }
 
-const INLINE_SAFE = /^(?:image\/(?:png|jpeg|gif|webp|avif|bmp|x-icon)|video\/|audio\/|application\/pdf$)/;
-const TEXTUAL = /^(?:text\/|application\/(?:json|xml|yaml|toml|sql|x-sh)$|image\/svg\+xml$)/;
+// SVG is served as an image: every inline response also carries
+// `Content-Security-Policy: default-src 'none'; sandbox`, so its scripts never run,
+// even when the URL is opened directly.
+const INLINE_SAFE = /^(?:image\/(?:png|jpeg|gif|webp|avif|bmp|x-icon|svg\+xml)|video\/|audio\/|application\/pdf$)/;
+const TEXTUAL = /^(?:text\/|application\/(?:json|xml|yaml|toml|sql|x-sh)$)/;
 
 /**
- * Content-Type to serve inline. Script-capable types (html, svg, js …) are
- * downgraded to text/plain; anything else unknown returns undefined (serve as attachment).
+ * Content-Type to serve inline (callers add the sandbox CSP). Script-capable
+ * documents (html, js …) are downgraded to text/plain; anything else unknown
+ * returns undefined (serve as attachment).
  */
 export function inlineType(mime: string | undefined): string | undefined {
   if (!mime)

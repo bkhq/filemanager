@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useFmMutations, useTrash } from "../client/hooks";
 import { dirname } from "../core/path";
+import { useChangeMessage } from "./change-message";
 import { ConfirmDeleteDialog } from "./dialogs";
 import { EntryIcon } from "./file-list";
 import { IconButton } from "./icon-button";
@@ -60,10 +61,19 @@ export function TrashView({ mount, mountLabel, retentionDays, client, labels, on
     setSelection(EMPTY_SELECTION);
     return res.results.length - failed.length;
   };
-  const onRestore = (ids: string[]) => restore.mutate(ids, {
-    onSuccess: res => onRestored(report(res)),
-    onError: e => onError(e.message),
-  });
+  const { ask, used } = useChangeMessage();
+  const onRestore = async (ids: string[]) => {
+    const message = await ask();
+    if (message === null)
+      return;
+    restore.mutate({ ids, message }, {
+      onSuccess: (res) => {
+        used();
+        onRestored(report(res));
+      },
+      onError: e => onError(e.message),
+    });
+  };
   const onRowClick = (e: MouseEvent, id: string) => setSelection(s => select(s, id, e.shiftKey
     ? "range"
     : (e.metaKey || e.ctrlKey
@@ -218,9 +228,16 @@ export function TrashView({ mount, mountLabel, retentionDays, client, labels, on
           onClose={() => setConfirm(undefined)}
           onConfirm={() => {
             setConfirm(undefined);
-            purge.mutate(confirm, {
-              onSuccess: report,
-              onError: e => onError(e.message),
+            void ask().then((message) => {
+              if (message === null)
+                return;
+              purge.mutate({ ids: confirm, message }, {
+                onSuccess: (res) => {
+                  used();
+                  report(res);
+                },
+                onError: e => onError(e.message),
+              });
             });
           }}
         />

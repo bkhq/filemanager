@@ -2,9 +2,11 @@ import type { FmClient } from "../client/client";
 import type { FmEntry } from "../core/schema";
 import type { FmLabels } from "./labels";
 import { useQuery } from "@tanstack/react-query";
-import { DownloadIcon } from "lucide-react";
-import { lazy, Suspense } from "react";
+import { DownloadIcon, FileCodeIcon, ImageIcon } from "lucide-react";
+import { lazy, Suspense, useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
+import { IconButton } from "./icon-button";
 import { MediaStage } from "./media-stage";
 import { kindOf, looksBinary } from "./state";
 
@@ -27,6 +29,25 @@ const TextPreview = lazy(() => import("./text-preview").then(m => ({ default: m.
 /** Fits the image; zoom, rotate and flip only change the view, never the file. */
 export function ImagePreview({ entry, client, labels, actions }: PreviewProps) {
   return <MediaStage kind="image" src={client.readUrl(entry.mount, entry.path, { version: entry.etag })} alt={entry.name} labels={labels} actions={actions} />;
+}
+
+/** SVG: the drawing by default (served sandboxed), a header button switches to the source editor and back. */
+export function SvgPreview(props: PreviewProps) {
+  const { labels, actions } = props;
+  const [source, setSource] = useState(false);
+  return (
+    <>
+      {actions && createPortal(
+        source
+          ? <IconButton label={labels.openPreview} onClick={() => setSource(false)}><ImageIcon /></IconButton>
+          : <IconButton label={labels.reopenSource} onClick={() => setSource(true)}><FileCodeIcon /></IconButton>,
+        actions,
+      )}
+      {source
+        ? <LazyTextPreview {...props} />
+        : <ImagePreview {...props} />}
+    </>
+  );
 }
 
 export function MediaPreview({ entry, client, labels, actions }: PreviewProps) {

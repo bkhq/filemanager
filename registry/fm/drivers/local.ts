@@ -1,5 +1,5 @@
 import type { Stats } from "node:fs";
-import type { FmDriver, FmDriverEntry, FmMultipart, FmSearchOptions, FmUploadPart, FmWriteOptions } from "../server/driver";
+import type { FmChange, FmChanges, FmDriver, FmDriverEntry, FmMultipart, FmSearchOptions, FmUploadPart, FmWriteOptions } from "../server/driver";
 import { cp, link, lstat, mkdir, open, readdir, realpath, rename, rm, stat, unlink } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import process from "node:process";
@@ -24,6 +24,14 @@ export interface FmLocalDriverOptions {
    * copy / remove on any path with a `.git` segment throw FORBIDDEN.
    */
   gitIgnore?: boolean;
+  /**
+   * Review support (`changes`): files that differ from a git commit (default
+   * `HEAD`; `base` may name another commit, e.g. where a task started) plus
+   * untracked files, scoped to the root; empty when the root is not in a work tree.
+   * Like `gitIgnore`, it makes `.git` paths read-only through this driver, and git
+   * runs with external diff, textconv and hooks disabled.
+   */
+  gitChanges?: boolean | { base?: string | (() => string | Promise<string>) };
   /** Directory for in-progress multipart parts (default `<root>/.fm-uploads/parts`; the router hides `/.fm-uploads`). */
   uploadDir?: string;
 }
@@ -136,6 +144,10 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
     "core.fsmonitor=false",
     "-c",
     "core.untrackedCache=false",
+    "-c",
+    "core.hooksPath=/dev/null",
+    "-c",
+    "diff.external=",
     ...args,
   ], {
     cwd: await abs("/"),
@@ -237,12 +249,145 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
     return out;
   };
 
-  /** Throws when the mount is read-only, or when gitIgnore is set and a path is inside `.git`. */
+  /** stdout of a git command run in the root, or null when it fails. */
+  const gitOut = async (args: string[]): Promise<Uint8Array | null> => {
+    try {
+      const proc = await spawnGit(args);
+      const [out, exitCode] = await Promise.all([
+        new Response(proc.stdout).bytes(),
+        proc.exited,
+      ]);
+      return exitCode === 0
+        ? out
+        : null;
+    }
+    catch {
+      return null;
+    }
+  };
+  const gitBase = async () => {
+    const o = typeof opts.gitChanges === "object"
+      ? opts.gitChanges.base
+      : undefined;
+    return (typeof o === "function"
+      ? await o()
+      : o) ?? "HEAD";
+  };
+  /** Above this many changed files, line counts are skipped. */
+  const NUMSTAT_MAX = 2000;
+  const changes: FmChanges = {
+    async list() {
+      const base = await gitBase();
+      const nul = (b: Uint8Array | null) => (b
+        ? new TextDecoder().decode(b).split("\0")
+        : null);
+      const diff = nul(await gitOut([
+        "diff",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--name-status",
+        "-z",
+        "-M",
+        "--relative",
+        base,
+        "--",
+      ]));
+      if (!diff)
+        return [];
+      const out = new Map<string, FmChange>();
+      for (let i = 0; i < diff.length - 1;) {
+        const code = diff[i++]!;
+        if (!code)
+          continue;
+        const kind = code[0];
+        if (kind === "R" || kind === "C") {
+          const from = diff[i++]!;
+          const to = diff[i++]!;
+          out.set(`/${to}`, kind === "R"
+            ? { path: `/${to}`, status: "renamed", previousPath: `/${from}` }
+            : { path: `/${to}`, status: "added" });
+          continue;
+        }
+        const path = `/${diff[i++]!}`;
+        out.set(path, {
+          path,
+          status: kind === "A"
+            ? "added"
+            : kind === "D"
+              ? "deleted"
+              : "modified",
+        });
+      }
+      for (const rel of nul(await gitOut([
+        "ls-files",
+        "-z",
+        "--others",
+        "--exclude-standard",
+        "--",
+        ".",
+      ])) ?? []) {
+        if (rel)
+          out.set(`/${rel}`, { path: `/${rel}`, status: "untracked" });
+      }
+      if (out.size <= NUMSTAT_MAX) {
+        // "add\tdel\tpath\0", renames as "add\tdel\t\0from\0to\0"; binaries count "-".
+        const stats = nul(await gitOut([
+          "diff",
+          "--no-ext-diff",
+          "--no-textconv",
+          "--numstat",
+          "-z",
+          "-M",
+          "--relative",
+          base,
+          "--",
+        ])) ?? [];
+        for (let i = 0; i < stats.length - 1; i++) {
+          const [add, del, path] = stats[i]!.split("\t");
+          if (add === undefined || del === undefined)
+            continue;
+          const to = path || (i += 2, stats[i]!);
+          const c = out.get(`/${to}`);
+          if (c && add !== "-") {
+            c.additions = Number(add);
+            c.deletions = Number(del);
+          }
+        }
+      }
+      return [
+        ...out.values(),
+      ];
+    },
+    async readBase(path) {
+      const base = await gitBase();
+      const show = (rel: string) => gitOut(["show", "--no-textconv", `${base}:./${rel}`]);
+      // Same path first; a renamed file's base lives under its previous name.
+      let bytes = await show(path.replace(/^\/+/, ""));
+      if (!bytes) {
+        const renamed = (await changes.list()).find(c => c.path === path)?.previousPath;
+        bytes = renamed
+          ? await show(renamed.slice(1))
+          : null;
+      }
+      if (!bytes)
+        return null;
+      return {
+        body: new Blob([bytes as Uint8Array<ArrayBuffer>]).stream(),
+        size: bytes.length,
+      };
+    },
+  };
+
+  /**
+   * Throws when the mount is read-only, or when git runs on the tree (gitIgnore /
+   * gitChanges) and a path is inside `.git`: repository config can name programs
+   * (external diff, textconv, filters) that git would run on the server.
+   */
   const writable = (...paths: string[]) => {
     if (opts.readOnly)
       throw new FmError("UNSUPPORTED", "Mount is read-only");
     for (const path of paths) {
-      if (opts.gitIgnore && path.split("/").some(s => s.toLowerCase() === ".git"))
+      if ((opts.gitIgnore || opts.gitChanges) && path.split("/").some(s => s.toLowerCase() === ".git"))
         throw new FmError("FORBIDDEN", `Forbidden: ${path}`);
     }
   };
@@ -382,6 +527,9 @@ export function localDriver(opts: FmLocalDriverOptions): FmDriver {
   return {
     name: "local",
     caps: opts.readOnly ? READ_ONLY_CAPS : ALL_CAPS,
+    ...(opts.gitChanges
+      ? { changes }
+      : {}),
     async stat(path) {
       return statAbs(path, await abs(path));
     },

@@ -284,3 +284,23 @@ Popups and panel lists scroll in `ScrollArea` as well: path bar pickers, Storage
 ## 2026-11-05 11:40 [decision]
 
 Image preview tools are view-only: rotate, flip and zoom never write the file. The Save rotation / flip button (added in 20261105-0440-thumbnails) is removed with its canvas re-encode, labels and e2e; the rotate test now asserts no Save is offered. The preview dialog keeps following the listing's copy of its entry.
+
+## 2026-11-05 15:00 [progress]
+
+Change messages delivered (20261105-1300-change-message): `X-Fm-Message` from client to driver (`FmChangeContext`) and `onEvent`, `changeMessage` prop with a prompt mode and a host-owned mode, demo toggle.
+
+## 2026-11-05 16:30 [progress]
+
+Review and bkd prerequisites delivered (20261105-1400-review-changes): driver changes capability with a git implementation, status decorations and a Changes tree section, `fm-plugin-review` (CodeMirror merge diffs, review all), editor reload / conflict on external edits, sandboxed SVG preview.
+
+## 2026-11-05 16:30 [pitfall]
+
+e2e against a shared, growing root: virtualized lists and trees only render rows near the viewport, so tests must filter or reveal before clicking rows that sort late. A git repository created in the e2e root must be removed in `finally`, otherwise every later test file shows up as a change.
+
+## 2026-11-05 16:50 [pitfall]
+
+Security review: with `gitChanges` but without `gitIgnore`, users could write `.git/config` through the mount and make the server's `git diff` run commands (`diff.external`, textconv, clean filters). `gitChanges` now also makes `.git` paths read-only, and git runs with `--no-ext-diff --no-textconv`, `diff.external=` and `core.hooksPath=/dev/null`; a test plants such config and asserts nothing runs. Config the host itself puts in the repository stays trusted; `GIT_CEILING_DIRECTORIES` is not set because roots below the repository top must still find it.
+
+## 2026-11-05 17:20 [decision]
+
+`fm-plugin-review` renders diffs with `@pierre/diffs` (as bkd does) instead of `@codemirror/merge`: `MultiFileDiff` from the base and current texts, split / unified, bars, collapsed unchanged runs, github light / dark themes; review-all scrolls in its `Virtualizer`, so only visible lines render. Highlighting runs on the main thread (no worker pool), keeping the plugin free of bundler-specific worker imports.

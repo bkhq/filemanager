@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import type { FmClient } from "../client/client";
-import type { FmEntry } from "../core/schema";
+import type { FmChangeEntry, FmEntry } from "../core/schema";
+import type { FmLabels } from "./labels";
 import type { FmPreviewer } from "./preview-registry";
 
 /** What an action can do besides reading its targets. */
@@ -32,8 +33,24 @@ export interface FmFileAction {
  * actions. Install one from the registry (e.g. `@bkhq/fm-plugin-sheet`) and
  * pass it with `<FileManager plugins={[sheetPlugin()]} />`.
  */
+/** What a review view gets: the mount's changes, and optionally the one file to show. */
+export interface FmReviewProps {
+  client: FmClient;
+  mount: string;
+  labels: FmLabels;
+  changes: readonly FmChangeEntry[];
+  /** Show only this file's diff; all changes when absent. */
+  path?: string | undefined;
+  /** Slot in the header for the view's toolbar. */
+  actions?: HTMLElement | null;
+  /** Open the current version of a file in the manager. */
+  onOpenFile: (path: string) => void;
+}
+
 export interface FmPlugin {
   id: string;
   previewers?: FmPreviewer[];
   actions?: FmFileAction[];
+  /** Diff view for mounts with changes (one per manager; the first plugin providing it wins). */
+  review?: ComponentType<FmReviewProps>;
 }

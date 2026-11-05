@@ -137,3 +137,52 @@ describe("fm client against the router", () => {
     expect(c.archiveUrl("m", ["/a", "/b"])).toBe("http://x/api/fm/m/m/archive?path=%2Fa&path=%2Fb");
   });
 });
+
+describe("change messages", () => {
+  it("sends the message on changing calls only, with per-call override", async () => {
+    const app = new Hono();
+    app.route("/api/fm", createFmRouter({
+      mounts: () => [
+        {
+          id: "m",
+          label: "M",
+          driver: memoryDriver({
+            files: { "/a.txt": "a" },
+          }),
+        },
+      ],
+    }));
+    const seen: { url: string; message: string | null }[] = [];
+    let current: string | undefined = "from host";
+    const c = createFmClient({
+      baseUrl: "http://x/api/fm",
+      message: () => current,
+      fetch: async (input, init) => {
+        seen.push({
+          url: new URL(input).pathname,
+          message: new Headers(init?.headers).get("x-fm-message"),
+        });
+        return app.fetch(new Request(input, init));
+      },
+    });
+    await c.list("m", "/");
+    await c.write("m", "/a.txt", "b");
+    await c.mkdir("m", "/d");
+    await c.ops("m", {
+      op: "delete",
+      paths: ["/d"],
+    }, { message: "override" });
+    current = undefined;
+    await c.write("m", "/a.txt", "c");
+    expect(seen.map(s => [
+      s.url.replace("/api/fm/m/m/", ""),
+      s.message && decodeURIComponent(s.message),
+    ])).toEqual([
+      ["list", null],
+      ["write", "from host"],
+      ["mkdir", "from host"],
+      ["ops", "override"],
+      ["write", null],
+    ]);
+  });
+});

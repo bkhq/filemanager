@@ -1,6 +1,7 @@
 import type { DragEvent, MouseEvent, ReactNode, PointerEvent as ReactPointerEvent } from "react";
 import type { FmClient } from "../client/client";
 import type { FmEntry, FmSortKey } from "../core/schema";
+import type { FmChangeIndex } from "./changes";
 import type { FmLabels } from "./labels";
 import type { FmFileKind, FmSelection, FmSelectMode } from "./state";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -19,6 +20,8 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { dirname } from "../core/path";
+import { ChangeBadge } from "./change-badge";
+import { CHANGE_STYLE } from "./changes";
 import { setDownloadUrl } from "./drop";
 import { viewportRef } from "./scroll";
 import { formatSize, kindOf } from "./state";
@@ -75,6 +78,8 @@ export interface FileListProps {
   showParent?: boolean;
   /** The mount serves `/thumb`; grid images use it. */
   thumbnails?: boolean;
+  /** Review decorations: status of changed entries, dots on folders holding changes. */
+  changes?: FmChangeIndex | undefined;
 }
 
 function modeOf(e: MouseEvent): FmSelectMode {
@@ -141,6 +146,12 @@ function useEntryHandlers(p: FileListProps, entry: FmEntry) {
   };
 }
 
+/** Name colour of a changed entry. */
+function changeClass(p: FileListProps, entry: FmEntry) {
+  const change = p.changes?.byPath.get(entry.path);
+  return change && CHANGE_STYLE[change.status].className;
+}
+
 function ListRow({ p, entry, top }: { p: FileListProps; entry: FmEntry; top: number }) {
   const h = useEntryHandlers(p, entry);
   return (
@@ -158,7 +169,10 @@ function ListRow({ p, entry, top }: { p: FileListProps; entry: FmEntry; top: num
       style={{ transform: `translateY(${top}px)` }}
     >
       <EntryIcon entry={entry} className="size-4" />
-      <span className="min-w-0 flex-1 truncate" role="gridcell">{entry.name}</span>
+      <span className={cn("min-w-0 flex-1 truncate", changeClass(p, entry))} role="gridcell">
+        {entry.name}
+      </span>
+      <ChangeBadge change={p.changes?.byPath.get(entry.path)} dir={entry.kind === "dir" && p.changes?.dirs.has(entry.path)} />
       {p.showParent && <span className="max-w-[40%] min-w-0 truncate text-xs text-muted-foreground" role="gridcell">{dirname(entry.path)}</span>}
       <span className="w-24 shrink-0 text-right text-xs text-muted-foreground tabular-nums" role="gridcell">
         {entry.kind === "file"
@@ -195,7 +209,7 @@ function GridCell({ p, entry }: { p: FileListProps; entry: FmEntry }) {
           ? <GridImage p={p} entry={entry} />
           : <EntryIcon entry={entry} className="size-10" />}
       </div>
-      <span className={cn("line-clamp-2 w-full text-center break-all", p.showParent && "line-clamp-1")}>{entry.name}</span>
+      <span className={cn("line-clamp-2 w-full text-center break-all", p.showParent && "line-clamp-1", changeClass(p, entry))}>{entry.name}</span>
       {p.showParent && <span className="w-full truncate text-center text-muted-foreground">{dirname(entry.path)}</span>}
     </div>
   );

@@ -14,7 +14,8 @@ export function createApp(config: Config) {
     {
       id: "local",
       label: "Local disk",
-      driver: localDriver({ root: config.root }),
+      // Review demo: run `git init` (and commit) in the root to see changes.
+      driver: localDriver({ root: config.root, gitChanges: true }),
       trash: { retentionDays: 30 },
     },
     {
@@ -46,6 +47,14 @@ export function createApp(config: Config) {
   app.route("/fm", createFmRouter({
     mounts: () => mounts,
     thumbnail: bunThumbnail(),
+    // Shows change notes (X-Fm-Message) in the dev log; a real host would store them (commits, audit).
+    onEvent: (_c, e) => {
+      if (e.message) {
+        console.warn(`[fm] ${e.op} ${e.mount}:${e.path}${e.to
+          ? ` -> ${e.to}`
+          : ""} — ${e.message}`);
+      }
+    },
     ...(config.uploadPartSize
       ? {
           limits: { uploadPartSize: config.uploadPartSize },

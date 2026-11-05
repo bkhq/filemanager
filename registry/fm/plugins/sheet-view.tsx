@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { FmApiError } from "../client/client";
 import { fmKeys } from "../client/hooks";
+import { useChangeMessage } from "../react/change-message";
 import { IconButton } from "../react/icon-button";
 import { FallbackPreview } from "../react/previewers";
 import { cellText, columnName, isNumeric, parseSheet, serializeCsv } from "./parse";
@@ -51,6 +52,7 @@ export function SheetPreview(props: PreviewProps) {
     },
   });
   const [draft, setDraft] = useState<Draft>();
+  const { ask, used } = useChangeMessage();
   const [cursor, setCursor] = useState<{ r: number; c: number }>();
   const [editing, setEditing] = useState<{ r: number; c: number; value: string }>();
   const [saveError, setSaveError] = useState<{ conflict: boolean; message: string }>();
@@ -150,12 +152,19 @@ export function SheetPreview(props: PreviewProps) {
   const save = async (ifMatch: string | undefined) => {
     if (!draft || !table.csv)
       return;
+    const message = await ask();
+    if (message === null)
+      return;
     setSaving(true);
     setSaveError(undefined);
     try {
-      await client.write(entry.mount, entry.path, serializeCsv(draft.rows, table.csv), ifMatch
-        ? { ifMatch }
-        : {});
+      await client.write(entry.mount, entry.path, serializeCsv(draft.rows, table.csv), {
+        message,
+        ...(ifMatch
+          ? { ifMatch }
+          : {}),
+      });
+      used();
       setDraft(undefined);
       await qc.invalidateQueries({
         queryKey: fmKeys.lists(client, entry.mount),

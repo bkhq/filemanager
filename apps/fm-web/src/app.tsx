@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { archivePlugin } from "@/fm/plugins/archive";
 import { markdownPlugin } from "@/fm/plugins/markdown";
+import { reviewPlugin } from "@/fm/plugins/review";
 import { sheetPlugin } from "@/fm/plugins/sheet";
 import { FileManager } from "@/fm/react/file-manager";
 import { FilePicker } from "@/fm/react/file-picker";
@@ -23,6 +24,7 @@ const plugins = [
   sheetPlugin(),
   markdownPlugin(),
   archivePlugin(),
+  reviewPlugin(),
 ];
 
 type Lang = "en" | "zh";
@@ -38,6 +40,7 @@ const demoText = {
   en: {
     title: "File manager",
     viewOnly: "View only",
+    askMessage: "Ask for change notes",
     language: "Language",
     theme: "Theme",
     themes: { light: "Light", dark: "Dark", system: "System" },
@@ -45,6 +48,7 @@ const demoText = {
   zh: {
     title: "文件管理器",
     viewOnly: "只读",
+    askMessage: "询问修改说明",
     language: "语言",
     theme: "主题",
     themes: { light: "浅色", dark: "深色", system: "跟随系统" },
@@ -53,6 +57,9 @@ const demoText = {
 
 const langNames: Record<Lang, string> = { en: "English", zh: "中文" };
 const themeIcon = { light: <SunIcon />, dark: <MoonIcon />, system: <MonitorIcon /> };
+
+/** Demo switch: ask for a change note before every change. */
+const ASK_KEY = "fm-demo:ask-message";
 
 /** Starred / recent kept in localStorage; a real host would use its own database. */
 const META_KEY = "fm-demo:meta";
@@ -130,6 +137,11 @@ function PickerDemo() {
 
 function ManagerDemo() {
   const [readOnly, setReadOnly] = useState(() => new URLSearchParams(location.search).has("view"));
+  const [askMessage, setAskMessage] = useState(() => localStorage.getItem(ASK_KEY) === "1");
+  const changeAskMessage = (on: boolean) => {
+    localStorage.setItem(ASK_KEY, on ? "1" : "0");
+    setAskMessage(on);
+  };
   const [lang, setLang] = useState<Lang>(initialLang);
   const { theme, setTheme } = useTheme();
   const text = demoText[lang];
@@ -142,6 +154,10 @@ function ManagerDemo() {
       <header className="flex items-center gap-2">
         <h1 className="text-lg font-medium">{text.title}</h1>
         <span className="flex-1" />
+        <label className="mr-2 flex items-center gap-2 text-sm text-muted-foreground">
+          <Checkbox checked={askMessage} onCheckedChange={changeAskMessage} />
+          {text.askMessage}
+        </label>
         <label className="mr-2 flex items-center gap-2 text-sm text-muted-foreground">
           <Checkbox checked={readOnly} onCheckedChange={setReadOnly} />
           {text.viewOnly}
@@ -183,6 +199,13 @@ function ManagerDemo() {
         plugins={plugins}
         sidebar={sidebar}
         meta={meta}
+        changeMessage={askMessage
+          ? {
+              mode: params.get("ask") === "required"
+                ? "required"
+                : "optional",
+            }
+          : undefined}
       />
     </main>
   );

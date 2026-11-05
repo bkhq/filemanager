@@ -1,5 +1,5 @@
 import type { FmTrashItem } from "../core/schema";
-import type { FmDriver } from "./driver";
+import type { FmChangeContext, FmDriver } from "./driver";
 import { FmError, isFmError } from "../core/errors";
 import { assertName } from "../core/path";
 import { readAll } from "./driver";
@@ -30,10 +30,10 @@ export function trashedPath(item: FmTrashItem): string {
 }
 
 /** Moves `path` into the trash and returns the trash id. */
-export async function moveToTrash(d: FmDriver, path: string): Promise<string> {
+export async function moveToTrash(d: FmDriver, path: string, ctx?: FmChangeContext): Promise<string> {
   const e = await d.stat(path);
   const id = `${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
-  await d.move(path, `${TRASH_DIR}/${id}/${e.name}`);
+  await d.move(path, `${TRASH_DIR}/${id}/${e.name}`, ctx);
   const meta: Meta = {
     path,
     name: e.name,
@@ -82,8 +82,8 @@ export async function listTrash(d: FmDriver): Promise<FmTrashItem[]> {
 }
 
 /** Removes the item folder (empty after a restore) and its metadata. */
-export async function dropTrashItem(d: FmDriver, id: string): Promise<void> {
-  await d.remove(`${TRASH_DIR}/${id}`).catch(() => {});
+export async function dropTrashItem(d: FmDriver, id: string, ctx?: FmChangeContext): Promise<void> {
+  await d.remove(`${TRASH_DIR}/${id}`, ctx).catch(() => {});
   await d.remove(metaPath(id));
 }
 

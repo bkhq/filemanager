@@ -120,6 +120,19 @@ export function useFileText(client: FmClient, mount: string, path: string, enabl
   });
 }
 
+/** Query of a mount's changes against its baseline; under the mount's list keys, so every change refreshes it. Polls while shown. */
+export function changesQuery(client: FmClient, mount: string) {
+  return {
+    queryKey: [
+      ...fmKeys.lists(client, mount),
+      "changes",
+    ],
+    queryFn: () => client.changes(mount),
+    refetchInterval: 10_000,
+    refetchOnWindowFocus: true,
+  };
+}
+
 /** Mutations that refresh every listing (and the trash) of the mount on success. */
 export function useFmMutations(client: FmClient, mount: string) {
   const qc = useQueryClient();
@@ -139,8 +152,8 @@ export function useFmMutations(client: FmClient, mount: string) {
     }),
     /** Runs on this mount, or on `v.mount` (e.g. a cross-mount source); refreshes `destMount` too. */
     ops: useMutation({
-      mutationFn: (v: FmOpsRequest | { mount: string; req: FmOpsRequest }) => "req" in v
-        ? client.ops(v.mount, v.req)
+      mutationFn: (v: FmOpsRequest | { mount: string; req: FmOpsRequest; message?: string | undefined }) => "req" in v
+        ? client.ops(v.mount, v.req, { message: v.message })
         : client.ops(mount, v),
       onSuccess: async (_res, v) => {
         const [m, req] = "req" in v
@@ -156,15 +169,16 @@ export function useFmMutations(client: FmClient, mount: string) {
       },
     }),
     restore: useMutation({
-      mutationFn: (ids: string[]) => client.restore(mount, ids),
+      mutationFn: (v: { ids: string[]; message?: string | undefined }) => client.restore(mount, v.ids, { message: v.message }),
       onSuccess: invalidate,
     }),
+    /** Without `ids`, empties the trash. */
     purge: useMutation({
-      mutationFn: (ids?: string[]) => client.purge(mount, ids),
+      mutationFn: (v: { ids?: string[] | undefined; message?: string | undefined }) => client.purge(mount, v.ids, { message: v.message }),
       onSuccess: invalidate,
     }),
     save: useMutation({
-      mutationFn: (v: { path: string; text: string; etag: string }) => client.write(mount, v.path, v.text, { ifMatch: v.etag }),
+      mutationFn: (v: { path: string; text: string; etag: string; message?: string | undefined }) => client.write(mount, v.path, v.text, { ifMatch: v.etag, message: v.message }),
       onSuccess: async (entry) => {
         await invalidate();
         qc.removeQueries({

@@ -45,7 +45,7 @@ Each task is a single line linking to its detail file. All detailed information 
 - [x] [**20261103-0508-recursive-search Recursive search**](20261103-0508-recursive-search.md) `P2`
 - [-] [**20261103-0508-plugin-followups Plugin follow-ups (sheet, markdown, archive, office)**](20261103-0508-plugin-followups.md) `P2`
 - [x] [**20261103-0508-ui-polish UI polish and bundle size**](20261103-0508-ui-polish.md) `P2`
-- [ ] [**20261103-0508-bkd-pilot bkd pilot adoption**](20261103-0508-bkd-pilot.md) `P3`
+- [-] [**20261103-0508-bkd-pilot bkd pilot adoption**](20261103-0508-bkd-pilot.md) `P3`
 - [ ] [**20261103-0508-managed-store Managed store and bithk adapter**](20261103-0508-managed-store.md) `P3`
 - [x] [**20261103-1530-change-events Change event hook for audit and host refresh**](20261103-1530-change-events.md) `P1`
 - [x] [**20261103-1530-pick-mode Pick mode (FilePicker) for attachments and imports**](20261103-1530-pick-mode.md) `P1`

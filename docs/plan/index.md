@@ -62,3 +62,5 @@ Each plan is a single line linking to its detail file. All detailed information 
 - [x] [**20261105-0700-sheet-archive Sheet plugin upgrade and archive browsing**](20261105-0700-sheet-archive.md) `2026-11-05`
 - [~] [**20261105-1030-file-drawer FileDrawer composition**](20261105-1030-file-drawer.md) `2026-11-05`
 - [ ] [**20261105-1120-managed-store Managed store (generic, phase 1)**](20261105-1120-managed-store.md) `2026-11-05`
+- [x] [**20261105-1300-change-message Change messages (commit notes) for writes**](20261105-1300-change-message.md) `2026-11-05`
+- [x] [**20261105-1400-review-changes Changes / review, external edits, SVG preview**](20261105-1400-review-changes.md) `2026-11-05`

@@ -1,7 +1,7 @@
 import type { Context, Env } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { FmAction, FmCaps, FmConflict, FmEntry, FmMountInfo, FmOpResult, FmTrashItem, FmUploadMode, FmUploadSession, FmUsage } from "../core/schema";
-import type { FmDriver, FmDriverEntry, FmUploadPart, FmWriteOptions } from "./driver";
+import type { FmChangeContext, FmDriver, FmDriverEntry, FmUploadPart, FmWriteOptions } from "./driver";
 import { Hono } from "hono";
 import { describeRoute, resolver, validator } from "hono-openapi";
 import { z } from "zod";
@@ -10,6 +10,7 @@ import { fuzzyRank, fuzzyScore } from "../core/fuzzy";
 import { assertName, basename, dirname, isWithin, joinPath, nextFreeName, normalizePath } from "../core/path";
 import {
   ALL_CAPS,
+  changeSchema,
   conflictSchema,
   entrySchema,
   errorBodySchema,
@@ -133,6 +134,8 @@ export interface FmRouterOptions<E extends Env> {
 
 export interface FmChangeEvent {
   op: "write" | "mkdir" | "delete" | "move" | "copy" | "rename" | "restore" | "purge";
+  /** The user's note for the change (`X-Fm-Message`), when given. */
+  message?: string;
   /** Mount id. */
   mount: string;
   path: string;
@@ -394,11 +397,33 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
     };
   };
 
+  /** The change note of a request: `X-Fm-Message`, percent-encoded UTF-8, at most 1 000 characters. */
+  const changeCtx = (c: unknown): FmChangeContext => {
+    const raw = host(c).req.header("x-fm-message");
+    if (!raw)
+      return {};
+    let message: string;
+    try {
+      message = decodeURIComponent(raw);
+    }
+    catch {
+      throw new FmError("INVALID", "Invalid X-Fm-Message");
+    }
+    if (message.length > 1000)
+      throw new FmError("INVALID", "X-Fm-Message is longer than 1000 characters");
+    return message.trim()
+      ? { message }
+      : {};
+  };
+
   const emit = async (c: unknown, event: FmChangeEvent) => {
     if (!options.onEvent)
       return;
     try {
-      await options.onEvent(host(c), event);
+      const { message } = changeCtx(c);
+      await options.onEvent(host(c), message === undefined
+        ? event
+        : { ...event, message });
     }
     catch (e) {
       console.error("onEvent hook failed", e);
@@ -478,18 +503,21 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
       if (conflict === "fail")
         throw new FmError("EXISTS", `Already exists: ${to}`);
       await resolve(c, dest.mount.id, to, "delete");
-      await into.remove(to);
+      await into.remove(to, changeCtx(c));
     }
     let created = false;
     try {
       for (const item of items) {
         const target = to + item.path.slice(src.path.length);
         if (item.dir) {
-          await into.mkdir(target);
+          await into.mkdir(target, changeCtx(c));
         }
         else {
           const { body } = await from.read(item.path);
-          await into.write(target, body, { exclusive: true }).catch(async (e) => {
+          await into.write(target, body, {
+            exclusive: true,
+            ...changeCtx(c),
+          }).catch(async (e) => {
             await body.cancel().catch(() => {});
             throw e;
           });
@@ -505,9 +533,9 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
     // The source goes only after the whole copy landed.
     if (op === "move") {
       if (hasTrash(src.mount))
-        await moveToTrash(from, src.path);
+        await moveToTrash(from, src.path, changeCtx(c));
       else
-        await from.remove(src.path);
+        await from.remove(src.path, changeCtx(c));
     }
     event.to = to;
     return {
@@ -548,6 +576,7 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
           caps,
           trash: hasTrash(mount),
           thumbnails: !!options.thumbnail,
+          changes: !!mount.driver.changes,
           ...(hasTrash(mount) && retentionOf(mount)
             ? {
                 trashRetentionDays: retentionOf(mount),
@@ -680,6 +709,64 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
     }
     headers.set("Content-Length", String(res.size));
     return new Response(res.body, { status: 200, headers });
+  });
+
+  /** The review capability of a mount, or 405. */
+  const changesOf = async (c: unknown, mountId: string) => {
+    const mount = await findMount(c, mountId);
+    if (!mount.driver.changes)
+      throw new FmError("UNSUPPORTED", "This mount has no changes");
+    return { mount, changes: mount.driver.changes };
+  };
+
+  app.get("/m/:mount/changes", describeRoute({
+    tags: [TAG],
+    summary: "List changes",
+    description: "Files that differ from the driver's baseline (e.g. git HEAD), limited to paths the caller may read.",
+    responses: {
+      200: ok(z.object({
+        changes: z.array(changeSchema),
+      }), "Changed files"),
+      405: err("Mount has no changes"),
+      ...ERRORS,
+    },
+  }), async (c) => {
+    const { mount, changes } = await changesOf(c, c.req.param("mount"));
+    const out = [];
+    for (const change of await changes.list()) {
+      if (hidden(mount, change.path))
+        continue;
+      if (await resolve(c, mount.id, change.path).then(() => true, () => false))
+        out.push(change);
+    }
+    return c.json({ changes: out });
+  });
+
+  app.get("/m/:mount/changes/base", describeRoute({
+    tags: [TAG],
+    summary: "Read the baseline version",
+    description: "Bytes of `path` in the baseline (its previous path for renames); 404 for files the baseline lacks. Served like `/read`.",
+    responses: {
+      200: { description: "Baseline bytes" },
+      405: err("Mount has no changes"),
+      ...ERRORS,
+    },
+  }), v("query", pathQuery), async (c) => {
+    const { mount, changes } = await changesOf(c, c.req.param("mount"));
+    const t = await resolve(c, mount.id, c.req.valid("query").path);
+    const base = await changes.readBase(t.path);
+    if (!base)
+      throw new FmError("NOT_FOUND", "Not in the baseline");
+    const type = inlineType(mimeOf(basename(t.path)));
+    return new Response(base.body, {
+      headers: {
+        "Content-Type": type ?? "application/octet-stream",
+        "Content-Length": String(base.size),
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+        "Cache-Control": "private, no-cache",
+      },
+    });
   });
 
   /** A zip file of the mount within the archive size limit. */
@@ -816,6 +903,7 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
         ? limitStream(c.req.raw.body, limits.maxUploadBytes)
         : new Uint8Array();
       const written = await d.write(path, body, {
+        ...changeCtx(c),
         ...(ifMatch
           ? { ifMatch }
           : {}),
@@ -849,7 +937,7 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
     return track(c, event, async () => {
       const t = await resolve(c, event.mount, event.path, "write");
       event.path = t.path;
-      return c.json(toEntry(t, await t.mount.driver.mkdir(t.path)), 201);
+      return c.json(toEntry(t, await t.mount.driver.mkdir(t.path, changeCtx(c))), 201);
     });
   });
 
@@ -876,10 +964,10 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
           if (t.path === "/")
             throw new FmError("INVALID", "Cannot delete the root");
           if (hasTrash(t.mount) && !req.permanent) {
-            event.trashId = await moveToTrash(t.mount.driver, t.path);
+            event.trashId = await moveToTrash(t.mount.driver, t.path, changeCtx(c));
             return { trashId: event.trashId };
           }
-          await t.mount.driver.remove(t.path);
+          await t.mount.driver.remove(t.path, changeCtx(c));
           return {};
         });
       }
@@ -895,7 +983,7 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
         const target = joinPath(dirname(t.path), req.name);
         assertVisible(t.mount, target);
         const to = await resolve(c, mountId, target, "write");
-        const entry = toEntry(t, await t.mount.driver.move(t.path, to.path));
+        const entry = toEntry(t, await t.mount.driver.move(t.path, to.path, changeCtx(c)));
         event.to = to.path;
         return { entry };
       });
@@ -933,11 +1021,11 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
           assertVisible(dest.mount, to);
           if (req.conflict === "overwrite" && await exists(d, to)) {
             await resolve(c, mountId, to, "delete");
-            await d.remove(to);
+            await d.remove(to, changeCtx(c));
           }
           const moved = req.op === "move"
-            ? await d.move(src.path, to)
-            : await d.copy(src.path, to);
+            ? await d.move(src.path, to, changeCtx(c))
+            : await d.copy(src.path, to, changeCtx(c));
           event.to = to;
           return {
             entry: toEntry(dest, moved),
@@ -1180,8 +1268,8 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
         event.path = item.path;
         const t = await resolve(c, mount.id, item.path, "write");
         const to = await destination(d, dirname(t.path), item.name, "rename");
-        const entry = toEntry(t, await d.move(trashedPath(item), to));
-        await dropTrashItem(d, id);
+        const entry = toEntry(t, await d.move(trashedPath(item), to, changeCtx(c)));
+        await dropTrashItem(d, id, changeCtx(c));
         event.to = to;
         return { entry };
       });
@@ -1214,7 +1302,7 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
         const item = await getTrashItem(d, id);
         event.path = item.path;
         await resolve(c, mount.id, item.path, "delete");
-        await dropTrashItem(d, id);
+        await dropTrashItem(d, id, changeCtx(c));
         return {};
       });
     }
@@ -1406,6 +1494,7 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
       const t = await resolve(c, mount, rec.path, "write");
       const d = t.mount.driver;
       const opts: FmWriteOptions = {
+        ...changeCtx(c),
         size: rec.size,
         ...(rec.conflict === "overwrite"
           ? {}

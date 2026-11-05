@@ -17,6 +17,8 @@ export interface FmUploadTask {
   loaded: number;
   status: FmUploadStatus;
   error?: string;
+  /** Change note sent with the upload (`X-Fm-Message`). */
+  message?: string;
 }
 
 export interface FmUploadFile {
@@ -25,6 +27,8 @@ export interface FmUploadFile {
   relativePath?: string;
   /** Defaults to `rename` (keep both). */
   conflict?: FmConflict;
+  /** Change note for this file's upload. */
+  message?: string;
 }
 
 export type FmTransport = (task: FmUploadTask, file: Blob, onProgress: (loaded: number) => void, signal: AbortSignal) => Promise<void>;
@@ -65,7 +69,10 @@ function xhrPut(url: string, body: Blob, headers: Record<string, string>, onProg
 
 /** PUT via XHR so byte progress is observable (fetch cannot report upload progress). */
 export function xhrTransport(client: FmClient): FmTransport {
-  return (task, file, onProgress, signal) => xhrPut(client.writeUrl(task.mount, task.path, task.conflict), file, client.headers(), onProgress, signal);
+  return (task, file, onProgress, signal) => xhrPut(client.writeUrl(task.mount, task.path, task.conflict), file, {
+    ...client.headers(),
+    ...client.changeHeaders({ message: task.message }),
+  }, onProgress, signal);
 }
 
 export const xhrPartTransport: FmPartTransport = xhrPut;
@@ -231,7 +238,7 @@ export function createUploadQueue(opts: FmUploadQueueOptions) {
           done += end - start;
           patch(task.id, { loaded: done });
         }
-        await client.completeUpload(task.mount, id);
+        await client.completeUpload(task.mount, id, { message: task.message });
         remembered.remove(key);
       }
       catch (err) {
@@ -280,7 +287,7 @@ export function createUploadQueue(opts: FmUploadQueueOptions) {
     return {
       tasks: [],
       enqueue: (mount, dir, list) => {
-        const added = list.map(({ file, relativePath, conflict }): FmUploadTask => {
+        const added = list.map(({ file, relativePath, conflict, message }): FmUploadTask => {
           const id = `u${++seq}`;
           files.set(id, file);
           const rel = (relativePath || file.name).replace(/^\/+/, "");
@@ -295,6 +302,9 @@ export function createUploadQueue(opts: FmUploadQueueOptions) {
             size: file.size,
             loaded: 0,
             status: "queued",
+            ...(message
+              ? { message }
+              : {}),
           };
         });
         set(s => ({

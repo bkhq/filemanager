@@ -75,6 +75,8 @@ export const mountInfoSchema = z.object({
   trash: z.boolean(),
   /** `GET /thumb` serves resized images. */
   thumbnails: z.boolean(),
+  /** `GET /changes` lists files that differ from a baseline (review). */
+  changes: z.boolean(),
   /** Trash items older than this many days are deleted for good. */
   trashRetentionDays: z.number().int().positive().optional(),
 });
@@ -223,3 +225,19 @@ export const zipEntrySchema = z.object({
   encrypted: z.boolean(),
 });
 export type FmZipEntry = z.infer<typeof zipEntrySchema>;
+
+export const changeSchema = z.object({
+  path: z.string(),
+  status: z.enum([
+    "added",
+    "modified",
+    "deleted",
+    "renamed",
+    "untracked",
+  ]),
+  /** Path in the baseline, for renames. */
+  previousPath: z.string().optional(),
+  additions: z.number().int().nonnegative().optional(),
+  deletions: z.number().int().nonnegative().optional(),
+});
+export type FmChangeEntry = z.infer<typeof changeSchema>;

@@ -1,7 +1,7 @@
 import type { ComponentType } from "react";
 import type { FmEntry } from "../core/schema";
 import type { PreviewProps } from "./previewers";
-import { FallbackPreview, ImagePreview, LazyTextPreview, MediaPreview, PdfPreview, SniffPreview } from "./previewers";
+import { FallbackPreview, ImagePreview, LazyTextPreview, MediaPreview, PdfPreview, SniffPreview, SvgPreview } from "./previewers";
 import { kindOf } from "./state";
 
 export interface FmPreviewer {
@@ -13,6 +13,12 @@ export interface FmPreviewer {
 }
 
 const previewers: FmPreviewer[] = [
+  {
+    id: "svg",
+    match: e => e.kind === "file" && (e.mime === "image/svg+xml" || /\.svg$/i.test(e.name)),
+    component: SvgPreview,
+    priority: 1,
+  },
   {
     id: "image",
     match: e => kindOf(e) === "image",

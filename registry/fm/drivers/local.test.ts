@@ -413,3 +413,134 @@ describe("localDriver gitIgnore listing", () => {
     }
   });
 });
+
+describe("localDriver gitChanges", () => {
+  const hasGit = Bun.which("git") !== null;
+  if (!hasGit)
+    console.warn("git is not on PATH; skipping gitChanges tests");
+
+  const git = async (cwd: string, ...args: string[]) => {
+    const proc = Bun.spawn([
+      "git",
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@t",
+      ...args,
+    ], { cwd, stdout: "ignore", stderr: "ignore" });
+    expect(await proc.exited).toBe(0);
+  };
+  const text = async (body: ReadableStream<Uint8Array>) => new Response(body).text();
+
+  async function repo() {
+    const t = await tempRoot();
+    await git(t.root, "init", "-q");
+    await writeFile(join(t.root, "keep.txt"), "keep\n");
+    await writeFile(join(t.root, "edit.txt"), "one\ntwo\n");
+    await writeFile(join(t.root, "gone.txt"), "bye\n");
+    await writeFile(join(t.root, "old-name.txt"), "rename me, a long enough line to match\n");
+    await writeFile(join(t.root, ".gitignore"), "*.log\n");
+    await git(t.root, "add", "-A");
+    await git(t.root, "commit", "-qm", "base");
+    await writeFile(join(t.root, "edit.txt"), "one\nTWO\nthree\n");
+    await rm(join(t.root, "gone.txt"));
+    await git(t.root, "mv", "old-name.txt", "new-name.txt");
+    await mkdir(join(t.root, "src"));
+    await writeFile(join(t.root, "src", "new.ts"), "export {};\n");
+    await writeFile(join(t.root, "debug.log"), "ignored\n");
+    return t;
+  }
+
+  it.skipIf(!hasGit)("lists changes against HEAD with line counts", async () => {
+    const t = await repo();
+    try {
+      const d = localDriver({ root: t.root, gitChanges: true });
+      const changes = await d.changes!.list();
+      const by = Object.fromEntries(changes.map(c => [c.path, c]));
+      expect(Object.keys(by).sort()).toEqual([
+        "/edit.txt",
+        "/gone.txt",
+        "/new-name.txt",
+        "/src/new.ts",
+      ]);
+      expect(by["/edit.txt"]).toMatchObject({ status: "modified", additions: 2, deletions: 1 });
+      expect(by["/gone.txt"]).toMatchObject({ status: "deleted" });
+      expect(by["/new-name.txt"]).toMatchObject({ status: "renamed", previousPath: "/old-name.txt" });
+      expect(by["/src/new.ts"]).toMatchObject({ status: "untracked" });
+    }
+    finally {
+      await t.cleanup();
+    }
+  });
+
+  it.skipIf(!hasGit)("reads base versions and honours a custom base", async () => {
+    const t = await repo();
+    try {
+      const d = localDriver({ root: t.root, gitChanges: true });
+      expect(await text((await d.changes!.readBase("/edit.txt"))!.body)).toBe("one\ntwo\n");
+      expect(await text((await d.changes!.readBase("/new-name.txt"))!.body)).toContain("rename me");
+      expect(await d.changes!.readBase("/src/new.ts")).toBeNull();
+      await git(t.root, "add", "-A");
+      await git(t.root, "commit", "-qm", "second");
+      const latest = localDriver({ root: t.root, gitChanges: true });
+      expect(await latest.changes!.list()).toEqual([]);
+      const sinceBase = localDriver({
+        root: t.root,
+        gitChanges: {
+          base: async () => "HEAD~1",
+        },
+      });
+      expect((await sinceBase.changes!.list()).map(c => c.path).sort()).toEqual([
+        "/edit.txt",
+        "/gone.txt",
+        "/new-name.txt",
+        "/src/new.ts",
+      ]);
+    }
+    finally {
+      await t.cleanup();
+    }
+  });
+
+  it.skipIf(!hasGit)("keeps .git read-only and ignores diff / textconv programs from the repository config", async () => {
+    const t = await repo();
+    try {
+      const d = localDriver({ root: t.root, gitChanges: true });
+      expect(await code(d.write("/.git/config", new TextEncoder().encode("[x]")))).toBe("FORBIDDEN");
+      expect(await code(d.mkdir("/sub/.git"))).toBe("FORBIDDEN");
+      // A config planted outside the driver must still not run commands.
+      const marker = join(t.base, "pwned");
+      await git(t.root, "config", "diff.external", `sh -c 'touch ${marker}'`);
+      await writeFile(join(t.root, ".gitattributes"), "*.txt diff=evil\n");
+      await git(t.root, "config", "diff.evil.textconv", `sh -c 'touch ${marker}; cat'`);
+      await d.changes!.list();
+      await d.changes!.readBase("/edit.txt");
+      expect(await Bun.file(marker).exists()).toBe(false);
+    }
+    finally {
+      await t.cleanup();
+    }
+  });
+
+  it.skipIf(!hasGit)("scopes to a root below the repository top and is empty outside git", async () => {
+    const t = await repo();
+    try {
+      const sub = localDriver({
+        root: join(t.root, "src"),
+        gitChanges: true,
+      });
+      expect((await sub.changes!.list()).map(c => c.path)).toEqual(["/new.ts"]);
+      const plain = await tempRoot();
+      try {
+        expect(await localDriver({ root: plain.root, gitChanges: true }).changes!.list()).toEqual([]);
+      }
+      finally {
+        await plain.cleanup();
+      }
+      expect(localDriver({ root: t.root }).changes).toBeUndefined();
+    }
+    finally {
+      await t.cleanup();
+    }
+  });
+});

@@ -1,6 +1,7 @@
 import type { DragEvent, KeyboardEvent, ReactNode, RefObject } from "react";
 import type { FmClient, FmListFilter } from "../client/client";
 import type { FmEntry, FmMountInfo } from "../core/schema";
+import type { FmChangeIndex } from "./changes";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "cn";
 import { ChevronRightIcon, FolderIcon, HardDriveIcon, LockIcon, SettingsIcon, Trash2Icon } from "lucide-react";
@@ -8,6 +9,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useListing } from "../client/hooks";
 import { dirname } from "../core/path";
+import { ChangeBadge } from "./change-badge";
+import { CHANGE_STYLE } from "./changes";
 import { setDownloadUrl } from "./drop";
 import { DRAG_TYPE, EntryIcon } from "./file-list";
 import { groupMountsByDriver } from "./mount-visibility";
@@ -41,6 +44,8 @@ interface TreeProps {
   filter?: FmListFilter | undefined;
   /** Narrows the file rows of a folder (folders always stay). */
   filterEntries?: ((mount: string, entries: readonly FmEntry[]) => readonly FmEntry[]) | undefined;
+  /** Review decorations of a mount (status letters, dots on folders). */
+  changesOf?: ((mount: string) => FmChangeIndex | undefined) | undefined;
 }
 
 /** A host list shown above the drives (starred, recent). */
@@ -49,6 +54,8 @@ export interface FmTreeSection {
   label: string;
   icon: ReactNode;
   entries: readonly FmEntry[];
+  /** Click on a file of the section (default: reveal it). */
+  onOpen?: ((entry: FmEntry) => void) | undefined;
 }
 
 /** Expansion key of a folder row (`mount:path`); a mount row uses its root `/`. */
@@ -73,7 +80,7 @@ type Row
     | { kind: "mount"; key: string; depth: number; info: FmMountInfo; open: boolean }
     /** `where` (drive and parent folder) is set on rows inside a host list. */
     | { kind: "dir"; key: string; depth: number; entry: FmEntry; open: boolean; where?: string }
-    | { kind: "file"; key: string; depth: number; entry: FmEntry; where?: string }
+    | { kind: "file"; key: string; depth: number; entry: FmEntry; where?: string; open?: ((entry: FmEntry) => void) | undefined }
     | { kind: "trash"; key: string; depth: number; mount: string };
 
 /** Loads every page of an open folder and reports its entries; renders nothing. */
@@ -208,7 +215,7 @@ export function FileTree(props: TreeProps & {
      * Pushes the row of an entry and returns whether it is an open folder whose children
      * follow. `prefix` keeps keys of host-list copies apart from the drive rows.
      */
-    const pushEntry = (entry: FmEntry, depth: number, prefix: string) => {
+    const pushEntry = (entry: FmEntry, depth: number, prefix: string, open?: (entry: FmEntry) => void) => {
       const key = treeKey(entry.mount, entry.path);
       const where = prefix
         ? {
@@ -222,6 +229,9 @@ export function FileTree(props: TreeProps & {
           depth,
           entry,
           ...where,
+          ...(open
+            ? { open }
+            : {}),
         });
         return false;
       }
@@ -248,7 +258,7 @@ export function FileTree(props: TreeProps & {
      * Host-list entries under `base` as a tree: sub-folders first (single-child chains
      * compacted to "a/b" like VS Code), then the entries that live directly in `base`.
      */
-    const listTree = (entries: readonly FmEntry[], base: string, depth: number, prefix: string) => {
+    const listTree = (entries: readonly FmEntry[], base: string, depth: number, prefix: string, open?: (entry: FmEntry) => void) => {
       const below = (e: FmEntry) => dirname(e.path) !== base;
       const sub = new Map<string, FmEntry[]>();
       for (const e of entries.filter(below)) {
@@ -288,7 +298,7 @@ export function FileTree(props: TreeProps & {
           open: isOpen,
         });
         if (isOpen)
-          listTree(inside, dir, depth + 1, prefix);
+          listTree(inside, dir, depth + 1, prefix, open);
       }
       const direct = entries.filter(e => !below(e)).sort((a, b) => (a.kind === b.kind
         ? a.name.localeCompare(b.name)
@@ -296,7 +306,7 @@ export function FileTree(props: TreeProps & {
             ? -1
             : 1)));
       for (const e of direct) {
-        if (pushEntry(e, depth, `${prefix}|`))
+        if (pushEntry(e, depth, `${prefix}|`, open))
           folder(e.mount, e.path, depth + 1, `${prefix}|`);
       }
     };
@@ -356,7 +366,7 @@ export function FileTree(props: TreeProps & {
           open: nodeOpen,
         });
         if (nodeOpen)
-          listTree(entries, "/", 2, `${key}:`);
+          listTree(entries, "/", 2, `${key}:`, section.onOpen);
       }
     }
     if (props.group === "driver") {
@@ -600,12 +610,14 @@ export function FileTree(props: TreeProps & {
               {chevron(row.open)}
               <FolderIcon className="text-sky-500" />
               <span className="truncate">{entry.name}</span>
+              <ChangeBadge dir={t.changesOf?.(entry.mount)?.dirs.has(entry.path)} />
             </Button>
           </Item>
         );
       }
       case "file": {
         const { entry } = row;
+        const change = t.changesOf?.(entry.mount)?.byPath.get(entry.path);
         return (
           <Item
             key={row.key}
@@ -624,9 +636,10 @@ export function FileTree(props: TreeProps & {
               : undefined}
             onContextMenu={() => t.onContextTarget?.({ mount: entry.mount, entry })}
           >
-            <Button variant="ghost" size="sm" className={cn(ROW, active && ACTIVE, entry.ignored && IGNORED)} onClick={() => t.onRevealFile(entry)}>
+            <Button variant="ghost" size="sm" className={cn(ROW, active && ACTIVE, entry.ignored && IGNORED)} onClick={() => (row.open ?? t.onRevealFile)(entry)}>
               <EntryIcon entry={entry} />
-              <span className="truncate">{entry.name}</span>
+              <span className={cn("truncate", change && CHANGE_STYLE[change.status].className)}>{entry.name}</span>
+              <ChangeBadge change={change} />
             </Button>
           </Item>
         );
