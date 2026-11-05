@@ -1,11 +1,10 @@
 import type { FmLabels } from "./labels";
 import type { FmMediaView, FmSize } from "./transform";
 import { cn } from "cn";
-import { FlipHorizontal2Icon, RotateCcwIcon, RotateCwIcon, SaveIcon, ZoomInIcon, ZoomOutIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { FlipHorizontal2Icon, RotateCcwIcon, RotateCwIcon, ZoomInIcon, ZoomOutIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
-import { FmApiError } from "../client/client";
 import { IconButton } from "./icon-button";
 import { clampZoom, INITIAL_VIEW, layoutOf, rotateBy, ZOOM_STEP } from "./transform";
 
@@ -29,63 +28,18 @@ function useStageSize() {
 }
 
 /** Image or video with rotate / flip (and zoom for images); tools go into the preview header. */
-export function MediaStage({ kind, src, alt, labels, actions, mime, onSave }: {
+export function MediaStage({ kind, src, alt, labels, actions }: {
   kind: "image" | "video";
   src: string;
   alt: string;
   labels: FmLabels;
   actions?: HTMLElement | null | undefined;
-  /** Type the saved image is encoded as. */
-  mime?: string | undefined;
-  /** Writes the rotated / flipped image; absent hides Save. */
-  onSave?: ((image: Blob) => Promise<void>) | undefined;
 }) {
   const [view, setView] = useState<FmMediaView>(INITIAL_VIEW);
   const [natural, setNatural] = useState<FmSize>();
   const [stageRef, stage] = useStageSize();
   const layout = natural && stage && layoutOf(natural, stage, view);
   const isImage = kind === "image";
-
-  // Save: rotation and flip are baked into a re-encoded copy (zoom is a view setting).
-  const imgRef = useRef<HTMLImageElement>(null);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string>();
-  const changed = view.rotate % 360 !== 0 || view.flip;
-  const save = async () => {
-    const img = imgRef.current;
-    if (!img || !onSave)
-      return;
-    setSaving(true);
-    setSaveError(undefined);
-    try {
-      const turn = ((view.rotate % 360) + 360) % 360;
-      const sideways = turn === 90 || turn === 270;
-      const canvas = document.createElement("canvas");
-      canvas.width = sideways ? img.naturalHeight : img.naturalWidth;
-      canvas.height = sideways ? img.naturalWidth : img.naturalHeight;
-      const ctx = canvas.getContext("2d")!;
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.rotate(turn * Math.PI / 180);
-      ctx.scale(view.flip
-        ? -1
-        : 1, 1);
-      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
-      const blob = await new Promise<Blob | null>(done => canvas.toBlob(done, mime, 0.92));
-      if (!blob)
-        throw new Error(labels.saveFailed);
-      await onSave(blob);
-    }
-    catch (e) {
-      setSaveError(e instanceof FmApiError && e.status === 412
-        ? labels.conflict
-        : (e instanceof Error
-            ? e.message
-            : labels.saveFailed));
-    }
-    finally {
-      setSaving(false);
-    }
-  };
 
   const zoomTo = (z: number) => setView(v => ({
     ...v,
@@ -160,13 +114,6 @@ export function MediaStage({ kind, src, alt, labels, actions, mime, onSave }: {
       <IconButton label={labels.rotateLeft} onClick={() => setView(v => rotateBy(v, -90))}><RotateCcwIcon /></IconButton>
       <IconButton label={labels.rotateRight} onClick={() => setView(v => rotateBy(v, 90))}><RotateCwIcon /></IconButton>
       <IconButton label={labels.flip} aria-pressed={view.flip} onClick={() => setView(v => ({ ...v, flip: !v.flip }))}><FlipHorizontal2Icon /></IconButton>
-      {isImage && onSave && changed && (
-        <Button size="sm" variant="outline" title={labels.saveImageHint} disabled={saving} onClick={() => void save()}>
-          <SaveIcon />
-          {labels.save}
-        </Button>
-      )}
-      {saveError && <span role="alert" className="text-xs text-destructive">{saveError}</span>}
     </>
   );
 
@@ -183,7 +130,6 @@ export function MediaStage({ kind, src, alt, labels, actions, mime, onSave }: {
           {isImage
             ? (
                 <img
-                  ref={imgRef}
                   src={src}
                   alt={alt}
                   draggable={false}

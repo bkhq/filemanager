@@ -272,3 +272,15 @@ Right-side scrolling uses shadcn `ScrollArea` too: text editor and archive `Code
 ## 2026-11-05 10:05 [decision]
 
 The demo's `ScrollArea` scrollbar auto-hides: transparent by default, fades in while the pointer is over the area (`data-hovering`) or while scrolling (`data-scrolling`), 150 ms opacity transition. Changed in `apps/fm-web/src/components/ui/scroll-area.tsx` only; hosts keep whatever their own shadcn `scroll-area` does.
+
+## 2026-11-05 10:40 [decision]
+
+Plan 20261105-1030-file-drawer rejected: no `<FileDrawer />` in the library. Hosts (bkd, bks) wrap `<FileManager />` in their own drawer / side panel and decide its chrome; `FileManager` already adapts to narrow widths and accepts `className`. Architecture updated accordingly; the bkd pilot task keeps only the adoption in the bkd repo.
+
+## 2026-11-05 11:00 [progress]
+
+Popups and panel lists scroll in `ScrollArea` as well: path bar pickers, Storage menu Starred / Recent submenus, quick open results and the upload panel use `MenuScroll` (`react/menu-scroll.tsx`: viewport capped at `max-h-80` / `max-h-60`, popup drops its own overflow and padding).
+
+## 2026-11-05 11:40 [decision]
+
+Image preview tools are view-only: rotate, flip and zoom never write the file. The Save rotation / flip button (added in 20261105-0440-thumbnails) is removed with its canvas re-encode, labels and e2e; the rotate test now asserts no Save is offered. The preview dialog keeps following the listing's copy of its entry.

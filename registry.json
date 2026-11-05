@@ -411,6 +411,11 @@
           "path": "registry/fm/react/scroll.ts",
           "type": "registry:file",
           "target": "~/src/fm/react/scroll.ts"
+        },
+        {
+          "path": "registry/fm/react/menu-scroll.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/menu-scroll.tsx"
         }
       ]
     },

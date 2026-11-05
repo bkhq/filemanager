@@ -84,8 +84,6 @@ export const enLabels = {
     ? "file"
     : "files"}, ${formatSize(bytes)} uncompressed`,
   conflict: "The file changed on disk since you opened it.",
-  saveImageHint: "Save the rotation and flip (re-encodes the image and drops its metadata)",
-  saveFailed: "Could not save the image",
   overwrite: "Overwrite",
   reloadFromDisk: "Reload from disk",
   keepEditing: "Keep editing",
@@ -282,8 +280,6 @@ export const zhLabels: FmLabels = {
   archiveTruncated: "仅列出前面的条目",
   archiveSummary: (files, bytes) => `${files} 个文件，解压后 ${formatSize(bytes)}`,
   conflict: "文件在打开后已被修改。",
-  saveImageHint: "保存旋转和翻转（会重新编码图片并丢弃元数据）",
-  saveFailed: "无法保存图片",
   overwrite: "覆盖",
   reloadFromDisk: "从磁盘重新加载",
   keepEditing: "继续编辑",

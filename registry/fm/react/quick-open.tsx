@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useSearch } from "../client/hooks";
 import { dirname } from "../core/path";
+import { MenuScroll } from "./menu-scroll";
 
 export interface QuickOpenProps {
   client: FmClient;
@@ -100,27 +101,29 @@ export function QuickOpen({ client, mount, labels, open, onOpenChange, onPick, f
         />
         {items.length > 0
           ? (
-              <ul id="fm-quick-open-list" role="listbox" aria-label={labels.quickOpen} className="max-h-80 overflow-auto">
-                {items.map((e, i) => {
-                  const Icon = e.kind === "dir"
-                    ? FolderIcon
-                    : FileIcon;
-                  return (
-                    <li
-                      key={e.path}
-                      role="option"
-                      aria-selected={i === current}
-                      className={cn("flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5", i === current && "bg-accent text-accent-foreground")}
-                      onMouseMove={() => setActive(i)}
-                      onClick={() => pick(e)}
-                    >
-                      <Icon className="size-4 shrink-0 text-muted-foreground" />
-                      <span className="truncate">{e.name}</span>
-                      <span className="ml-auto min-w-0 truncate text-xs text-muted-foreground">{dirname(e.path)}</span>
-                    </li>
-                  );
-                })}
-              </ul>
+              <MenuScroll className="-m-1">
+                <ul id="fm-quick-open-list" role="listbox" aria-label={labels.quickOpen}>
+                  {items.map((e, i) => {
+                    const Icon = e.kind === "dir"
+                      ? FolderIcon
+                      : FileIcon;
+                    return (
+                      <li
+                        key={e.path}
+                        role="option"
+                        aria-selected={i === current}
+                        className={cn("flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5", i === current && "bg-accent text-accent-foreground")}
+                        onMouseMove={() => setActive(i)}
+                        onClick={() => pick(e)}
+                      >
+                        <Icon className="size-4 shrink-0 text-muted-foreground" />
+                        <span className="truncate">{e.name}</span>
+                        <span className="ml-auto min-w-0 truncate text-xs text-muted-foreground">{dirname(e.path)}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </MenuScroll>
             )
           : (
               <div className="px-2 py-6 text-center text-muted-foreground">

@@ -100,6 +100,7 @@ import { FilterChips, FilterMenuItems } from "./filter-menu";
 import { applyFilters, hasFilters, NO_FILTERS, parseFilters } from "./filters";
 import { IconButton } from "./icon-button";
 import { enLabels } from "./labels";
+import { MenuScroll } from "./menu-scroll";
 import { metaKey, useMetaEntries } from "./meta";
 import { groupMountsByDriver, parseHidden, visibleMounts } from "./mount-visibility";
 import { PathBar } from "./path-bar";
@@ -1428,13 +1429,15 @@ export function FileManager(props: FileManagerProps) {
                                             {sec.icon}
                                             {sec.label}
                                           </DropdownMenuSubTrigger>
-                                          <DropdownMenuSubContent className="max-h-80 w-64 overflow-auto">
-                                            {sec.entries.map(e => (
-                                              <DropdownMenuItem key={`${e.mount}:${e.path}`} title={`${e.mount}:${e.path}`} onClick={() => pickQuickOpen(e)}>
-                                                <EntryIcon entry={e} />
-                                                <span className="truncate">{e.name}</span>
-                                              </DropdownMenuItem>
-                                            ))}
+                                          <DropdownMenuSubContent className="w-64 overflow-hidden p-0">
+                                            <MenuScroll>
+                                              {sec.entries.map(e => (
+                                                <DropdownMenuItem key={`${e.mount}:${e.path}`} title={`${e.mount}:${e.path}`} onClick={() => pickQuickOpen(e)}>
+                                                  <EntryIcon entry={e} />
+                                                  <span className="truncate">{e.name}</span>
+                                                </DropdownMenuItem>
+                                              ))}
+                                            </MenuScroll>
                                           </DropdownMenuSubContent>
                                         </DropdownMenuSub>
                                       ))}

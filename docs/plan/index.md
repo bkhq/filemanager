@@ -60,3 +60,5 @@ Each plan is a single line linking to its detail file. All detailed information 
 - [x] [**20261105-0210-list-filters List filters and host metadata (starred, recent)**](20261105-0210-list-filters.md) `2026-11-05`
 - [x] [**20261105-0440-thumbnails Thumbnails and saving image edits**](20261105-0440-thumbnails.md) `2026-11-05`
 - [x] [**20261105-0700-sheet-archive Sheet plugin upgrade and archive browsing**](20261105-0700-sheet-archive.md) `2026-11-05`
+- [~] [**20261105-1030-file-drawer FileDrawer composition**](20261105-1030-file-drawer.md) `2026-11-05`
+- [ ] [**20261105-1120-managed-store Managed store (generic, phase 1)**](20261105-1120-managed-store.md) `2026-11-05`

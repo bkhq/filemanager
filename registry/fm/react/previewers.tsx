@@ -1,11 +1,10 @@
 import type { FmClient } from "../client/client";
 import type { FmEntry } from "../core/schema";
 import type { FmLabels } from "./labels";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { DownloadIcon } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { Button } from "@/components/ui/button";
-import { fmKeys } from "../client/hooks";
 import { MediaStage } from "./media-stage";
 import { kindOf, looksBinary } from "./state";
 
@@ -25,33 +24,9 @@ export const MAX_TEXT_BYTES = 2 * 1024 * 1024;
 
 const TextPreview = lazy(() => import("./text-preview").then(m => ({ default: m.TextPreview })));
 
-/** Image types the browser can re-encode when rotation / flip are saved. */
-const SAVABLE = ["image/png", "image/jpeg", "image/webp"];
-
-/** Fits the image; zoom, rotate and flip from the header, a click toggles actual size. Writable PNG / JPEG / WebP can save rotation and flip. */
+/** Fits the image; zoom, rotate and flip only change the view, never the file. */
 export function ImagePreview({ entry, client, labels, actions }: PreviewProps) {
-  const qc = useQueryClient();
-  const onSave = entry.caps.write && entry.mime && SAVABLE.includes(entry.mime)
-    ? async (image: Blob) => {
-      await client.write(entry.mount, entry.path, image, { ifMatch: entry.etag });
-      await qc.invalidateQueries({
-        queryKey: fmKeys.lists(client, entry.mount),
-      });
-    }
-    : undefined;
-  return (
-    <MediaStage
-      // A saved image starts over from its new orientation.
-      key={entry.etag}
-      kind="image"
-      src={client.readUrl(entry.mount, entry.path, { version: entry.etag })}
-      alt={entry.name}
-      labels={labels}
-      actions={actions}
-      mime={entry.mime}
-      onSave={onSave}
-    />
-  );
+  return <MediaStage kind="image" src={client.readUrl(entry.mount, entry.path, { version: entry.etag })} alt={entry.name} labels={labels} actions={actions} />;
 }
 
 export function MediaPreview({ entry, client, labels, actions }: PreviewProps) {

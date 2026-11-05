@@ -49,7 +49,7 @@ Goals
   - **Managed driver** — DB-indexed tree with dedupe, versions, trash (bithk-style).
 - Host app owns identity and authorization; the component only asks via hooks.
 - Capability-driven UI: the server advertises what a mount/entry can do, the UI hides what it can't.
-- Embeddable pieces: full manager page, side drawer (bkd), file picker dialog, attachment list.
+- Embeddable pieces: full manager page (also inside a host's drawer / side panel), file picker dialog, attachment list.
 
 Non-goals (v1)
 
@@ -122,7 +122,7 @@ Copied files share the host's namespace, so shipped names avoid generic words.
 | Server factory | `createFmRouter`, options `FmRouterOptions` | |
 | Client | `createFmClient`, hooks `useXxx` | `useListing`, `useFmMutations` |
 | Drivers / plugins | `<name>Driver()`, `<name>Plugin()` | `localDriver`, `sheetPlugin` |
-| React components | descriptive, no prefix | `FileManager`, `FilePicker`, `FileDrawer` |
+| React components | descriptive, no prefix | `FileManager`, `FilePicker` |
 | Values, functions, zod schemas | camelCase / UPPER_CASE, no prefix | `entrySchema`, `READ_ONLY_CAPS` |
 | Runtime identifiers | `fm` / `fm-` / `FM_` | `.fm-trash`, `application/x-fm-paths`, `FM_ROOT` |
 | Terms | driver, mount, entry (not provider) | |
@@ -293,9 +293,10 @@ Layered so hosts can take only what they need:
    (list + grid, virtualized, rubber-band select), `Breadcrumb`, `Toolbar`,
    `ContextMenu`, `BatchBar`, `UploadQueue`, `DropZone`, `ConflictDialog`,
    `PropertiesPanel`.
-3. **Compositions** — `<FileManager />` (tree + list + preview pane),
-   `<FileDrawer />` (bkd side panel), `<FilePicker />` (dialog returning
-   entries; replaces bithk `DriveFilePicker`), `<AttachmentList />`.
+3. **Compositions** — `<FileManager />` (tree + list + preview pane; hosts
+   put it in their own drawer / side panel, it adapts to narrow widths),
+   `<FilePicker />` (dialog returning entries; replaces bithk
+   `DriveFilePicker`), `<AttachmentList />`.
 
 Extension points:
 
@@ -315,7 +316,7 @@ bithk's per-consumer `capabilities` duplication.
 
 | App | Path |
 | --- | --- |
-| bkd | Replace `routes/files.ts` + `filesystem.ts` with `createFmRouter` + `local` driver per project/worktree mount; swap `components/files/*` for `<FileDrawer />` + code previewer. Keep git-ignore as driver option. |
+| bkd | Replace `routes/files.ts` + `filesystem.ts` with `createFmRouter` + `local` driver per project/worktree mount; swap `components/files/*` for `<FileManager />` inside bkd's own `SidePanel`. Keep git-ignore as driver option. |
 | bithk | Phase 1: write a `bithkDrive` driver adapter over the existing `drive_entries` / `file` service (no schema change), render with `fm/react`. Phase 2: move to `fm/managed` tables with a data migration. Share/team/project remain bithk features via hooks + actions. |
 | zzci/drive | Unchanged; stays a reference. |
 

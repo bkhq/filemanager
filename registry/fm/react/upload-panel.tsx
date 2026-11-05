@@ -5,6 +5,7 @@ import { useStore } from "zustand";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { IconButton } from "./icon-button";
+import { MenuScroll } from "./menu-scroll";
 
 /** Floating panel listing in-flight and finished uploads. */
 export function UploadPanel({ queue, labels }: { queue: FmUploadQueue; labels: FmLabels }) {
@@ -18,30 +19,32 @@ export function UploadPanel({ queue, labels }: { queue: FmUploadQueue; labels: F
         {labels.uploads}
         <Button size="sm" variant="ghost" onClick={clearFinished}>{labels.clearFinished}</Button>
       </div>
-      <ul className="max-h-60 overflow-auto p-2 text-xs">
-        {tasks.map(t => (
-          <li key={t.id} className="flex items-center gap-2 py-1" data-status={t.status}>
-            <div className="min-w-0 flex-1">
-              <div className="truncate" title={t.path}>{t.name}</div>
-              {t.status === "uploading" && (
-                <Progress value={t.size
-                  ? (t.loaded / t.size) * 100
-                  : 0}
-                />
-              )}
-              {t.status === "error" && <div className="truncate text-destructive" title={t.error}>{t.error}</div>}
-              {t.status === "canceled" && <div className="text-muted-foreground">{labels.cancel}</div>}
-            </div>
-            {t.status === "done"
-              ? <CheckIcon className="size-4 text-emerald-500" />
-              : (t.status === "queued" || t.status === "uploading") && (
-                  <IconButton size="icon-xs" label={labels.cancel} onClick={() => cancel(t.id)}>
-                    <XIcon />
-                  </IconButton>
+      <MenuScroll short>
+        <ul className="px-1 text-xs">
+          {tasks.map(t => (
+            <li key={t.id} className="flex items-center gap-2 py-1" data-status={t.status}>
+              <div className="min-w-0 flex-1">
+                <div className="truncate" title={t.path}>{t.name}</div>
+                {t.status === "uploading" && (
+                  <Progress value={t.size
+                    ? (t.loaded / t.size) * 100
+                    : 0}
+                  />
                 )}
-          </li>
-        ))}
-      </ul>
+                {t.status === "error" && <div className="truncate text-destructive" title={t.error}>{t.error}</div>}
+                {t.status === "canceled" && <div className="text-muted-foreground">{labels.cancel}</div>}
+              </div>
+              {t.status === "done"
+                ? <CheckIcon className="size-4 text-emerald-500" />
+                : (t.status === "queued" || t.status === "uploading") && (
+                    <IconButton size="icon-xs" label={labels.cancel} onClick={() => cancel(t.id)}>
+                      <XIcon />
+                    </IconButton>
+                  )}
+            </li>
+          ))}
+        </ul>
+      </MenuScroll>
     </div>
   );
 }

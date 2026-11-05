@@ -198,9 +198,6 @@ import { cloudflareThumbnail } from "@/fm/thumbnails/cloudflare"; // bunx shadcn
 createFmRouter<Env>({ mounts, thumbnail: cloudflareThumbnail<Env>(c => c.env.IMAGES) }); // "images": { "binding": "IMAGES" }
 ```
 
-Saving a rotated / flipped image from the preview re-encodes it in the browser
-(PNG / JPEG / WebP, same type) and drops its metadata such as EXIF.
-
 On S3 parts go through the server by default. `s3Driver({ ..., presignUploads: true })`
 is opt-in and lets browsers `PUT` parts straight to the bucket via presigned
 URLs. It requires both:

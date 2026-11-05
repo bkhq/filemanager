@@ -161,6 +161,8 @@ test("rotates, flips and zooms an image without changing it", async ({ page }) =
   await dialog.getByRole("button", { name: "Rotate right" }).click();
   await dialog.getByRole("button", { name: "Flip horizontally" }).click();
   await expect(img).toHaveAttribute("style", /rotate\(90deg\) scaleX\(-1\)/);
+  // Viewing only: nothing offers to write the rotated image back.
+  await expect(dialog.getByRole("button", { name: "Save" })).toHaveCount(0);
   await dialog.getByRole("button", { name: "Rotate left" }).click();
   await expect(img).toHaveAttribute("style", /rotate\(0deg\)/);
   await dialog.getByRole("button", { name: "Zoom in" }).click();
@@ -1516,26 +1518,6 @@ test("the grid shows server thumbnails", async ({ page }) => {
   await expect(img).toHaveAttribute("src", /\/thumb\?.*w=256/);
   await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBe(256);
   await page.getByRole("button", { name: "List view" }).click();
-});
-
-test("saves a rotated image", async ({ page }) => {
-  await putPng(page, "/rotate-e2e/wide.png", 60, 30);
-  await openMount(page, "Local disk");
-  await row(page, "/rotate-e2e").dblclick();
-  await row(page, "/rotate-e2e/wide.png").dblclick();
-  const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("button", { name: "Save" })).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Rotate right" }).click();
-  await dialog.getByRole("button", { name: "Save" }).click();
-  await expect(dialog.getByRole("button", { name: "Save" })).toHaveCount(0);
-  const size = await page.evaluate(async () => {
-    const img = new Image();
-    img.src = `/api/fm/m/local/read?path=${encodeURIComponent("/rotate-e2e/wide.png")}&t=${Date.now()}`;
-    await img.decode();
-    return [img.naturalWidth, img.naturalHeight];
-  });
-  expect(size).toEqual([30, 60]);
-  await expect(dialog.locator("img[alt='wide.png']")).toHaveAttribute("style", /rotate\(0deg\)/);
 });
 
 async function putText(page: Page, path: string, body: string) {

@@ -16,9 +16,10 @@ import {
 import { useListing } from "../client/hooks";
 import { basename, dirname } from "../core/path";
 import { EntryIcon } from "./file-list";
+import { MenuScroll } from "./menu-scroll";
 
 /** A picker: one line per entry, capped in width and height. */
-const PICKER = "max-h-80 w-auto max-w-72 min-w-40 overflow-y-auto";
+const PICKER = "w-auto max-w-72 min-w-40 overflow-hidden p-0";
 const PICKER_ITEM = "gap-1.5 py-1 text-xs whitespace-nowrap";
 
 /** Entries of `path`: folders unfold into their own entries, files open. */
@@ -45,7 +46,9 @@ function PickerEntries({ client, mount, path, current, labels, filter, onOpenFil
             <span className="truncate">{entry.name}</span>
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className={PICKER}>
-            <PickerEntries client={client} mount={mount} path={entry.path} current={current} labels={labels} filter={filter} onOpenFile={onOpenFile} />
+            <MenuScroll>
+              <PickerEntries client={client} mount={mount} path={entry.path} current={current} labels={labels} filter={filter} onOpenFile={onOpenFile} />
+            </MenuScroll>
           </DropdownMenuSubContent>
         </DropdownMenuSub>
       );
@@ -93,19 +96,21 @@ export function PathBar({ client, mounts, mount, path, file, labels, filter, onO
     <DropdownMenu>
       <DropdownMenuTrigger render={<button type="button" className={crumb(last)} />}>{label}</DropdownMenuTrigger>
       <DropdownMenuContent align="start" className={PICKER}>
-        <PickerEntries
-          client={client}
-          mount={at}
-          path={target === "/"
-            ? "/"
-            : dirname(target)}
-          current={target === "/"
-            ? trail[0] ?? ""
-            : target}
-          labels={labels}
-          filter={filter}
-          onOpenFile={onOpenFile}
-        />
+        <MenuScroll>
+          <PickerEntries
+            client={client}
+            mount={at}
+            path={target === "/"
+              ? "/"
+              : dirname(target)}
+            current={target === "/"
+              ? trail[0] ?? ""
+              : target}
+            labels={labels}
+            filter={filter}
+            onOpenFile={onOpenFile}
+          />
+        </MenuScroll>
       </DropdownMenuContent>
     </DropdownMenu>
   );
