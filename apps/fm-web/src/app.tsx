@@ -1,4 +1,5 @@
 import type { FmSidebarOptions } from "@/fm/react/file-manager";
+import type { FmMeta, FmRef } from "@/fm/react/meta";
 import { LanguagesIcon, MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
 import { useState } from "react";
 import { useTheme } from "@/components/theme-provider";
@@ -50,6 +51,48 @@ const demoText = {
 
 const langNames: Record<Lang, string> = { en: "English", zh: "中文" };
 const themeIcon = { light: <SunIcon />, dark: <MoonIcon />, system: <MonitorIcon /> };
+
+/** Starred / recent kept in localStorage; a real host would use its own database. */
+const META_KEY = "fm-demo:meta";
+interface DemoMeta { starred: FmRef[]; recent: FmRef[] }
+function readMeta(): DemoMeta {
+  try {
+    const v = JSON.parse(localStorage.getItem(META_KEY) ?? "null") as Partial<DemoMeta> | null;
+    return { starred: v?.starred ?? [], recent: v?.recent ?? [] };
+  }
+  catch {
+    return { starred: [], recent: [] };
+  }
+}
+function writeMeta(update: (m: DemoMeta) => DemoMeta) {
+  localStorage.setItem(META_KEY, JSON.stringify(update(readMeta())));
+}
+const same = (a: FmRef) => (b: FmRef) => a.mount === b.mount && a.path === b.path;
+const demoMeta: FmMeta = {
+  starred: async () => readMeta().starred,
+  setStarred: async (ref, on) => writeMeta(m => ({
+    ...m,
+    starred: on
+      ? [
+          ref,
+          ...m.starred.filter(r => !same(ref)(r)),
+        ]
+      : m.starred.filter(r => !same(ref)(r)),
+  })),
+  recent: async () => readMeta().recent,
+  touch: ref => writeMeta(m => ({
+    ...m,
+    recent: [
+      ref,
+      ...m.recent.filter(r => !same(ref)(r)),
+    ].slice(0, 20),
+  })),
+};
+
+// e2e turns the lists off (`fm-demo:meta-off` = "1") so they do not duplicate tree rows.
+const meta = localStorage.getItem("fm-demo:meta-off") === "1"
+  ? undefined
+  : demoMeta;
 
 const params = new URLSearchParams(location.search);
 const sidebar: FmSidebarOptions = {
@@ -137,6 +180,7 @@ function ManagerDemo() {
         readOnly={readOnly}
         plugins={plugins}
         sidebar={sidebar}
+        meta={meta}
       />
     </main>
   );

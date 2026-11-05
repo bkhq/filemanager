@@ -50,7 +50,7 @@ Each task is a single line linking to its detail file. All detailed information 
 - [x] [**20261103-1530-change-events Change event hook for audit and host refresh**](20261103-1530-change-events.md) `P1`
 - [x] [**20261103-1530-pick-mode Pick mode (FilePicker) for attachments and imports**](20261103-1530-pick-mode.md) `P1`
 - [x] [**20261103-1530-quick-open Quick open (fuzzy file search)**](20261103-1530-quick-open.md) `P1`
-- [ ] [**20261103-1530-list-filters List filters and host metadata (starred, recent)**](20261103-1530-list-filters.md) `P2`
+- [x] [**20261103-1530-list-filters List filters and host metadata (starred, recent)**](20261103-1530-list-filters.md) `P2`
 - [x] [**20261103-0846-naming-conventions Naming conventions for shipped code**](20261103-0846-naming-conventions.md) `P1`
 - [x] [**20261103-0939-no-deprecated-apis Remove deprecated API usage and lint against it**](20261103-0939-no-deprecated-apis.md) `P1`
 - [x] [**20261103-0948-rename-dev-apps Rename demo apps to fm-api / fm-web**](20261103-0948-rename-dev-apps.md) `P1`

@@ -4,7 +4,9 @@ import type { FmUploadFile, FmUploadTask } from "../client/upload";
 import type { FmEntry, FmOpsRequest, FmSortKey } from "../core/schema";
 import type { FmFeatures } from "./features";
 import type { FmTreeTarget } from "./file-tree";
+import type { FmListFilters } from "./filters";
 import type { FmLabels } from "./labels";
+import type { FmMeta } from "./meta";
 import type { FmActionContext, FmFileAction, FmPlugin } from "./plugins";
 import type { FmClipboard, FmSelection, FmSelectMode } from "./state";
 import type { FmUndo } from "./undo";
@@ -25,9 +27,11 @@ import {
   EyeIcon,
   FilePlusIcon,
   FileSearchIcon,
+  FilterIcon,
   FolderOpenIcon,
   FolderPlusIcon,
   FolderUpIcon,
+  HistoryIcon,
   InfoIcon,
   LayoutGridIcon,
   ListIcon,
@@ -37,6 +41,7 @@ import {
   ScissorsIcon,
   SearchIcon,
   SettingsIcon,
+  StarIcon,
   Trash2Icon,
   UploadIcon,
   XIcon,
@@ -71,6 +76,9 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -85,10 +93,13 @@ import { ConfirmDeleteDialog, ManageDrivesDialog, NameDialog, UploadConflictDial
 import { clearDraft, clearDrafts } from "./drafts";
 import { filesFromDropzone, filesFromInput } from "./drop";
 import { maskEntry, resolveFeatures } from "./features";
-import { FileList } from "./file-list";
+import { EntryIcon, FileList } from "./file-list";
 import { FileTree } from "./file-tree";
+import { FilterChips, FilterMenuItems } from "./filter-menu";
+import { applyFilters, hasFilters, NO_FILTERS, parseFilters } from "./filters";
 import { IconButton } from "./icon-button";
 import { enLabels } from "./labels";
+import { metaKey, useMetaEntries } from "./meta";
 import { groupMountsByDriver, parseHidden, visibleMounts } from "./mount-visibility";
 import { PathBar } from "./path-bar";
 import { PreviewDialog } from "./preview-dialog";
@@ -144,6 +155,8 @@ export interface FileManagerProps {
   features?: Partial<FmFeatures>;
   /** Sidebar drive visibility and grouping; users can hide more via "Manage drives". */
   sidebar?: FmSidebarOptions;
+  /** Host-kept starred / recent entries; adds tree sections and a star action. */
+  meta?: FmMeta | undefined;
   /**
    * Pick mode, used by `FilePicker`: files are selected and confirmed instead of previewed.
    * @internal
@@ -205,6 +218,23 @@ function useStoredList(key: string) {
     localStorage.setItem(key, JSON.stringify(v));
   };
   return [value, change] as const;
+}
+
+/** List filters per mount, persisted in localStorage under `prefix:mount`. */
+function useStoredFilters(prefix: string) {
+  const [byMount, setByMount] = useState<Readonly<Record<string, FmListFilters>>>({});
+  const get = useCallback((m: string | undefined) => {
+    if (!m)
+      return NO_FILTERS;
+    return byMount[m] ?? (typeof localStorage !== "undefined"
+      ? parseFilters(localStorage.getItem(`${prefix}:${m}`))
+      : NO_FILTERS);
+  }, [byMount, prefix]);
+  const set = (m: string, f: FmListFilters) => {
+    setByMount(all => ({ ...all, [m]: f }));
+    localStorage.setItem(`${prefix}:${m}`, JSON.stringify(f));
+  };
+  return [get, set] as const;
 }
 
 /** Tree rows that the location opens: its mount and, outside the trash, every ancestor folder. */
@@ -371,7 +401,12 @@ export function FileManager(props: FileManagerProps) {
   const items = useMemo(() => (below
     ? search.data?.items
     : listing.data?.pages.flatMap(p => p.items)), [below, search.data, listing.data]);
-  const entries = useMemo(() => items?.map(e => maskEntry(e, features)) ?? [], [items, features]);
+  const [filtersFor, setFiltersFor] = useStoredFilters(`${storageKey}:filters`);
+  const filters = filtersFor(mount);
+  const changeFilters = (f: FmListFilters) => mount && setFiltersFor(mount, f);
+  const unfiltered = useMemo(() => items?.map(e => maskEntry(e, features)) ?? [], [items, features]);
+  const entries = useMemo(() => applyFilters(unfiltered, filters), [unfiltered, filters]);
+  const treeFilter = useCallback((m: string, es: readonly FmEntry[]) => applyFilters(es, filtersFor(m), { keepFolders: true }), [filtersFor]);
   const rawDir = listing.data?.pages[0]?.entry;
   const hasIgnored = listing.data?.pages.some(p => (p.ignored ?? 0) > 0) ?? false;
   const dir = useMemo(() => rawDir && maskEntry(rawDir, features), [rawDir, features]);
@@ -407,7 +442,7 @@ export function FileManager(props: FileManagerProps) {
     setOpenFile(picked);
   // Gone from its own, fully loaded folder: deleted or renamed elsewhere.
   if (openFile && !picked && openFile.mount === mount && dirname(openFile.path) === path && !inTrash
-    && listing.isSuccess && !listing.isPlaceholderData && !listing.hasNextPage && !query.trim() && !byPath.has(openFile.path)) {
+    && listing.isSuccess && !listing.isPlaceholderData && !listing.hasNextPage && !query.trim() && !hasFilters(filters) && !byPath.has(openFile.path)) {
     setOpenFile(undefined);
   }
   const paneFile = explorer && !inTrash
@@ -416,6 +451,75 @@ export function FileManager(props: FileManagerProps) {
   useEffect(() => {
     paneDirtyRef.current = false;
   }, [paneFile?.path]);
+
+  // Host metadata: starred / recent lists, and opened files reported as recent.
+  // Host switches (`features`) decide what exists; the explorer menu lets users hide the sections.
+  const meta = useMemo(() => props.meta && {
+    ...props.meta,
+    ...(features.starred
+      ? {}
+      : { starred: undefined, setStarred: undefined }),
+    ...(features.recent
+      ? {}
+      : { recent: undefined, touch: undefined }),
+  }, [props.meta, features.starred, features.recent]);
+  const [showStarred, setShowStarred] = useStoredChoice(`${storageKey}:show-starred`, ["on", "off"], "on");
+  const [showRecent, setShowRecent] = useStoredChoice(`${storageKey}:show-recent`, ["on", "off"], "on");
+  const starred = useMetaEntries(client, meta, "starred");
+  const recent = useMetaEntries(client, meta, "recent");
+  const isStarred = (e: FmEntry) => !!starred.data?.some(s => s.mount === e.mount && s.path === e.path);
+  const toggleStar = (e: FmEntry) => {
+    void meta?.setStarred?.({ mount: e.mount, path: e.path }, !isStarred(e)).then(
+      () => qc.invalidateQueries({
+        queryKey: metaKey(client, "starred"),
+      }),
+      (err: unknown) => setError(err instanceof Error
+        ? err.message
+        : String(err)),
+    );
+  };
+  const openedFile = paneFile ?? preview;
+  const touchRef = useRef(meta?.touch);
+  touchRef.current = meta?.touch;
+  const openedMount = openedFile?.mount;
+  const openedPath = openedFile?.path;
+  useEffect(() => {
+    if (!openedMount || !openedPath || !touchRef.current)
+      return;
+    touchRef.current({ mount: openedMount, path: openedPath });
+    void qc.invalidateQueries({
+      queryKey: metaKey(client, "recent"),
+    });
+  }, [openedMount, openedPath, qc, client]);
+  const treeSections = useMemo(() => [
+    ...(meta?.starred && showStarred === "on"
+      ? [
+          {
+            id: "starred",
+            label: labels.starred,
+            icon: <StarIcon className="text-amber-500" />,
+            entries: starred.data ?? [],
+          },
+        ]
+      : []),
+    ...(meta?.recent && showRecent === "on"
+      ? [
+          {
+            id: "recent",
+            label: labels.recent,
+            icon: <HistoryIcon className="text-muted-foreground" />,
+            entries: recent.data ?? [],
+          },
+        ]
+      : []),
+  ], [
+    meta,
+    showStarred,
+    showRecent,
+    labels,
+    starred.data,
+    recent.data,
+  ]);
   const mutations = useFmMutations(client, mount ?? "");
   const canWrite = !!dir?.caps.write;
   const canUpload = canWrite && features.upload;
@@ -939,6 +1043,9 @@ export function FileManager(props: FileManagerProps) {
         ? <FolderOpenIcon />
         : <EyeIcon />, () => open(one), { shortcut: KEYS.open }),
       menuItem("download", labels.download, <DownloadIcon />, () => download(targets), { show: features.download }),
+      one && menuItem("star", isStarred(one)
+        ? labels.removeStar
+        : labels.addStar, <StarIcon />, () => toggleStar(one), { show: !!meta?.setStarred && !inTrash }),
       one?.kind === "dir" && !inTrash && hereMenu({ mount: one.mount, path: one.path }, one.caps.write),
       <ContextMenuSeparator key="s1" />,
       menuItem("cut", labels.cut, <ScissorsIcon />, () => copyToClipboard("cut", targets), {
@@ -1116,9 +1223,28 @@ export function FileManager(props: FileManagerProps) {
                 </DropdownMenuItem>
               )}
               {(canUpload || canPaste || canQuickOpen) && <DropdownMenuSeparator />}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <FilterIcon />
+                  {labels.filter}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-48">
+                  <FilterMenuItems filters={filters} onChange={changeFilters} labels={labels} />
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
               <DropdownMenuCheckboxItem closeOnClick checked={showHidden} onCheckedChange={on => setHiddenFiles(on ? "on" : "off")}>
                 {labels.showHiddenFiles}
               </DropdownMenuCheckboxItem>
+              {meta?.starred && (
+                <DropdownMenuCheckboxItem closeOnClick checked={showStarred === "on"} onCheckedChange={on => setShowStarred(on ? "on" : "off")}>
+                  {labels.showStarred}
+                </DropdownMenuCheckboxItem>
+              )}
+              {meta?.recent && (
+                <DropdownMenuCheckboxItem closeOnClick checked={showRecent === "on"} onCheckedChange={on => setShowRecent(on ? "on" : "off")}>
+                  {labels.showRecent}
+                </DropdownMenuCheckboxItem>
+              )}
               {(hasIgnored || !showIgnored) && (
                 <DropdownMenuCheckboxItem closeOnClick checked={showIgnored} onCheckedChange={on => setIgnoredFiles(on ? "on" : "off")}>
                   {labels.showIgnoredFiles}
@@ -1128,6 +1254,7 @@ export function FileManager(props: FileManagerProps) {
           </DropdownMenu>
         </div>
       )}
+      {explorer && <FilterChips filters={filters} onChange={changeFilters} labels={labels} />}
       <div ref={treeScrollRef} className="min-h-0 flex-1 overflow-auto [scrollbar-width:thin]">
         {shownMounts && (
           <ContextMenu>
@@ -1171,6 +1298,8 @@ export function FileManager(props: FileManagerProps) {
                 onManage={() => setDialog({ kind: "manageDrives" })}
                 scrollRef={treeScrollRef}
                 revealTick={revealTick}
+                filterEntries={treeFilter}
+                sections={treeSections}
                 onContextTarget={(target) => {
                   treeTargetRef.current = target;
                   setTreeTarget(target);
@@ -1287,6 +1416,23 @@ export function FileManager(props: FileManagerProps) {
                                             ))
                                           : shownMounts.map(m => <DropdownMenuRadioItem key={m.id} value={m.id} closeOnClick>{m.label}</DropdownMenuRadioItem>)}
                                       </DropdownMenuRadioGroup>
+                                      {treeSections.map(sec => (
+                                        <DropdownMenuSub key={sec.id}>
+                                          <DropdownMenuSubTrigger>
+                                            {sec.icon}
+                                            {sec.label}
+                                          </DropdownMenuSubTrigger>
+                                          <DropdownMenuSubContent className="max-h-80 w-64 overflow-auto">
+                                            {sec.entries.map(e => (
+                                              <DropdownMenuItem key={`${e.mount}:${e.path}`} title={`${e.mount}:${e.path}`} onClick={() => pickQuickOpen(e)}>
+                                                <EntryIcon entry={e} />
+                                                <span className="truncate">{e.name}</span>
+                                              </DropdownMenuItem>
+                                            ))}
+                                          </DropdownMenuSubContent>
+                                        </DropdownMenuSub>
+                                      ))}
+                                      {treeSections.length > 0 && <DropdownMenuSeparator />}
                                       {currentMount?.trash && features.trash && (
                                         <>
                                           <DropdownMenuSeparator />
@@ -1415,6 +1561,12 @@ export function FileManager(props: FileManagerProps) {
                           {canNewFile && <IconButton label={labels.newFile} onClick={() => setDialog({ kind: "newFile" })}><FilePlusIcon /></IconButton>}
                           {canUpload && uploadMenu}
                           <DropdownMenu>
+                            <DropdownMenuTrigger render={<IconButton label={labels.filter} aria-pressed={hasFilters(filters)} />}><FilterIcon /></DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                              <FilterMenuItems filters={filters} onChange={changeFilters} labels={labels} />
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                          <DropdownMenu>
                             {narrow
                               ? <DropdownMenuTrigger render={<IconButton label={labels.sortBy} />}><ArrowUpDownIcon /></DropdownMenuTrigger>
                               : <DropdownMenuTrigger render={<Button size="sm" variant="ghost" />}>{labels.sortBy}</DropdownMenuTrigger>}
@@ -1457,6 +1609,8 @@ export function FileManager(props: FileManagerProps) {
                 </IconButton>
               )}
             </header>
+
+            {!explorer && !inTrash && <FilterChips filters={filters} onChange={changeFilters} labels={labels} />}
 
             {shownError && (
               <div role="alert" className="flex items-center gap-2 border-b bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
@@ -1580,9 +1734,16 @@ export function FileManager(props: FileManagerProps) {
                                 ? search.isPending
                                 : listing.isPending)
                                 ? labels.loading
-                                : (query.trim()
-                                    ? labels.noMatches
-                                    : labels.emptyFolder)}
+                                : (unfiltered.length > 0
+                                    ? (
+                                        <span className="flex flex-col items-center gap-2">
+                                          {labels.noFilterMatches}
+                                          <Button size="sm" variant="outline" onClick={() => changeFilters(NO_FILTERS)}>{labels.clearFilters}</Button>
+                                        </span>
+                                      )
+                                    : query.trim()
+                                      ? labels.noMatches
+                                      : labels.emptyFolder)}
                             </div>
                           )}
                         />

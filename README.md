@@ -90,6 +90,31 @@ Dragging a file row onto the desktop (Chromium) downloads it from its read URL
 without the client's `headers`, so it only works when the API authenticates by
 cookie or not at all.
 
+### Starred and recent
+
+The component keeps no per-user data. Hosts that have it (their own database,
+or `localStorage` as in `apps/fm-web`) pass `meta`; each part is optional and
+its UI appears only when provided:
+
+```tsx
+import type { FmMeta } from "@/fm/react/meta";
+
+const meta: FmMeta = {
+  starred: () => api.starred(),                   // FmRef[] = { mount, path }[]
+  setStarred: (ref, on) => api.setStarred(ref, on), // "Add to starred" in context menus
+  recent: () => api.recent(),
+  touch: ref => api.opened(ref),                  // called when a file is opened
+};
+
+<FileManager baseUrl="/api/fm" meta={meta} />;
+```
+
+Starred / Recent show as tree sections (and in the Storage menu of the single
+layout); up to 50 entries each, resolved with `stat`. Hosts switch either off
+with `features={{ starred: false }}` / `{ recent: false }`; users hide the
+sections from the explorer's More menu (remembered per browser). Type / modified filters
+work on the loaded entries of a folder (500 per page).
+
 ### Plugins
 
 Optional file-type support is shipped as plugins: extra previewers and

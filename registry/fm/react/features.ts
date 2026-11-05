@@ -19,6 +19,10 @@ export interface FmFeatures {
   details: boolean;
   /** Show the trash view of mounts that have one. */
   trash: boolean;
+  /** Starred section and star action, when the host passes `meta.starred`. */
+  starred: boolean;
+  /** Recent section and recording opened files, when the host passes `meta.recent`. */
+  recent: boolean;
 }
 
 export const ALL_FEATURES: FmFeatures = {
@@ -34,6 +38,8 @@ export const ALL_FEATURES: FmFeatures = {
   search: true,
   details: true,
   trash: true,
+  starred: true,
+  recent: true,
 };
 
 /** Browse, preview, search and download only. */

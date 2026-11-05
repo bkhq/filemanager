@@ -46,7 +46,7 @@ export function EntryIcon({ entry, className }: { entry: Pick<FmEntry, "kind" | 
 }
 
 export interface FileListProps {
-  entries: FmEntry[];
+  entries: readonly FmEntry[];
   view: "list" | "grid";
   /** Narrow layout: hide the modified column; a tap opens entries. */
   compact?: boolean;

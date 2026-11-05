@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { Buffer } from "node:buffer";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, utimes, writeFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 
 const row = (page: Page, path: string) => page.locator(`[data-path="${path}"]`);
@@ -46,12 +46,20 @@ async function contextAction(page: Page, path: string, action: string) {
 test.describe.configure({ mode: "serial" });
 
 // Most tests act on the file list, which the split layout replaces with the preview.
+// The demo's starred / recent lists stay off unless a test turns them on (withMeta).
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     if (!localStorage.getItem("fm:layout"))
       localStorage.setItem("fm:layout", "single");
+    if (!localStorage.getItem("fm-demo:meta-off"))
+      localStorage.setItem("fm-demo:meta-off", "1");
   });
 });
+
+/** Turns on the demo's localStorage starred / recent lists for this test. */
+async function withMeta(page: Page) {
+  await page.addInitScript(() => localStorage.setItem("fm-demo:meta-off", "0"));
+}
 
 test("browses folders with the list and breadcrumb", async ({ page }) => {
   await openMount(page, "Local disk");
@@ -1333,6 +1341,8 @@ test("the tree renders only a window of a large folder", async ({ page }) => {
   await tree.getByRole("treeitem", { name: "big-tree-e2e", exact: true }).click();
   await expect(tree.getByRole("treeitem", { name: "f0000.txt", exact: true })).toBeVisible();
   expect(await tree.getByRole("treeitem").count()).toBeLessThan(200);
+  // Every page (500 entries each) is in: 2 000 rows of 28 px.
+  await expect.poll(() => tree.evaluate(el => el.getBoundingClientRect().height)).toBeGreaterThan(2000 * 28);
   await tree.getByRole("treeitem", { name: "f0000.txt", exact: true }).getByRole("button").focus();
   await page.keyboard.press("End");
   await expect(tree.getByRole("treeitem", { name: "Read-only view", exact: true }).getByRole("button")).toBeFocused();
@@ -1348,4 +1358,129 @@ test("shows an error with retry when the server is unreachable", async ({ page }
   await alert.getByRole("button", { name: "Retry" }).click();
   await expect(row(page, "/notes")).toBeVisible();
   await expect(alert).toHaveCount(0);
+});
+
+async function seedFilterFolder(page: Page) {
+  await page.request.post("/api/fm/m/local/mkdir", {
+    data: { path: "/filter-e2e" },
+  });
+  for (const name of [
+    "pic.png",
+    "main.ts",
+    "data.csv",
+    "old.ts",
+  ])
+    await page.request.put(`/api/fm/m/local/write?path=${encodeURIComponent(`/filter-e2e/${name}`)}&conflict=overwrite`, { data: name });
+  await page.request.post("/api/fm/m/local/mkdir", {
+    data: { path: "/filter-e2e/sub" },
+  });
+  const old = new Date("2020-01-01T00:00:00Z");
+  await utimes(".tmp/e2e-root/filter-e2e/old.ts", old, old);
+}
+
+test("filters the list by type and modified date", async ({ page }) => {
+  await seedFilterFolder(page);
+  await openMount(page, "Local disk");
+  await row(page, "/filter-e2e").dblclick();
+  await expect(row(page, "/filter-e2e/old.ts")).toBeVisible();
+  await page.getByRole("button", { name: "Filter", exact: true }).click();
+  await page.getByRole("menuitemcheckbox", { name: "Code and text" }).click();
+  await page.keyboard.press("Escape");
+  await expect(row(page, "/filter-e2e/main.ts")).toBeVisible();
+  await expect(row(page, "/filter-e2e/old.ts")).toBeVisible();
+  await expect(row(page, "/filter-e2e/pic.png")).toHaveCount(0);
+  await expect(row(page, "/filter-e2e/sub")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Filter", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "Last 30 days" }).click();
+  await page.keyboard.press("Escape");
+  await expect(row(page, "/filter-e2e/old.ts")).toHaveCount(0);
+  const chips = page.getByRole("group", { name: "Filter" });
+  await expect(chips).toContainText("Code and text");
+  await chips.getByRole("button", { name: "Remove filter: Code and text" }).click();
+  await expect(row(page, "/filter-e2e/pic.png")).toBeVisible();
+  await expect(row(page, "/filter-e2e/sub")).toBeVisible();
+
+  // Remembered per mount across reloads.
+  await page.reload();
+  await expect(chips).toContainText("Last 30 days");
+  await page.getByRole("button", { name: "Filter", exact: true }).click();
+  await page.getByRole("menuitemcheckbox", { name: "Archives" }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("No items match the filters")).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters" }).first().click();
+  await expect(chips).toHaveCount(0);
+  await expect(row(page, "/filter-e2e/old.ts")).toBeVisible();
+});
+
+test("filters tree file rows and keeps folders", async ({ page }) => {
+  await seedFilterFolder(page);
+  await openTreeMount(page, "Local disk");
+  const tree = page.getByRole("tree");
+  const item = (name: string) => tree.getByRole("treeitem", { name, exact: true });
+  await item("filter-e2e").click();
+  await expect(item("main.ts")).toBeVisible();
+  await page.getByRole("toolbar", { name: "Folder actions" }).locator("..").getByRole("button", { name: "More" }).click();
+  await page.getByRole("menuitem", { name: "Filter" }).click();
+  await page.getByRole("menuitemcheckbox", { name: "Images" }).click();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await expect(item("pic.png")).toBeVisible();
+  await expect(item("main.ts")).toHaveCount(0);
+  await expect(item("sub")).toBeVisible();
+  await page.getByRole("group", { name: "Filter" }).getByRole("button", { name: "Clear filters" }).click();
+  await expect(item("main.ts")).toBeVisible();
+});
+
+test("stars files and lists recent ones through host meta", async ({ page }) => {
+  await withMeta(page);
+  await openTreeMount(page, "Local disk");
+  const tree = page.getByRole("tree");
+  const item = (name: string) => tree.getByRole("treeitem", { name, exact: true });
+  // The drive row itself (host lists repeat drive and folder names one level down).
+  const drive = tree.locator("[role=treeitem][aria-level='1'][aria-label='Local disk']");
+  const listed = tree.locator("[role=treeitem][aria-label='todo.txt, Local disk/notes']");
+  await expect(item("Starred")).toBeVisible();
+  await item("notes").click();
+  await item("todo.txt").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Add to starred" }).click();
+  // Collapse the drive so the host lists stay inside the rendered window.
+  await drive.getByRole("button").click();
+  await expect(drive).toHaveAttribute("aria-expanded", "false");
+  // Starred and Recent each list todo.txt now (recent from opening it via the right-click),
+  // as a tree: section, drive, folder, file.
+  await expect(listed).toHaveCount(2);
+  await expect(listed.first()).toHaveAttribute("aria-level", "4");
+  const levels = await tree.getByRole("treeitem").evaluateAll(rows => rows.slice(0, 4).map(r => `${r.getAttribute("aria-level")} ${r.getAttribute("aria-label")}`));
+  expect(levels).toEqual([
+    "1 Starred",
+    "2 Local disk",
+    "3 notes",
+    "4 todo.txt, Local disk/notes",
+  ]);
+  await listed.first().click();
+  await expect(page.locator(".cm-content")).toContainText("try rename");
+  await drive.getByRole("button").click();
+  await drive.getByRole("button").click();
+  await expect(drive).toHaveAttribute("aria-expanded", "false");
+  await listed.first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Remove from starred" }).click();
+  await expect(listed).toHaveCount(1);
+});
+
+test("hides the starred and recent sections from the explorer menu", async ({ page }) => {
+  await withMeta(page);
+  await openTreeMount(page, "Local disk");
+  const tree = page.getByRole("tree");
+  const more = page.getByRole("toolbar", { name: "Folder actions" }).locator("..").getByRole("button", { name: "More" });
+  await expect(tree.getByRole("treeitem", { name: "Starred", exact: true })).toBeVisible();
+  await more.click();
+  await page.getByRole("menuitemcheckbox", { name: "Show starred" }).click();
+  await expect(tree.getByRole("treeitem", { name: "Starred", exact: true })).toHaveCount(0);
+  await expect(tree.getByRole("treeitem", { name: "Recent", exact: true })).toBeVisible();
+  await page.reload();
+  await expect(tree.getByRole("treeitem", { name: "Recent", exact: true })).toBeVisible();
+  await expect(tree.getByRole("treeitem", { name: "Starred", exact: true })).toHaveCount(0);
+  await more.click();
+  await expect(page.getByRole("menuitemcheckbox", { name: "Show starred" })).toHaveAttribute("aria-checked", "false");
 });

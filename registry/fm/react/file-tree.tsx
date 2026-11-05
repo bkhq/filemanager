@@ -7,6 +7,7 @@ import { ChevronRightIcon, FolderIcon, HardDriveIcon, LockIcon, SettingsIcon, Tr
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useListing } from "../client/hooks";
+import { dirname } from "../core/path";
 import { setDownloadUrl } from "./drop";
 import { DRAG_TYPE, EntryIcon } from "./file-list";
 import { groupMountsByDriver } from "./mount-visibility";
@@ -38,6 +39,16 @@ interface TreeProps {
   onDropEntries?: ((paths: string[], mount: string, folder: string, from?: string) => void) | undefined;
   /** Hidden / ignored filter applied to every folder listing. */
   filter?: FmListFilter | undefined;
+  /** Narrows the file rows of a folder (folders always stay). */
+  filterEntries?: ((mount: string, entries: readonly FmEntry[]) => readonly FmEntry[]) | undefined;
+}
+
+/** A host list shown above the drives (starred, recent). */
+export interface FmTreeSection {
+  id: string;
+  label: string;
+  icon: ReactNode;
+  entries: readonly FmEntry[];
 }
 
 /** Expansion key of a folder row (`mount:path`); a mount row uses its root `/`. */
@@ -56,9 +67,13 @@ const MOUNT_TYPE = "application/x-fm-mount";
 /** One visible row of the flattened tree. */
 type Row
   = | { kind: "group"; key: string; depth: number; driver: string; open: boolean }
+    | { kind: "section"; key: string; depth: number; section: FmTreeSection; open: boolean }
+    /** Drive or folder that only groups the entries of a host list. */
+    | { kind: "node"; key: string; depth: number; label: string; icon: "drive" | "lock" | "folder"; open: boolean }
     | { kind: "mount"; key: string; depth: number; info: FmMountInfo; open: boolean }
-    | { kind: "dir"; key: string; depth: number; entry: FmEntry; open: boolean }
-    | { kind: "file"; key: string; depth: number; entry: FmEntry }
+    /** `where` (drive and parent folder) is set on rows inside a host list. */
+    | { kind: "dir"; key: string; depth: number; entry: FmEntry; open: boolean; where?: string }
+    | { kind: "file"; key: string; depth: number; entry: FmEntry; where?: string }
     | { kind: "trash"; key: string; depth: number; mount: string };
 
 /** Loads every page of an open folder and reports its entries; renders nothing. */
@@ -173,8 +188,11 @@ export function FileTree(props: TreeProps & {
   scrollRef: RefObject<HTMLElement | null>;
   /** Bumping it scrolls the selected row (or the current folder) into view once it is rendered. */
   revealTick?: number;
+  /** Host lists (starred, recent) above the drives. */
+  sections?: readonly FmTreeSection[] | undefined;
 }) {
   const t = props;
+  const { filterEntries, sections } = props;
   const [listings, setListings] = useState<ReadonlyMap<string, FmEntry[]>>(() => new Map());
   const onEntries = useCallback((key: string, entries: FmEntry[]) => setListings(m => new Map(m).set(key, entries)), []);
   const [closedGroups, setClosedGroups] = useState<ReadonlySet<string>>(() => new Set());
@@ -182,30 +200,104 @@ export function FileTree(props: TreeProps & {
   const { rows, open } = useMemo(() => {
     const rows: Row[] = [];
     const open: { mount: string; path: string }[] = [];
-    const folder = (mount: string, path: string, depth: number) => {
+    const mountLabel = (mount: string) => props.mounts.find(m => m.id === mount)?.label ?? mount;
+    const whereOf = (e: FmEntry) => `${mountLabel(e.mount)}${dirname(e.path) === "/"
+      ? ""
+      : dirname(e.path)}`;
+    /**
+     * Pushes the row of an entry and returns whether it is an open folder whose children
+     * follow. `prefix` keeps keys of host-list copies apart from the drive rows.
+     */
+    const pushEntry = (entry: FmEntry, depth: number, prefix: string) => {
+      const key = treeKey(entry.mount, entry.path);
+      const where = prefix
+        ? {
+            where: whereOf(entry),
+          }
+        : {};
+      if (entry.kind !== "dir") {
+        rows.push({
+          kind: "file",
+          key: prefix + key,
+          depth,
+          entry,
+          ...where,
+        });
+        return false;
+      }
+      const isOpen = t.expanded.has(key);
+      rows.push({
+        kind: "dir",
+        key: prefix + key,
+        depth,
+        entry,
+        open: isOpen,
+        ...where,
+      });
+      return isOpen;
+    };
+    const folder = (mount: string, path: string, depth: number, prefix = "") => {
       open.push({ mount, path });
-      for (const entry of listings.get(treeKey(mount, path)) ?? []) {
-        if (entry.kind === "dir") {
-          const key = treeKey(mount, entry.path);
-          const isOpen = t.expanded.has(key);
-          rows.push({
-            kind: "dir",
-            key,
-            depth,
-            entry,
-            open: isOpen,
-          });
-          if (isOpen)
-            folder(mount, entry.path, depth + 1);
+      const entries = listings.get(treeKey(mount, path)) ?? [];
+      for (const entry of filterEntries?.(mount, entries) ?? entries) {
+        if (pushEntry(entry, depth, prefix))
+          folder(mount, entry.path, depth + 1, prefix);
+      }
+    };
+    /**
+     * Host-list entries under `base` as a tree: sub-folders first (single-child chains
+     * compacted to "a/b" like VS Code), then the entries that live directly in `base`.
+     */
+    const listTree = (entries: readonly FmEntry[], base: string, depth: number, prefix: string) => {
+      const below = (e: FmEntry) => dirname(e.path) !== base;
+      const sub = new Map<string, FmEntry[]>();
+      for (const e of entries.filter(below)) {
+        const rest = dirname(e.path).slice(base === "/"
+          ? 1
+          : base.length + 1);
+        const seg = rest.split("/")[0]!;
+        sub.set(seg, [
+          ...sub.get(seg) ?? [],
+          e,
+        ]);
+      }
+      for (const [seg, inside] of [...sub].sort(([a], [b]) => a.localeCompare(b))) {
+        let dir = base === "/"
+          ? `/${seg}`
+          : `${base}/${seg}`;
+        let label = seg;
+        // Compact: one sub-folder and nothing directly inside.
+        for (;;) {
+          const segs = new Set(inside.map(e => dirname(e.path) === dir
+            ? ""
+            : dirname(e.path).slice(dir.length + 1).split("/")[0]!));
+          const only = [...segs][0];
+          if (segs.size !== 1 || !only)
+            break;
+          dir = `${dir}/${only}`;
+          label = `${label}/${only}`;
         }
-        else {
-          rows.push({
-            kind: "file",
-            key: treeKey(mount, entry.path),
-            depth,
-            entry,
-          });
-        }
+        const key = `${prefix}${dir}`;
+        const isOpen = !closedGroups.has(key);
+        rows.push({
+          kind: "node",
+          key,
+          depth,
+          label,
+          icon: "folder",
+          open: isOpen,
+        });
+        if (isOpen)
+          listTree(inside, dir, depth + 1, prefix);
+      }
+      const direct = entries.filter(e => !below(e)).sort((a, b) => (a.kind === b.kind
+        ? a.name.localeCompare(b.name)
+        : (a.kind === "dir"
+            ? -1
+            : 1)));
+      for (const e of direct) {
+        if (pushEntry(e, depth, `${prefix}|`))
+          folder(e.mount, e.path, depth + 1, `${prefix}|`);
       }
     };
     const mountRows = (info: FmMountInfo, depth: number) => {
@@ -230,6 +322,43 @@ export function FileTree(props: TreeProps & {
         });
       }
     };
+    for (const section of sections ?? []) {
+      const isOpen = !closedGroups.has(`section:${section.id}`);
+      rows.push({
+        kind: "section",
+        key: `section:${section.id}`,
+        depth: 0,
+        section,
+        open: isOpen,
+      });
+      if (!isOpen)
+        continue;
+      // Drive, then folders, then the entries themselves.
+      const byMount = new Map<string, FmEntry[]>();
+      for (const e of section.entries) {
+        byMount.set(e.mount, [
+          ...byMount.get(e.mount) ?? [],
+          e,
+        ]);
+      }
+      for (const [mount, entries] of byMount) {
+        const key = `section:${section.id}:${mount}`;
+        const nodeOpen = !closedGroups.has(key);
+        const info = props.mounts.find(m => m.id === mount);
+        rows.push({
+          kind: "node",
+          key,
+          depth: 1,
+          label: mountLabel(mount),
+          icon: info && !info.caps.write
+            ? "lock"
+            : "drive",
+          open: nodeOpen,
+        });
+        if (nodeOpen)
+          listTree(entries, "/", 2, `${key}:`);
+      }
+    }
     if (props.group === "driver") {
       for (const g of groupMountsByDriver(props.mounts)) {
         const isOpen = !closedGroups.has(g.driver);
@@ -253,6 +382,8 @@ export function FileTree(props: TreeProps & {
     t.expanded,
     props.group,
     props.mounts,
+    sections,
+    filterEntries,
     closedGroups,
   ]);
 
@@ -267,8 +398,8 @@ export function FileTree(props: TreeProps & {
   const isActive = (row: Row) => {
     switch (row.kind) {
       case "mount": return t.mount === row.info.id && !t.inTrash && t.path === "/";
-      case "dir": return t.mount === row.entry.mount && !t.inTrash && t.path === row.entry.path;
-      case "file": return t.mount === row.entry.mount && !t.inTrash && t.selected === row.entry.path;
+      case "dir": return !row.where && t.mount === row.entry.mount && !t.inTrash && t.path === row.entry.path;
+      case "file": return !row.where && t.mount === row.entry.mount && !t.inTrash && t.selected === row.entry.path;
       case "trash": return t.mount === row.mount && t.inTrash;
       default: return false;
     }
@@ -307,15 +438,21 @@ export function FileTree(props: TreeProps & {
     focus();
   };
   const setOpen = (row: Row, isOpen: boolean) => {
-    if (row.kind === "group") {
+    if (row.kind === "group" || row.kind === "section" || row.kind === "node") {
+      const id = row.kind === "group"
+        ? row.driver
+        : row.key;
       setClosedGroups((s) => {
         const next = new Set(s);
         if (isOpen)
-          next.delete(row.driver);
+          next.delete(id);
         else
-          next.add(row.driver);
+          next.add(id);
         return next;
       });
+    }
+    else if (row.kind === "dir") {
+      t.onExpandedChange(treeKey(row.entry.mount, row.entry.path), isOpen);
     }
     else {
       t.onExpandedChange(row.key, isOpen);
@@ -376,6 +513,30 @@ export function FileTree(props: TreeProps & {
           </Item>
         );
       }
+      case "section":
+        return (
+          <Item key={row.key} row={at} label={row.section.label} active={false} expanded={row.open}>
+            <Button variant="ghost" size="sm" className={ROW} onClick={() => setOpen(row, !row.open)}>
+              {chevron(row.open)}
+              {row.section.icon}
+              <span className="truncate">{row.section.label}</span>
+            </Button>
+          </Item>
+        );
+      case "node":
+        return (
+          <Item key={row.key} row={at} label={row.label} active={false} expanded={row.open}>
+            <Button variant="ghost" size="sm" className={ROW} onClick={() => setOpen(row, !row.open)}>
+              {chevron(row.open)}
+              {row.icon === "folder"
+                ? <FolderIcon className="text-sky-500" />
+                : row.icon === "lock"
+                  ? <LockIcon className="text-muted-foreground" />
+                  : <HardDriveIcon className="text-muted-foreground" />}
+              <span className="truncate">{row.label}</span>
+            </Button>
+          </Item>
+        );
       case "mount": {
         const { info } = row;
         const readOnly = !info.caps.write;
@@ -416,7 +577,9 @@ export function FileTree(props: TreeProps & {
           <Item
             key={row.key}
             row={at}
-            label={entry.name}
+            label={row.where
+              ? `${entry.name}, ${row.where}`
+              : entry.name}
             active={active}
             expanded={row.open}
             drag={entry.caps.move || entry.caps.copy
@@ -447,7 +610,9 @@ export function FileTree(props: TreeProps & {
           <Item
             key={row.key}
             row={at}
-            label={entry.name}
+            label={row.where
+              ? `${entry.name}, ${row.where}`
+              : entry.name}
             active={active}
             drag={entry.caps.move || entry.caps.copy
               ? {

@@ -27,6 +27,11 @@ describe("features", () => {
     expect(resolveFeatures(true, { download: false, rename: true })).toMatchObject({ download: false, rename: true, delete: false });
   });
 
+  it("keeps starred and recent in view-only and lets hosts turn them off", () => {
+    expect(resolveFeatures(true)).toMatchObject({ starred: true, recent: true });
+    expect(resolveFeatures(false, { starred: false })).toMatchObject({ starred: false, recent: true });
+  });
+
   it("masks entry caps", () => {
     expect(maskEntry(entry, VIEW_ONLY_FEATURES).caps).toEqual({
       read: true,

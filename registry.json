@@ -353,6 +353,21 @@
           "path": "registry/fm/react/upload-panel.tsx",
           "type": "registry:file",
           "target": "~/src/fm/react/upload-panel.tsx"
+        },
+        {
+          "path": "registry/fm/react/filters.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/filters.ts"
+        },
+        {
+          "path": "registry/fm/react/filter-menu.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/filter-menu.tsx"
+        },
+        {
+          "path": "registry/fm/react/meta.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/meta.ts"
         }
       ]
     },

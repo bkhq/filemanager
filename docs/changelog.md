@@ -224,3 +224,19 @@ A Ctrl+V keydown handler that calls `preventDefault` suppresses the browser `pas
 ## 2026-11-05 01:55 [progress]
 
 When the mounts request fails (API down), `<FileManager />` shows "Cannot reach the file server" with the error and a Retry button instead of loading forever.
+
+## 2026-11-05 03:30 [progress]
+
+List filters and host metadata delivered (20261105-0210-list-filters): type / modified filters for the list and tree (chips, per-mount persistence), optional `meta` prop for starred / recent (tree sections, star action, recent on open); demo implements it on localStorage.
+
+## 2026-11-05 03:30 [pitfall]
+
+With a virtualized tree, e2e assertions on rows far from the scroll position fail (rows are not in the DOM); collapse or scroll first. Folders loading several pages keep growing after the first rows appear, so wait for the full height before keyboard End.
+
+## 2026-11-05 03:50 [progress]
+
+Starred / recent are configurable: `features.starred` / `features.recent` (host, default on, kept in view-only) drop the section and its actions; "Show starred" / "Show recent" in the explorer's More menu hide the sections per user (`<storageKey>:show-starred|recent`).
+
+## 2026-11-05 04:20 [progress]
+
+Starred / Recent render as trees: section → drive → folders (single-child chains compacted to `a/b`) → entries; starred folders expand into their contents like drive rows. Rows inside host lists are never "active" and their accessible name carries the location. e2e keeps the demo meta off by default (`fm-demo:meta-off`) and turns it on per test, so host-list rows do not duplicate drive rows elsewhere.
