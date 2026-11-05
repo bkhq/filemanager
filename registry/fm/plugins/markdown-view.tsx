@@ -5,6 +5,7 @@ import { BookOpenIcon, Columns2Icon, FileCodeIcon } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { Streamdown } from "streamdown";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { IconButton } from "../react/icon-button";
 import { LazyTextPreview } from "../react/previewers";
 
@@ -65,9 +66,9 @@ export function MarkdownPreview(props: PreviewProps) {
         />
       </div>
       {mode !== "source" && (
-        <div className={cn("h-full min-w-0 flex-1 overflow-auto", mode === "side" && "border-l")} data-fm-markdown-preview="">
+        <ScrollArea className={cn("h-full min-w-0 flex-1", mode === "side" && "border-l")} data-fm-markdown-preview="">
           <Rendered text={text} />
-        </div>
+        </ScrollArea>
       )}
     </div>
   );

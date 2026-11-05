@@ -17,8 +17,10 @@ import {
   FolderIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { dirname } from "../core/path";
 import { setDownloadUrl } from "./drop";
+import { viewportRef } from "./scroll";
 import { formatSize, kindOf } from "./state";
 
 export const DRAG_TYPE = "application/x-fm-paths";
@@ -247,10 +249,12 @@ interface Marquee {
 
 /** Virtualized list / grid of entries. */
 export function FileList(p: FileListProps) {
+  // The ScrollArea viewport scrolls; the content box below it is measured for the grid columns.
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   useEffect(() => {
-    const el = scrollRef.current;
+    const el = contentRef.current;
     if (!el)
       return;
     const ro = new ResizeObserver(([e]) => setWidth(e?.contentRect.width ?? 0));
@@ -375,55 +379,57 @@ export function FileList(p: FileListProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col" role="grid" aria-multiselectable>
       {p.view === "list" && <SortHeader p={p} />}
-      <div
-        ref={scrollRef}
-        className="relative min-h-0 flex-1 overflow-auto p-1"
-        onClick={() => {
+      <ScrollArea className="min-h-0 flex-1" ref={viewportRef(scrollRef)}>
+        <div
+          ref={contentRef}
+          className="relative flex min-h-full flex-col p-1"
+          onClick={() => {
           // The click that ends a marquee keeps its selection.
-          if (!draggedRef.current)
-            p.onClearSelection();
-          draggedRef.current = false;
-        }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endMarquee}
-        onPointerCancel={endMarquee}
-      >
-        {marquee?.active && (
-          <div
-            data-fm-marquee=""
-            className="pointer-events-none absolute z-10 border border-primary bg-primary/10"
-            style={{
-              left: Math.min(marquee.x0, marquee.x1),
-              top: Math.min(marquee.y0, marquee.y1),
-              width: Math.abs(marquee.x1 - marquee.x0),
-              height: Math.abs(marquee.y1 - marquee.y0),
-            }}
-          />
-        )}
-        {p.entries.length === 0
-          ? p.empty
-          : (
-              <div
-                className="relative w-full"
-                style={{
-                  height: virtualizer.getTotalSize(),
-                }}
-              >
-                {p.view === "list"
-                  ? items.map(row => <ListRow key={p.entries[row.index]!.path} p={p} entry={p.entries[row.index]!} top={row.start} />)
-                  : items.map(row => (
-                      <div
-                        key={row.index}
-                        className="absolute inset-x-0 grid"
-                        style={{ transform: `translateY(${row.start}px)`, height: CELL_H, gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-                      >
-                        {p.entries.slice(row.index * cols, row.index * cols + cols).map(e => <GridCell key={e.path} p={p} entry={e} />)}
-                      </div>
-                    ))}
-              </div>
-            )}
-      </div>
+            if (!draggedRef.current)
+              p.onClearSelection();
+            draggedRef.current = false;
+          }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endMarquee}
+          onPointerCancel={endMarquee}
+        >
+          {marquee?.active && (
+            <div
+              data-fm-marquee=""
+              className="pointer-events-none absolute z-10 border border-primary bg-primary/10"
+              style={{
+                left: Math.min(marquee.x0, marquee.x1),
+                top: Math.min(marquee.y0, marquee.y1),
+                width: Math.abs(marquee.x1 - marquee.x0),
+                height: Math.abs(marquee.y1 - marquee.y0),
+              }}
+            />
+          )}
+          {p.entries.length === 0
+            ? <div className="flex flex-1 *:flex-1">{p.empty}</div>
+            : (
+                <div
+                  className="relative w-full"
+                  style={{
+                    height: virtualizer.getTotalSize(),
+                  }}
+                >
+                  {p.view === "list"
+                    ? items.map(row => <ListRow key={p.entries[row.index]!.path} p={p} entry={p.entries[row.index]!} top={row.start} />)
+                    : items.map(row => (
+                        <div
+                          key={row.index}
+                          className="absolute inset-x-0 grid"
+                          style={{ transform: `translateY(${row.start}px)`, height: CELL_H, gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+                        >
+                          {p.entries.slice(row.index * cols, row.index * cols + cols).map(e => <GridCell key={e.path} p={p} entry={e} />)}
+                        </div>
+                      ))}
+                </div>
+              )}
+        </div>
+      </ScrollArea>
     </div>
   );
 }

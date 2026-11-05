@@ -59,3 +59,4 @@ Each plan is a single line linking to its detail file. All detailed information 
 - [x] [**20261104-1110-trash-retention Trash retention and multi-select actions**](20261104-1110-trash-retention.md) `2026-11-04`
 - [x] [**20261105-0210-list-filters List filters and host metadata (starred, recent)**](20261105-0210-list-filters.md) `2026-11-05`
 - [x] [**20261105-0440-thumbnails Thumbnails and saving image edits**](20261105-0440-thumbnails.md) `2026-11-05`
+- [x] [**20261105-0700-sheet-archive Sheet plugin upgrade and archive browsing**](20261105-0700-sheet-archive.md) `2026-11-05`

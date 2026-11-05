@@ -83,6 +83,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { createFmClient } from "../client/client";
 import { fmKeys, useFmMutations, useListing, useMounts, useSearch, useTrash } from "../client/hooks";
 import { createUploadQueue, xhrTransport } from "../client/upload";
@@ -105,6 +106,7 @@ import { PathBar } from "./path-bar";
 import { PreviewDialog } from "./preview-dialog";
 import { DiscardChangesDialog, PreviewBody } from "./preview-pane";
 import { QuickOpen } from "./quick-open";
+import { viewportRef } from "./scroll";
 import { EMPTY_SELECTION, formatSize, kindOf, prune, select, step } from "./state";
 import { TrashView } from "./trash-view";
 import { undoFor } from "./undo";
@@ -1255,7 +1257,11 @@ export function FileManager(props: FileManagerProps) {
         </div>
       )}
       {explorer && <FilterChips filters={filters} onChange={changeFilters} labels={labels} />}
-      <div ref={treeScrollRef} className="min-h-0 flex-1 overflow-auto [scrollbar-width:thin]">
+      <ScrollArea
+        className="min-h-0 flex-1"
+        // The virtualized tree scrolls the viewport, not the root.
+        ref={viewportRef(treeScrollRef)}
+      >
         {shownMounts && (
           <ContextMenu>
             <ContextMenuTrigger
@@ -1320,7 +1326,7 @@ export function FileManager(props: FileManagerProps) {
               : mountMenu(treeTarget.mount)))}
           </ContextMenu>
         )}
-      </div>
+      </ScrollArea>
     </>
   );
 

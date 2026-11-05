@@ -27,11 +27,13 @@ import {
   uploadCreateSchema,
   uploadSessionSchema,
   usageSchema,
+  zipEntrySchema,
 } from "../core/schema";
 import { collect, zipStream } from "./archive";
 import { readAll } from "./driver";
 import { inlineType, mimeOf } from "./mime";
 import { dropTrashItem, expiresAt, getTrashItem, listTrash, moveToTrash, purgeExpiredItems, TRASH_DIR, trashedPath } from "./trash";
+import { openZipEntry, readZipEntries } from "./zip";
 
 export interface FmMount {
   id: string;
@@ -678,6 +680,64 @@ export function createFmRouter<E extends Env = Env>(options: FmRouterOptions<E>)
     }
     headers.set("Content-Length", String(res.size));
     return new Response(res.body, { status: 200, headers });
+  });
+
+  /** A zip file of the mount within the archive size limit. */
+  const zipFile = async (c: unknown, mountId: string, path: string) => {
+    const t = await resolve(c, mountId, path);
+    const e = await t.mount.driver.stat(t.path);
+    if (e.kind !== "file")
+      throw new FmError("IS_A_DIR", "Is a directory");
+    if (e.size > limits.archiveMaxBytes)
+      throw new FmError("TOO_LARGE", "Archive too large to browse");
+    return t;
+  };
+
+  app.get("/m/:mount/zip/entries", describeRoute({
+    tags: [TAG],
+    summary: "List a zip archive",
+    description: "Entries from the central directory (ranged reads, Zip64 aware), at most `archiveMaxEntries`.",
+    responses: {
+      200: ok(z.object({
+        entries: z.array(zipEntrySchema),
+        truncated: z.boolean(),
+      }), "Archive entries"),
+      ...ERRORS,
+    },
+  }), v("query", pathQuery), async (c) => {
+    const t = await zipFile(c, c.req.param("mount"), c.req.valid("query").path);
+    return c.json(await readZipEntries(t.mount.driver, t.path, limits.archiveMaxEntries));
+  });
+
+  app.get("/m/:mount/zip/read", describeRoute({
+    tags: [TAG],
+    summary: "Read a zip archive entry",
+    description: "Streams one stored or deflated entry with the same content-type safety as `/read`; encrypted entries and other methods answer 405.",
+    responses: {
+      200: { description: "Entry bytes" },
+      ...ERRORS,
+    },
+  }), v("query", pathQuery.extend({
+    entry: z.string().min(1),
+    download: z.enum(["0", "1"]).optional(),
+  })), async (c) => {
+    const q = c.req.valid("query");
+    const t = await zipFile(c, c.req.param("mount"), q.path);
+    const { size, body } = await openZipEntry(t.mount.driver, t.path, q.entry, limits.archiveMaxEntries);
+    const name = q.entry.split("/").pop() || q.entry;
+    const type = q.download === "1"
+      ? undefined
+      : inlineType(mimeOf(name));
+    return new Response(body, {
+      headers: {
+        "Content-Type": type ?? "application/octet-stream",
+        "Content-Disposition": contentDisposition(type ? "inline" : "attachment", name),
+        "Content-Length": String(size),
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+        "Cache-Control": "private, no-cache",
+      },
+    });
   });
 
   app.get("/m/:mount/thumb", describeRoute({

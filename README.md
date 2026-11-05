@@ -35,7 +35,8 @@ bunx shadcn add @bkhq/fm-react                        # UI + client
 | `fm-driver-contract` | `bun:test` suite a new driver must pass |
 | `fm-client` | typed fetch client, TanStack Query hooks, upload queue |
 | `fm-react` | `<FileManager />`: tree, list/grid, previews (image / video rotate, flip, zoom), uploads, trash, undo |
-| `fm-plugin-sheet` | optional plugin: CSV / TSV / XLSX table preview |
+| `fm-plugin-sheet` | optional plugin: CSV / TSV / XLSX table (virtualized rows, typed cells); CSV / TSV cells editable and saved with `If-Match` |
+| `fm-plugin-archive` | optional plugin: browse `.zip` / `.jar` without extracting (folder tree, inline text / image preview, per-entry download) via `GET /m/:mount/zip/entries` and `/zip/read` |
 | `fm-plugin-markdown` | optional plugin: Markdown opens in the editor with a live rendered preview (streamdown: GFM, highlighted code) |
 
 Files land under `src/fm/`. Mount the router in the host API:
@@ -121,10 +122,11 @@ Optional file-type support is shipped as plugins: extra previewers and
 context-menu actions.
 
 ```tsx
+import { archivePlugin } from "@/fm/plugins/archive";   // bunx shadcn add @bkhq/fm-plugin-archive
 import { markdownPlugin } from "@/fm/plugins/markdown"; // bunx shadcn add @bkhq/fm-plugin-markdown
 import { sheetPlugin } from "@/fm/plugins/sheet";       // bunx shadcn add @bkhq/fm-plugin-sheet
 
-<FileManager baseUrl="/api/fm" plugins={[sheetPlugin(), markdownPlugin()]} />;
+<FileManager baseUrl="/api/fm" plugins={[sheetPlugin(), markdownPlugin(), archivePlugin()]} />;
 ```
 
 The Markdown plugin renders with streamdown, whose classes Tailwind must see.

@@ -1,5 +1,6 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { zipSync } from "fflate";
 import { makeXlsx } from "./sample-xlsx";
 
 // 2x2 PNG
@@ -25,6 +26,12 @@ export const SEED: Record<string, string | Uint8Array> = {
   "images/dot.png": PNG,
   "docs/sample.pdf": PDF,
   "samples/hosts": "127.0.0.1 localhost\n::1 localhost\n",
+  "samples/archive.zip": zipSync({
+    "README.txt": new TextEncoder().encode("Files inside this archive are listed without extracting it.\n"),
+    "src/main.ts": new TextEncoder().encode("export const answer = 42;\n"),
+    "src/util/math.ts": new TextEncoder().encode("export const add = (a: number, b: number) => a + b;\n"),
+    "images/dot.png": PNG,
+  }),
   "samples/blob": Uint8Array.of(0x7F, 0x45, 0x4C, 0x46, 0, 1, 2, 0, 0, 0),
   "sheets/ports.csv": "port,country,berths\nPiraeus,Greece,670\nSplit,Croatia,350\n\"Valletta, Grand Harbour\",Malta,120\n",
   "sheets/fleet.xlsx": makeXlsx({

@@ -6,6 +6,7 @@ import { cn } from "cn";
 import { CopyIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useUsage } from "../client/hooks";
 import { dirname } from "../core/path";
 import { EntryIcon } from "./file-list";
@@ -59,36 +60,38 @@ export function DetailsPanel({ entry, mountLabel, client, labels, overlay, onClo
         </span>
         <IconButton size="icon-xs" label={labels.close} onClick={onClose}><XIcon /></IconButton>
       </div>
-      <dl className="grid gap-3 overflow-auto p-3">
-        <Field label={labels.type}>
-          {isDir
-            ? labels.folder
-            : (entry.mime ?? "—")}
-        </Field>
-        <Field label={labels.size}>
-          {isDir
-            ? (usage.data
-                ? (
-                    <>
-                      {formatSize(usage.data.bytes)}
-                      {usage.data.truncated && "+"}
-                      <span className="block text-xs text-muted-foreground">{labels.contains(usage.data.files, usage.data.dirs)}</span>
-                    </>
-                  )
-                : labels.loading)
-            : formatSize(entry.size)}
-        </Field>
-        <Field label={labels.modified}>{new Date(entry.mtime).toLocaleString()}</Field>
-        <Field label={labels.location}>{location}</Field>
-        <div>
-          <Button size="sm" variant="outline" onClick={copyPath}>
-            <CopyIcon />
-            {copied
-              ? labels.copied
-              : labels.copyPath}
-          </Button>
-        </div>
-      </dl>
+      <ScrollArea className="min-h-0 flex-1">
+        <dl className="grid gap-3 p-3">
+          <Field label={labels.type}>
+            {isDir
+              ? labels.folder
+              : (entry.mime ?? "—")}
+          </Field>
+          <Field label={labels.size}>
+            {isDir
+              ? (usage.data
+                  ? (
+                      <>
+                        {formatSize(usage.data.bytes)}
+                        {usage.data.truncated && "+"}
+                        <span className="block text-xs text-muted-foreground">{labels.contains(usage.data.files, usage.data.dirs)}</span>
+                      </>
+                    )
+                  : labels.loading)
+              : formatSize(entry.size)}
+          </Field>
+          <Field label={labels.modified}>{new Date(entry.mtime).toLocaleString()}</Field>
+          <Field label={labels.location}>{location}</Field>
+          <div>
+            <Button size="sm" variant="outline" onClick={copyPath}>
+              <CopyIcon />
+              {copied
+                ? labels.copied
+                : labels.copyPath}
+            </Button>
+          </div>
+        </dl>
+      </ScrollArea>
     </aside>
   );
 }

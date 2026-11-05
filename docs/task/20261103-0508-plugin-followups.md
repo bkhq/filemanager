@@ -1,8 +1,8 @@
 # 20261103-0508-plugin-followups Plugin follow-ups (sheet, markdown, archive, office)
 
-- **status**: pending
+- **status**: in_progress
 - **priority**: P2
-- **owner**: (unassigned)
+- **owner**: claude/d4j0p0gu
 - **createdAt**: 2026-11-03 05:08
 
 ## Description
@@ -22,3 +22,5 @@ Extending plugins
 
 ## Notes
 
+
+- 2026-11-05: part 1 done (sheet upgrade + zip browsing, plan 20261105-0700-sheet-archive). Open: Office preview, pdf.js viewer, "new file" templates, CSV / Excel import.

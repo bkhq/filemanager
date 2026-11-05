@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { FmApiError } from "../client/client";
 import { fmKeys, useFileText, useFmMutations } from "../client/hooks";
 import { clearDraft, loadDraft, saveDraft } from "./drafts";
@@ -41,6 +42,28 @@ function subscribeTheme(onChange: () => void) {
     attributeFilter: ["class"],
   });
   return () => observer.disconnect();
+}
+
+/** Read-only highlighted text, e.g. a file inside an archive; the language follows `name`. */
+export function CodeView({ name, text }: { name: string; text: string }) {
+  const language = useLanguage(name);
+  const dark = useSyncExternalStore(subscribeTheme, isDark, () => false);
+  const extensions = useMemo(() => [...language, EditorView.lineWrapping], [language]);
+  return (
+    <ScrollArea className="h-full">
+      <CodeMirror
+        className="text-sm"
+        minHeight="100%"
+        value={text}
+        theme={dark
+          ? "dark"
+          : "light"}
+        readOnly
+        editable={false}
+        extensions={extensions}
+      />
+    </ScrollArea>
+  );
 }
 
 /** Text / code viewer; editable with optimistic concurrency when the entry allows writes. */
@@ -276,20 +299,23 @@ export function TextPreview({ entry, client, labels, actions, onDirtyChange, onT
             : save.error?.message}
         </div>
       )}
-      <CodeMirror
-        className="min-h-0 flex-1 overflow-auto text-sm"
-        height="100%"
-        value={text}
-        theme={dark
-          ? "dark"
-          : "light"}
-        readOnly={!editable}
-        extensions={extensions}
-        onChange={(v) => {
-          setSaved(false);
-          setDraft(v);
-        }}
-      />
+      {/* The editor grows with its text and the ScrollArea scrolls it (long lines scroll inside the editor). */}
+      <ScrollArea className="min-h-0 flex-1">
+        <CodeMirror
+          className="text-sm"
+          minHeight="100%"
+          value={text}
+          theme={dark
+            ? "dark"
+            : "light"}
+          readOnly={!editable}
+          extensions={extensions}
+          onChange={(v) => {
+            setSaved(false);
+            setDraft(v);
+          }}
+        />
+      </ScrollArea>
     </div>
   );
 }

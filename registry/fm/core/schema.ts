@@ -212,3 +212,14 @@ export const uploadSessionSchema = z.object({
   expiresAt: z.number(),
 });
 export type FmUploadSession = z.infer<typeof uploadSessionSchema>;
+
+export const zipEntrySchema = z.object({
+  /** Name inside the archive; folders end with `/`. */
+  path: z.string(),
+  dir: z.boolean(),
+  size: z.number().int().nonnegative(),
+  compressedSize: z.number().int().nonnegative(),
+  mtime: z.string(),
+  encrypted: z.boolean(),
+});
+export type FmZipEntry = z.infer<typeof zipEntrySchema>;

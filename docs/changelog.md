@@ -248,3 +248,27 @@ Thumbnails and image saving delivered (20261105-0440-thumbnails): router `thumbn
 ## 2026-11-05 06:30 [pitfall]
 
 Bun 1.4 has a built-in `Bun.Image` (decode, resize, WebP / AVIF / PNG / JPEG encode), so image work on Bun needs no native dependency. `wrangler dev` emulates the Images binding locally (sharp in miniflare). The preview dialog held the entry captured on open; anything that rewrites the file must read the listing's copy to see the new etag.
+
+## 2026-11-05 08:40 [progress]
+
+Sheet plugin upgrade and zip browsing delivered (20261105-0700-sheet-archive): virtualized typed sheet with CSV / TSV editing and `If-Match` saves; `/zip/entries` + `/zip/read` (central directory via ranged reads, Zip64, streamed deflate) and the new `fm-plugin-archive`.
+
+## 2026-11-05 08:40 [pitfall]
+
+`kindOf` classifies images by MIME type only; zip entries carry none, so the archive view checks extensions itself. The eslint autofix rewrites `Array.from({ length }, () => "")` to `Array.from({ length }).fill("")`, which types as `unknown[]`; pass the element type (`Array.from<string>`).
+
+## 2026-11-05 09:10 [progress]
+
+The explorer tree scrolls inside shadcn `ScrollArea` (Base UI) instead of a native overflow container; the virtualizer and reveal use its viewport (`[data-slot=scroll-area-viewport]`). fm-react gains the `scroll-area` registry dependency.
+
+## 2026-11-05 09:30 [progress]
+
+Text entries in the archive view render with a read-only, highlighted CodeMirror (`CodeView` in `text-preview.tsx`, language from the entry name, follows the theme), loaded lazily with the first text entry.
+
+## 2026-11-05 09:50 [progress]
+
+Right-side scrolling uses shadcn `ScrollArea` too: text editor and archive `CodeView` (CodeMirror grows with its text; long lines without wrap still scroll inside the editor), file list / grid (virtualizer and marquee on the viewport via `viewportRef` in `react/scroll.ts`), Markdown preview, trash table, details panel, archive entry tree. The sheet grid (both axes, sticky header and row numbers) and the zoomed image stage keep native scrolling.
+
+## 2026-11-05 10:05 [decision]
+
+The demo's `ScrollArea` scrollbar auto-hides: transparent by default, fades in while the pointer is over the area (`data-hovering`) or while scrolling (`data-scrolling`), 150 ms opacity transition. Changed in `apps/fm-web/src/components/ui/scroll-area.tsx` only; hosts keep whatever their own shadcn `scroll-area` does.

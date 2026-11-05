@@ -43,7 +43,7 @@ Each task is a single line linking to its detail file. All detailed information 
 - [x] [**20261103-0508-thumbnails Thumbnails and saving image edits**](20261103-0508-thumbnails.md) `P2`
 - [x] [**20261103-0508-trash-retention Trash retention and bulk actions**](20261103-0508-trash-retention.md) `P2`
 - [x] [**20261103-0508-recursive-search Recursive search**](20261103-0508-recursive-search.md) `P2`
-- [ ] [**20261103-0508-plugin-followups Plugin follow-ups (sheet, markdown, archive, office)**](20261103-0508-plugin-followups.md) `P2`
+- [-] [**20261103-0508-plugin-followups Plugin follow-ups (sheet, markdown, archive, office)**](20261103-0508-plugin-followups.md) `P2`
 - [x] [**20261103-0508-ui-polish UI polish and bundle size**](20261103-0508-ui-polish.md) `P2`
 - [ ] [**20261103-0508-bkd-pilot bkd pilot adoption**](20261103-0508-bkd-pilot.md) `P3`
 - [ ] [**20261103-0508-managed-store Managed store and bithk adapter**](20261103-0508-managed-store.md) `P3`

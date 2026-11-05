@@ -8,6 +8,7 @@ import { ArchiveRestoreIcon, ArrowDownIcon, ArrowUpIcon, Trash2Icon } from "luci
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useFmMutations, useTrash } from "../client/hooks";
 import { dirname } from "../core/path";
 import { ConfirmDeleteDialog } from "./dialogs";
@@ -130,7 +131,7 @@ export function TrashView({ mount, mountLabel, retentionDays, client, labels, on
             </div>
           )
         : (
-            <div className="min-h-0 flex-1 overflow-auto">
+            <ScrollArea className="min-h-0 flex-1">
               <table className="w-full text-sm select-none">
                 <thead className="sticky top-0 z-10 bg-background text-xs text-muted-foreground">
                   <tr className="border-b text-left">
@@ -208,7 +209,7 @@ export function TrashView({ mount, mountLabel, retentionDays, client, labels, on
                   })}
                 </tbody>
               </table>
-            </div>
+            </ScrollArea>
           )}
       {confirm && (
         <ConfirmDeleteDialog

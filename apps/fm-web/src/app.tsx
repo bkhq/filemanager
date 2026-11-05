@@ -12,6 +12,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { archivePlugin } from "@/fm/plugins/archive";
 import { markdownPlugin } from "@/fm/plugins/markdown";
 import { sheetPlugin } from "@/fm/plugins/sheet";
 import { FileManager } from "@/fm/react/file-manager";
@@ -21,6 +22,7 @@ import { enLabels, zhLabels } from "@/fm/react/labels";
 const plugins = [
   sheetPlugin(),
   markdownPlugin(),
+  archivePlugin(),
 ];
 
 type Lang = "en" | "zh";

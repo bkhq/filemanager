@@ -72,6 +72,11 @@
           "path": "registry/fm/server/trash.ts",
           "type": "registry:file",
           "target": "~/src/fm/server/trash.ts"
+        },
+        {
+          "path": "registry/fm/server/zip.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/server/zip.ts"
         }
       ]
     },
@@ -247,6 +252,7 @@
         "progress",
         "tooltip",
         "resizable",
+        "scroll-area",
         "checkbox",
         "@bkhq/fm-client"
       ],
@@ -400,6 +406,11 @@
           "path": "registry/fm/react/meta.ts",
           "type": "registry:file",
           "target": "~/src/fm/react/meta.ts"
+        },
+        {
+          "path": "registry/fm/react/scroll.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/scroll.ts"
         }
       ]
     },
@@ -434,6 +445,32 @@
       ],
       "devDependencies": [
         "@types/papaparse@5.5.2"
+      ]
+    },
+    {
+      "name": "fm-plugin-archive",
+      "type": "registry:block",
+      "title": "File manager: zip archive browser",
+      "description": "Optional plugin: browse .zip / .jar archives without extracting them (folder tree, inline preview, per-entry download). Pass archivePlugin() to <FileManager plugins>.",
+      "registryDependencies": [
+        "@bkhq/fm-react"
+      ],
+      "files": [
+        {
+          "path": "registry/fm/plugins/archive.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/plugins/archive.ts"
+        },
+        {
+          "path": "registry/fm/plugins/archive-view.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/plugins/archive-view.tsx"
+        },
+        {
+          "path": "registry/fm/plugins/archive-tree.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/plugins/archive-tree.ts"
+        }
       ]
     },
     {

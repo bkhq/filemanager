@@ -1,3 +1,5 @@
+import { formatSize } from "./state";
+
 export const enLabels = {
   name: "Name",
   size: "Size",
@@ -74,6 +76,13 @@ export const enLabels = {
   tooLargeToPreview: "This file is too large to preview.",
   largeFile: (mb: number) => `Large file: showing the first ${mb} MB, read-only.`,
   noPreview: "No preview available for this file type.",
+  archiveFilter: "Filter files in the archive",
+  archiveSelect: "Select a file in the archive to preview it",
+  archiveEncrypted: "This entry is encrypted.",
+  archiveTruncated: "only the first entries are listed",
+  archiveSummary: (files: number, bytes: number) => `${files} ${files === 1
+    ? "file"
+    : "files"}, ${formatSize(bytes)} uncompressed`,
   conflict: "The file changed on disk since you opened it.",
   saveImageHint: "Save the rotation and flip (re-encodes the image and drops its metadata)",
   saveFailed: "Could not save the image",
@@ -177,7 +186,11 @@ export const enLabels = {
   zoomIn: "Zoom in",
   zoomOut: "Zoom out",
   fitToScreen: "Fit to screen",
-  sheetTruncated: (shown: number, total: number) => `Showing the first ${shown} of ${total} rows`,
+  sheetRows: (n: number) => `${n} ${n === 1
+    ? "row"
+    : "rows"}`,
+  addRow: "Add row",
+  deleteRow: "Delete row",
   confirm: "Confirm",
   pickTotal: (size: string) => `Total ${size}`,
   pickOverLimit: (max: string) => `Selection exceeds the ${max} limit`,
@@ -263,6 +276,11 @@ export const zhLabels: FmLabels = {
   tooLargeToPreview: "文件过大，无法预览。",
   largeFile: mb => `文件较大：仅显示前 ${mb} MB，只读。`,
   noPreview: "该文件类型暂不支持预览。",
+  archiveFilter: "筛选压缩包中的文件",
+  archiveSelect: "在压缩包中选择文件进行预览",
+  archiveEncrypted: "该条目已加密。",
+  archiveTruncated: "仅列出前面的条目",
+  archiveSummary: (files, bytes) => `${files} 个文件，解压后 ${formatSize(bytes)}`,
   conflict: "文件在打开后已被修改。",
   saveImageHint: "保存旋转和翻转（会重新编码图片并丢弃元数据）",
   saveFailed: "无法保存图片",
@@ -356,7 +374,9 @@ export const zhLabels: FmLabels = {
   zoomIn: "放大",
   zoomOut: "缩小",
   fitToScreen: "适应窗口",
-  sheetTruncated: (shown, total) => `仅显示前 ${shown} 行，共 ${total} 行`,
+  sheetRows: n => `${n} 行`,
+  addRow: "添加行",
+  deleteRow: "删除行",
   confirm: "确定",
   pickTotal: size => `共 ${size}`,
   pickOverLimit: max => `所选文件超过 ${max} 上限`,

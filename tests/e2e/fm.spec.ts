@@ -1537,3 +1537,87 @@ test("saves a rotated image", async ({ page }) => {
   expect(size).toEqual([30, 60]);
   await expect(dialog.locator("img[alt='wide.png']")).toHaveAttribute("style", /rotate\(0deg\)/);
 });
+
+async function putText(page: Page, path: string, body: string) {
+  await page.request.post("/api/fm/m/local/mkdir", {
+    data: { path: path.slice(0, path.lastIndexOf("/")) || "/" },
+  });
+  const res = await page.request.put(`/api/fm/m/local/write?path=${encodeURIComponent(path)}&conflict=overwrite`, { data: body });
+  expect(res.ok()).toBe(true);
+}
+const readText = async (page: Page, path: string) => (await page.request.get(`/api/fm/m/local/read?path=${encodeURIComponent(path)}`)).text();
+
+test("scrolls a large CSV to its last row with numbers right-aligned", async ({ page }) => {
+  const lines = [
+    "id,name,amount",
+    ...Array.from({ length: 5000 }, (_, i) => `${i + 1},row ${i + 1},${(i * 1.5).toFixed(1)}`),
+  ];
+  await putText(page, "/sheet-big-e2e/big.csv", `${lines.join("\n")}\n`);
+  await openMount(page, "Local disk");
+  await row(page, "/sheet-big-e2e").dblclick();
+  await row(page, "/sheet-big-e2e/big.csv").dblclick();
+  const table = page.getByRole("dialog").getByRole("table");
+  await expect(table).toContainText("row 1");
+  expect(await table.getByRole("row").count()).toBeLessThan(120);
+  await expect(table.getByRole("cell", { name: "1.5", exact: true })).toHaveClass(/text-right/);
+  await expect(table.getByRole("cell", { name: "row 2", exact: true })).not.toHaveClass(/text-right/);
+  await table.locator("..").evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+  await expect(table).toContainText("row 5000");
+  await expect(page.getByRole("dialog")).toContainText("5001 rows");
+});
+
+test("edits a CSV cell, adds a row and saves", async ({ page }) => {
+  await putText(page, "/sheet-edit-e2e/p.csv", "port;berths\r\nPiraeus;670\r\nSplit;350\r\n");
+  await openMount(page, "Local disk");
+  await row(page, "/sheet-edit-e2e").dblclick();
+  await row(page, "/sheet-edit-e2e/p.csv").dblclick();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("cell", { name: "Split", exact: true }).dblclick();
+  await dialog.getByRole("textbox", { name: "A3" }).fill("Rijeka");
+  await page.keyboard.press("Enter");
+  await dialog.getByRole("button", { name: "Add row" }).click();
+  await expect(dialog).toContainText("4 rows");
+  await expect(dialog.getByText("Unsaved")).toBeVisible();
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog.getByText("Unsaved")).toHaveCount(0);
+  expect(await readText(page, "/sheet-edit-e2e/p.csv")).toBe("port;berths\r\nPiraeus;670\r\nRijeka;350\r\n;\r\n");
+});
+
+test("resolves a CSV save conflict by overwriting", async ({ page }) => {
+  await putText(page, "/sheet-conflict-e2e/p.csv", "a,b\n1,2\n");
+  await openMount(page, "Local disk");
+  await row(page, "/sheet-conflict-e2e").dblclick();
+  await row(page, "/sheet-conflict-e2e/p.csv").dblclick();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("cell", { name: "2", exact: true }).dblclick();
+  await dialog.getByRole("textbox", { name: "B2" }).fill("mine");
+  await page.keyboard.press("Enter");
+  await putText(page, "/sheet-conflict-e2e/p.csv", "a,b\n1,theirs\n");
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("changed on disk");
+  await dialog.getByRole("button", { name: "Overwrite" }).click();
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  expect(await readText(page, "/sheet-conflict-e2e/p.csv")).toBe("a,b\n1,mine\n");
+});
+
+test("browses a zip archive and previews its entries", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await row(page, "/samples").dblclick();
+  await row(page, "/samples/archive.zip").dblclick();
+  const dialog = page.getByRole("dialog");
+  const tree = dialog.getByRole("tree", { name: "archive.zip" });
+  await expect(tree.getByRole("treeitem", { name: "src" })).toBeVisible();
+  await expect(dialog).toContainText("4 files");
+  await tree.getByRole("treeitem", { name: "src" }).click();
+  await tree.getByRole("treeitem", { name: "main.ts" }).click();
+  await expect(dialog.locator("[data-fm-archive-text]")).toContainText("answer = 42");
+  await dialog.getByRole("searchbox", { name: "Filter files in the archive" }).fill("math");
+  await expect(tree.getByRole("treeitem", { name: "math.ts" })).toBeVisible();
+  await expect(tree.getByRole("treeitem", { name: "main.ts" })).toHaveCount(0);
+  await dialog.getByRole("searchbox", { name: "Filter files in the archive" }).fill("");
+  await tree.getByRole("treeitem", { name: "images" }).click();
+  await tree.getByRole("treeitem", { name: "dot.png" }).click();
+  await expect.poll(() => dialog.locator("img[alt='dot.png']").evaluate((el: HTMLImageElement) => el.naturalWidth)).toBe(2);
+});

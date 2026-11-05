@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { unzipSync } from "fflate";
+import { unzipSync, zipSync } from "fflate";
 import { Hono } from "hono";
 import { FmError } from "../core/errors";
 import { ALL_CAPS, READ_ONLY_CAPS } from "../core/schema";
@@ -1957,5 +1957,61 @@ describe("thumbnails", () => {
     });
     expect((await req(`/m/m/thumb?path=${q("/locked/d.png")}&w=128`)).status).toBe(404);
     expect((await req(`/m/m/thumb?path=${q("/a.png")}&w=128`)).status).toBe(200);
+  });
+});
+
+describe("zip browsing", () => {
+  const zip = zipSync({
+    "a.txt": new TextEncoder().encode("alpha"),
+    "dir/b.html": new TextEncoder().encode("<script>x</script>"),
+  });
+  async function zipSetup(authorize?: (path: string) => FmCaps, limits?: FmRouterOptions<Env>["limits"]) {
+    const ctx = setup({
+      files: {},
+      ...(authorize
+        ? { authorize }
+        : {}),
+      ...(limits
+        ? { limits }
+        : {}),
+    });
+    await ctx.driver.write("/z.zip", zip);
+    await ctx.driver.write("/locked/z.zip", zip);
+    return ctx;
+  }
+
+  it("lists entries and streams one, with read's content-type safety", async () => {
+    const { req } = await zipSetup();
+    const list = await (await req(`/m/m/zip/entries?path=${q("/z.zip")}`)).json();
+    expect(list.entries.map((e: { path: string }) => e.path)).toEqual(["a.txt", "dir/b.html"]);
+    expect(list.truncated).toBe(false);
+    const a = await req(`/m/m/zip/read?path=${q("/z.zip")}&entry=${q("a.txt")}`);
+    expect(a.status).toBe(200);
+    expect(a.headers.get("content-type")).toContain("text/plain");
+    expect(await a.text()).toBe("alpha");
+    const html = await req(`/m/m/zip/read?path=${q("/z.zip")}&entry=${q("dir/b.html")}`);
+    expect(html.headers.get("content-type")).toContain("text/plain");
+    expect(html.headers.get("content-security-policy")).toContain("sandbox");
+    const dl = await req(`/m/m/zip/read?path=${q("/z.zip")}&entry=${q("a.txt")}&download=1`);
+    expect(dl.headers.get("content-disposition")).toContain("attachment");
+    expect(dl.headers.get("content-disposition")).toContain("a.txt");
+  });
+
+  it("answers 404 for missing entries, 400 for non-zips, and authorizes like read", async () => {
+    const { req, driver } = await zipSetup(p => (p.startsWith("/locked")
+      ? NONE
+      : READ_ONLY_CAPS));
+    expect((await req(`/m/m/zip/read?path=${q("/z.zip")}&entry=${q("nope")}`)).status).toBe(404);
+    await driver.write("/fake.zip", new TextEncoder().encode("nope"));
+    expect((await req(`/m/m/zip/entries?path=${q("/fake.zip")}`)).status).toBe(400);
+    expect((await req(`/m/m/zip/entries?path=${q("/locked/z.zip")}`)).status).toBe(404);
+  });
+
+  it("applies the archive limits", async () => {
+    const { req } = await zipSetup(undefined, { archiveMaxEntries: 1 });
+    const list = await (await req(`/m/m/zip/entries?path=${q("/z.zip")}`)).json();
+    expect(list).toMatchObject({ truncated: true });
+    const small = await zipSetup(undefined, { archiveMaxBytes: 10 });
+    expect((await small.req(`/m/m/zip/entries?path=${q("/z.zip")}`)).status).toBe(413);
   });
 });

@@ -1,4 +1,4 @@
-import type { FmConflict, FmEntry, FmListResult, FmMountInfo, FmOpsRequest, FmOpsResult, FmSearchMode, FmSearchResult, FmSortKey, FmTrashItem, FmUploadCreate, FmUploadSession, FmUsage } from "../core/schema";
+import type { FmConflict, FmEntry, FmListResult, FmMountInfo, FmOpsRequest, FmOpsResult, FmSearchMode, FmSearchResult, FmSortKey, FmTrashItem, FmUploadCreate, FmUploadSession, FmUsage, FmZipEntry } from "../core/schema";
 
 export class FmApiError extends Error {
   readonly status: number;
@@ -183,6 +183,14 @@ export function createFmClient(opts: FmClientOptions) {
     mkdir: (mount: string, path: string) => post<FmEntry>(url(`${m(mount)}/mkdir`), { path }),
     ops: (mount: string, req: FmOpsRequest) => post<FmOpsResult>(url(`${m(mount)}/ops`), req),
     usage: (mount: string, path: string) => json<FmUsage>(url(`${m(mount)}/usage`, { path })),
+    /** Entries of a zip archive (central directory only). */
+    zipEntries: (mount: string, path: string) => json<{ entries: FmZipEntry[]; truncated: boolean }>(url(`${m(mount)}/zip/entries`, { path })),
+    /** URL of one zip entry for `<img src>` / `<a href>` / fetch. */
+    zipEntryUrl: (mount: string, path: string, entry: string, o: { download?: boolean } = {}) => url(`${m(mount)}/zip/read`, {
+      path,
+      entry,
+      download: o.download ? "1" : undefined,
+    }),
     trash: (mount: string) => json<{ items: FmTrashItem[] }>(url(`${m(mount)}/trash`)).then(r => r.items),
     restore: (mount: string, ids: string[]) => post<FmOpsResult>(url(`${m(mount)}/trash/restore`), { ids }),
     /** Without `ids`, empties the trash. */
