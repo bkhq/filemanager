@@ -1,44 +1,39 @@
+import type { createRoot as CreateRoot } from "react-dom/client";
+import type { FileManager as FileManagerComponent } from "./file-manager";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Hono } from "hono";
+import { act, createElement } from "react";
+import { createFmClient } from "../client/client";
+import { memoryDriver } from "../drivers/memory";
+import { createFmRouter } from "../server/router";
 
-GlobalRegistrator.register({ url: "http://localhost/" });
-
-const { QueryClient, QueryClientProvider } = await import("@tanstack/react-query");
-const { act, createElement } = await import("react");
-const { createRoot } = await import("react-dom/client");
-const { Hono } = await import("hono");
-const { createFmClient } = await import("../client/client");
-const { memoryDriver } = await import("../drivers/memory");
-const { createFmRouter } = await import("../server/router");
-const { FileManager } = await import("./file-manager");
-
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-// happy-dom has no layout: give every element a size so the virtualizer has a viewport.
-const sizes = [
-  "clientHeight",
-  "clientWidth",
-  "offsetHeight",
-  "offsetWidth",
-] as const;
-const saved = sizes.map(k => [
-  k,
-  Object.getOwnPropertyDescriptor(HTMLElement.prototype, k),
-] as const);
-beforeAll(() => {
-  for (const k of sizes) {
+// The DOM exists only while this file runs: other test files share the process and its globals.
+let createRoot: typeof CreateRoot;
+let FileManager: typeof FileManagerComponent;
+beforeAll(async () => {
+  GlobalRegistrator.register({ url: "http://localhost/" });
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  // happy-dom has no layout: give every element a size so the virtualizer has a viewport.
+  for (const k of [
+    "clientHeight",
+    "clientWidth",
+    "offsetHeight",
+    "offsetWidth",
+  ]) {
     Object.defineProperty(HTMLElement.prototype, k, {
       configurable: true,
       get: () => 400,
     });
   }
+  // react-dom checks for a DOM when it loads.
+  ({ createRoot } = await import("react-dom/client"));
+  ({ FileManager } = await import("./file-manager"));
 });
 afterAll(async () => {
-  for (const [k, d] of saved) {
-    if (d)
-      Object.defineProperty(HTMLElement.prototype, k, d);
-  }
   await GlobalRegistrator.unregister();
+  delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
 });
 
 describe("FileManager", () => {
