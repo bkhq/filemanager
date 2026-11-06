@@ -39,6 +39,13 @@ async function openTreeMount(page: Page, label: string) {
     await item.getByRole("button").click();
 }
 
+// Explorer header actions take no room until the header is hovered, as a mouse user does.
+async function explorerAction(page: Page, name: string) {
+  const actions = page.getByRole("toolbar", { name: "Folder actions" });
+  await actions.locator("..").hover();
+  await actions.getByRole("button", { name }).click();
+}
+
 async function contextAction(page: Page, path: string, action: string) {
   await row(page, path).click({ button: "right" });
   await page.getByRole("menuitem", { name: action, exact: true }).click();
@@ -332,7 +339,7 @@ test("creates a folder inside a collapsed tree folder without opening it", async
   const tree = page.getByRole("tree");
   const item = (name: string) => tree.getByRole("treeitem", { name, exact: true });
   const bar = page.getByRole("navigation", { name: "Path" });
-  await page.getByRole("toolbar", { name: "Folder actions" }).getByRole("button", { name: "New folder" }).click();
+  await explorerAction(page, "New folder");
   await page.getByRole("dialog").getByRole("textbox").fill("xm-here-tree");
   await page.getByRole("button", { name: "Create" }).click();
   await expect(item("xm-here-tree")).toHaveAttribute("aria-expanded", "false");
@@ -783,7 +790,7 @@ test("resizes the folder tree by dragging and keeps the width", async ({ page })
   await expect.poll(width).toBeLessThan(dragged - 5);
 });
 
-test("shows the explorer actions on hover only while the tree is wide", async ({ page }) => {
+test("shows the explorer actions on hover", async ({ page }) => {
   await openTreeMount(page, "Local disk");
   const actions = page.getByRole("toolbar", { name: "Folder actions" });
   const away = () => page.mouse.move(900, 600);
@@ -791,7 +798,7 @@ test("shows the explorer actions on hover only while the tree is wide", async ({
   await expect(actions).toHaveCSS("opacity", "0");
   await actions.locator("..").hover();
   await expect(actions).toHaveCSS("opacity", "1");
-  // A tree narrower than the default keeps them visible.
+  // A tree narrower than the default still hides them until hovered.
   const handle = page.getByRole("separator", { name: "Resize folder tree" });
   const box = (await handle.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -799,10 +806,10 @@ test("shows the explorer actions on hover only while the tree is wide", async ({
   await page.mouse.move(box.x + box.width / 2 - 40, box.y + box.height / 2, { steps: 4 });
   await page.mouse.up();
   await away();
-  await expect(actions).toHaveCSS("opacity", "1");
-  // So does a narrow container, where the tree fills the view.
-  await page.setViewportSize({ width: 560, height: 800 });
-  await expect(actions).toHaveCSS("opacity", "1");
+  await expect(actions).toHaveCSS("opacity", "0");
+  // Hidden actions take no room, so the title is not cut short.
+  const title = actions.locator("xpath=preceding-sibling::span");
+  expect(await title.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
 });
 
 test("collapses every tree row at once", async ({ page }) => {
@@ -814,7 +821,7 @@ test("collapses every tree row at once", async ({ page }) => {
   await item("images").getByRole("button").click();
   await expect(item("docs")).toHaveAttribute("aria-expanded", "true");
   await expect(item("images")).toHaveAttribute("aria-expanded", "true");
-  await page.getByRole("button", { name: "Collapse all" }).click();
+  await explorerAction(page, "Collapse all");
   await expect(expanded).toHaveCount(0);
   await expect(item("Local disk")).toHaveAttribute("aria-expanded", "false");
   // The next location opens its path again.
@@ -1296,10 +1303,9 @@ test("explorer refresh reveals the selected file after collapse all", async ({ p
   await item("samples").click();
   await item("guide.md").click();
   await expect(item("guide.md")).toHaveAttribute("aria-selected", "true");
-  const header = page.getByRole("toolbar", { name: "Folder actions" });
-  await header.getByRole("button", { name: "Collapse all" }).click();
+  await explorerAction(page, "Collapse all");
   await expect(item("guide.md")).toBeHidden();
-  await header.getByRole("button", { name: "Refresh" }).click();
+  await explorerAction(page, "Refresh");
   await expect(item("guide.md")).toBeInViewport();
   await expect(item("guide.md")).toHaveAttribute("aria-selected", "true");
 });

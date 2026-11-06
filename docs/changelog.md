@@ -319,4 +319,4 @@ Folder tree empty after `FileManager` mounts again over cached listings (reporte
 
 ## 2026-11-06 03:20 [progress]
 
-Explorer header actions (new file / folder, refresh, collapse all) are no longer hidden by default on small screens. They still appear on hover when a mouse is used and the tree is at least its default width (container query on the header, 13rem of content); a tree dragged narrower, a narrow container and touch screens always show them. e2e covers the three states.
+Explorer header actions (new file / folder, refresh, collapse all) are no longer hidden on touch screens, which cannot hover. With a mouse they appear on hover at any tree width. e2e covers the default and a narrowed tree.

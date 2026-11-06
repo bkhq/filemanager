@@ -1384,15 +1384,15 @@ export function FileManager(props: FileManagerProps) {
   const treePane = (
     <>
       {explorer && (
-        // VS Code style: title on the left, common actions, the rest under "More". With a mouse on
-        // a tree at least the default width the actions appear on hover; narrower trees, narrow
-        // containers and touch screens always show them.
-        <div className="group/explorer @container/explorer flex h-9 shrink-0 items-center gap-0.5 pr-1 pl-3">
+        // VS Code style: title on the left, common actions, the rest under "More". With a mouse the
+        // actions appear on hover and take no room otherwise, so the title is not cut short; touch
+        // screens, which cannot hover, always show them.
+        <div className="group/explorer flex h-9 shrink-0 items-center gap-0.5 pr-1 pl-3">
           <span className="flex-1 truncate text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{labels.explorer}</span>
           <div
             role="toolbar"
             aria-label={labels.folderActions}
-            className={cn("flex items-center gap-0.5", !narrow && "@min-[13rem]/explorer:pointer-fine:opacity-0 group-hover/explorer:opacity-100 focus-within:opacity-100 has-aria-expanded:opacity-100")}
+            className="flex items-center gap-0.5 pointer-fine:w-0 pointer-fine:overflow-hidden pointer-fine:opacity-0 group-hover/explorer:w-auto group-hover/explorer:overflow-visible group-hover/explorer:opacity-100 focus-within:w-auto focus-within:overflow-visible focus-within:opacity-100 has-aria-expanded:w-auto has-aria-expanded:overflow-visible has-aria-expanded:opacity-100"
           >
             {canNewFile && <IconButton label={labels.newFile} onClick={() => setDialog({ kind: "newFile" })}><FilePlusIcon /></IconButton>}
             {canMkdir && <IconButton label={labels.newFolder} onClick={() => setDialog({ kind: "mkdir" })}><FolderPlusIcon /></IconButton>}
