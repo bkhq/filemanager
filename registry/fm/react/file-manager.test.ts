@@ -135,4 +135,42 @@ describe("FileManager", () => {
     act(() => root.unmount());
     container.remove();
   });
+
+  it("offers Manage drives only when there is more than one drive", async () => {
+    const show = async (ids: string[]) => {
+      const app = new Hono();
+      app.route("/fm", createFmRouter({
+        mounts: () => ids.map(id => ({
+          id,
+          label: id,
+          driver: memoryDriver({
+            files: { "/b.txt": "b" },
+          }),
+        })),
+      }));
+      const client = createFmClient({
+        baseUrl: "http://localhost/fm",
+        fetch: (input, init) => app.request(input, init),
+      });
+      const qc = new QueryClient({
+        defaultOptions: {
+          queries: { retry: false, staleTime: Infinity },
+        },
+      });
+      const container = document.createElement("div");
+      document.body.append(container);
+      const root = createRoot(container);
+      await act(async () => root.render(createElement(QueryClientProvider, { client: qc }, createElement(FileManager, { client }))));
+      for (let i = 0; i < 20 && !container.textContent?.includes("b.txt"); i++)
+        await act(() => new Promise(r => setTimeout(r, 50)));
+      const manage = [
+        ...container.querySelectorAll("button"),
+      ].some(b => b.textContent === "Manage drives");
+      act(() => root.unmount());
+      container.remove();
+      return manage;
+    };
+    expect(await show(["one"])).toBe(false);
+    expect(await show(["one", "two"])).toBe(true);
+  });
 });

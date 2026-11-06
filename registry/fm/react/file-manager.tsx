@@ -348,6 +348,8 @@ export function FileManager(props: FileManagerProps) {
   const [userHidden, setUserHidden] = useStoredList(`${storageKey}:hidden`);
   const mount = location.mount ?? (mounts.data && (visibleMounts(mounts.data, hostHidden, userHidden, undefined)[0] ?? mounts.data[0]))?.id;
   const shownMounts = mounts.data && visibleMounts(mounts.data, hostHidden, userHidden, mount);
+  // Manage drives picks which drives to show, which means nothing with only one.
+  const canManageDrives = !!mounts.data && visibleMounts(mounts.data, hostHidden, [], undefined).length > 1;
   const { path, trash: inTrash } = location;
   // Expanded tree rows; a new location opens the rows on its path that were not on the previous one.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
@@ -1550,7 +1552,9 @@ export function FileManager(props: FileManagerProps) {
                 drives={props.sidebar?.drives}
                 groupLabel={labels.driverGroup}
                 manageLabel={labels.manageDrives}
-                onManage={() => setDialog({ kind: "manageDrives" })}
+                onManage={canManageDrives
+                  ? () => setDialog({ kind: "manageDrives" })
+                  : undefined}
                 scrollElement={treeViewport}
                 revealTick={revealTick}
                 filterEntries={treeFilter}
@@ -1701,11 +1705,15 @@ export function FileManager(props: FileManagerProps) {
                                             </DropdownMenuItem>
                                           </>
                                         )}
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem onClick={() => setDialog({ kind: "manageDrives" })}>
-                                          <SettingsIcon />
-                                          {labels.manageDrives}
-                                        </DropdownMenuItem>
+                                        {canManageDrives && (
+                                          <>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem onClick={() => setDialog({ kind: "manageDrives" })}>
+                                              <SettingsIcon />
+                                              {labels.manageDrives}
+                                            </DropdownMenuItem>
+                                          </>
+                                        )}
                                       </DropdownMenuContent>
                                     </DropdownMenu>
                                   )

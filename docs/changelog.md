@@ -332,3 +332,7 @@ The Changes section header shows the line counts of every change added up (`+N â
 ## 2026-11-06 07:30 [progress]
 
 Context menus no longer show separators that hidden items leave at either end or side by side (a read-only file used to end its menu with one, since Delete is hidden). `menuContent` passes every list, tree and blank-area menu through `tidyMenu` (`react/tidy-menu.ts`), which also flattens nested groups. Unit tests for `tidyMenu`; a render test checks the read-only file menu.
+
+## 2026-11-06 07:45 [progress]
+
+Manage drives is left out (tree button and storage menu) when the host shows only one drive, since there is nothing to pick. Drives the user hid still count, so the dialog stays reachable to show them again. `FileTree.onManage` is optional; a render test checks one drive against two.

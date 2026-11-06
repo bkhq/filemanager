@@ -196,7 +196,8 @@ export function FileTree(props: TreeProps & {
   group?: "none" | "driver" | undefined;
   groupLabel: (driver: string) => string;
   manageLabel: string;
-  onManage: () => void;
+  /** Leaves the Manage drives button out when unset. */
+  onManage?: (() => void) | undefined;
   /** Scroll container of the tree. */
   scrollElement: HTMLElement | null;
   /** Bumping it scrolls the selected row (or the current folder) into view once it is rendered. */
@@ -687,7 +688,7 @@ export function FileTree(props: TreeProps & {
           {virtualizer.getVirtualItems().map(v => renderRow(rows[v.index]!, v.index, v.start))}
         </div>
       </div>
-      {props.drives !== false && (
+      {props.drives !== false && props.onManage && (
         <Button variant="ghost" size="sm" className="mx-2 my-2 justify-start font-normal text-muted-foreground" onClick={props.onManage}>
           <SettingsIcon />
           {props.manageLabel}
