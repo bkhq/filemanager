@@ -729,6 +729,8 @@ test("toggles hidden files in the tree", async ({ page }) => {
   const expectHidden = async (shown: boolean) => {
     await expect(await hiddenItem()).toHaveAttribute("aria-checked", String(shown));
     await page.keyboard.press("Escape");
+    // Opening "More" again while the menu still animates out leaves it closed.
+    await expect(page.getByRole("menu")).toHaveCount(0);
   };
   await item("dotted").click();
   await expect(item("plain.txt")).toBeVisible();
