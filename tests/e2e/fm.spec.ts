@@ -783,6 +783,28 @@ test("resizes the folder tree by dragging and keeps the width", async ({ page })
   await expect.poll(width).toBeLessThan(dragged - 5);
 });
 
+test("shows the explorer actions on hover only while the tree is wide", async ({ page }) => {
+  await openTreeMount(page, "Local disk");
+  const actions = page.getByRole("toolbar", { name: "Folder actions" });
+  const away = () => page.mouse.move(900, 600);
+  await away();
+  await expect(actions).toHaveCSS("opacity", "0");
+  await actions.locator("..").hover();
+  await expect(actions).toHaveCSS("opacity", "1");
+  // A tree narrower than the default keeps them visible.
+  const handle = page.getByRole("separator", { name: "Resize folder tree" });
+  const box = (await handle.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 - 40, box.y + box.height / 2, { steps: 4 });
+  await page.mouse.up();
+  await away();
+  await expect(actions).toHaveCSS("opacity", "1");
+  // So does a narrow container, where the tree fills the view.
+  await page.setViewportSize({ width: 560, height: 800 });
+  await expect(actions).toHaveCSS("opacity", "1");
+});
+
 test("collapses every tree row at once", async ({ page }) => {
   await openTreeMount(page, "Local disk");
   const tree = page.getByRole("tree");

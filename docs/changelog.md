@@ -316,3 +316,7 @@ Adoption fixes from the bks review (20261105-1830-adoption-fixes): `implicitFold
 ## 2026-11-06 02:30 [pitfall]
 
 Folder tree empty after `FileManager` mounts again over cached listings (reported from bks: switching tabs away and back). `FileTree` read its scroll element from a ref that `viewportRef` fills on the `ScrollArea` root, an ancestor; React attaches an ancestor's ref after its children's layout effects, so the virtualizer saw no scroll element on the first commit and only recovered when a later render followed (the listing arriving on a cold mount). The tree viewport is now state in `FileManager` and passed as `scrollElement`, so attaching it re-renders the tree. `FileList` and the archive view own their `ScrollArea`, so their refs are attached in time. Regression: `react/file-manager.test.ts` (happy-dom, first DOM unit test; `bunfig.toml` keeps `.tsx` components out of the unit coverage report) and an e2e that toggles the demo's new "Mounted" switch. Verified: `bun run check`, 84 Playwright e2e (run in the `mcr.microsoft.com/playwright:v1.64.1-noble` container; station lacks Chromium's system libraries).
+
+## 2026-11-06 03:20 [progress]
+
+Explorer header actions (new file / folder, refresh, collapse all) are no longer hidden by default on small screens. They still appear on hover when a mouse is used and the tree is at least its default width (container query on the header, 13rem of content); a tree dragged narrower, a narrow container and touch screens always show them. e2e covers the three states.
