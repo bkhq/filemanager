@@ -111,7 +111,12 @@ const sidebar: FmSidebarOptions = {
     ? "driver"
     : "none",
   hidden: params.get("hidden")?.split(",") ?? [],
+  // `?review`: the tree shows changes only.
+  drives: !params.has("review"),
 };
+const features = params.has("review")
+  ? { starred: false, recent: false }
+  : {};
 
 const max = Number(params.get("max"));
 
@@ -207,6 +212,7 @@ function ManagerDemo() {
           readOnly={readOnly}
           plugins={plugins}
           sidebar={sidebar}
+          features={features}
           meta={meta}
           changeMessage={askMessage
             ? {

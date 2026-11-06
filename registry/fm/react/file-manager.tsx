@@ -127,6 +127,11 @@ export interface FmSidebarOptions {
   hidden?: string[];
   /** `driver`: one section per driver kind. */
   group?: "none" | "driver";
+  /**
+   * `false` leaves the drives and "Manage drives" out of the tree, keeping only its sections
+   * (Changes, Starred, Recent). With `features.starred` / `features.recent` off the tree shows changes only.
+   */
+  drives?: boolean;
 }
 
 export interface FmPickOptions {
@@ -643,6 +648,26 @@ export function FileManager(props: FileManagerProps) {
   // eslint-disable-next-line react/exhaustive-deps -- `changesKey` stands for the query results.
   }))), [changeMounts, changesKey]);
 
+  // Line counts over every change that has them.
+  const changeTotals = useMemo(() => {
+    let additions = 0;
+    let deletions = 0;
+    let counted = false;
+    for (const q of changeQueries) {
+      for (const c of q.data ?? []) {
+        if (c.additions === undefined)
+          continue;
+        counted = true;
+        additions += c.additions;
+        deletions += c.deletions ?? 0;
+      }
+    }
+    return counted
+      ? { additions, deletions }
+      : undefined;
+  // eslint-disable-next-line react/exhaustive-deps -- `changesKey` stands for the query results.
+  }, [changesKey]);
+
   const treeSections = useMemo(() => [
     ...(changeEntries.length
       ? [
@@ -651,6 +676,13 @@ export function FileManager(props: FileManagerProps) {
             label: labels.changes,
             icon: <GitCompareIcon className="text-muted-foreground" />,
             entries: changeEntries,
+            extra: changeTotals && (
+              <span className="shrink-0 text-xs tabular-nums" data-fm-change-totals="">
+                <span className="text-emerald-600 dark:text-emerald-400">{`+${changeTotals.additions}`}</span>
+                {" "}
+                <span className="text-red-600 dark:text-red-400">{`−${changeTotals.deletions}`}</span>
+              </span>
+            ),
             onOpen: (e: FmEntry) => openChangeRef.current(e),
           },
         ]
@@ -677,6 +709,7 @@ export function FileManager(props: FileManagerProps) {
       : []),
   ], [
     changeEntries,
+    changeTotals,
     meta,
     showStarred,
     showRecent,
@@ -1512,6 +1545,7 @@ export function FileManager(props: FileManagerProps) {
                 readOnlyLabel={labels.readOnly}
                 trashLabel={labels.trash}
                 group={props.sidebar?.group}
+                drives={props.sidebar?.drives}
                 groupLabel={labels.driverGroup}
                 manageLabel={labels.manageDrives}
                 onManage={() => setDialog({ kind: "manageDrives" })}

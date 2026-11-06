@@ -473,6 +473,22 @@ describe("localDriver gitChanges", () => {
     }
   });
 
+  it.skipIf(!hasGit)("counts the lines of untracked text files", async () => {
+    const t = await repo();
+    try {
+      await writeFile(join(t.root, "src", "notes.md"), "a\nb");
+      await writeFile(join(t.root, "src", "blob.bin"), new Uint8Array([1, 0, 2]));
+      const d = localDriver({ root: t.root, gitChanges: true });
+      const by = Object.fromEntries((await d.changes!.list()).map(c => [c.path, c]));
+      expect(by["/src/new.ts"]).toMatchObject({ status: "untracked", additions: 1, deletions: 0 });
+      expect(by["/src/notes.md"]).toMatchObject({ additions: 2, deletions: 0 });
+      expect(by["/src/blob.bin"]?.additions).toBeUndefined();
+    }
+    finally {
+      await t.cleanup();
+    }
+  });
+
   it.skipIf(!hasGit)("reads base versions and honours a custom base", async () => {
     const t = await repo();
     try {

@@ -1748,6 +1748,8 @@ test("decorates changed files and shows their diffs", async ({ page }) => {
     await expect(changed("a.ts").locator("[data-fm-change]")).toHaveAttribute("data-fm-change", "modified");
     await expect(changed("new.ts").locator("[data-fm-change]")).toHaveAttribute("data-fm-change", "untracked");
     await expect(changed("gone.txt").locator("[data-fm-change]")).toHaveAttribute("data-fm-change", "deleted");
+    // The section adds up the line counts, untracked files included.
+    await expect(tree.locator("[data-fm-change-totals]")).toHaveText("+2 −2");
     // The drive row's folder gets a dot.
     await expect(drive).toBeVisible();
     await expect(tree.locator("[role=treeitem][aria-level='2'][aria-label='review-e2e'] [data-fm-change=dir]")).toBeVisible();
@@ -1767,6 +1769,13 @@ test("decorates changed files and shows their diffs", async ({ page }) => {
     await expect(review.locator("[data-fm-diff]")).toHaveCount(3);
     await expect(page.getByText("3 changed files")).toBeVisible();
     await expect(review.locator("[data-fm-diff='/review-e2e/new.ts']")).toContainText("export const b = 1;");
+
+    // Without drives the tree shows the Changes section only.
+    await page.goto("/?review");
+    await expect(changed("a.ts")).toBeVisible();
+    await expect(drive).toHaveCount(0);
+    await expect(tree.locator("[role=treeitem][aria-level='1']")).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Manage drives" })).toHaveCount(0);
   }
   finally {
     await rm(`${root}/.git`, { recursive: true, force: true });

@@ -54,6 +54,8 @@ export interface FmTreeSection {
   label: string;
   icon: ReactNode;
   entries: readonly FmEntry[];
+  /** Shown after the label, e.g. line counts. */
+  extra?: ReactNode;
   /** Click on a file of the section (default: reveal it). */
   onOpen?: ((entry: FmEntry) => void) | undefined;
 }
@@ -201,6 +203,8 @@ export function FileTree(props: TreeProps & {
   revealTick?: number;
   /** Host lists (starred, recent) above the drives. */
   sections?: readonly FmTreeSection[] | undefined;
+  /** `false` leaves the drives and "Manage drives" out, so only the sections remain. */
+  drives?: boolean | undefined;
 }) {
   const t = props;
   const { filterEntries, sections } = props;
@@ -373,6 +377,8 @@ export function FileTree(props: TreeProps & {
           listTree(entries, "/", 2, `${key}:`, section.onOpen);
       }
     }
+    if (props.drives === false)
+      return { rows, open };
     if (props.group === "driver") {
       for (const g of groupMountsByDriver(props.mounts)) {
         const isOpen = !closedGroups.has(g.driver);
@@ -395,6 +401,7 @@ export function FileTree(props: TreeProps & {
     listings,
     t.expanded,
     props.group,
+    props.drives,
     props.mounts,
     sections,
     filterEntries,
@@ -534,6 +541,7 @@ export function FileTree(props: TreeProps & {
               {chevron(row.open)}
               {row.section.icon}
               <span className="truncate">{row.section.label}</span>
+              {row.section.extra}
             </Button>
           </Item>
         );
@@ -679,10 +687,12 @@ export function FileTree(props: TreeProps & {
           {virtualizer.getVirtualItems().map(v => renderRow(rows[v.index]!, v.index, v.start))}
         </div>
       </div>
-      <Button variant="ghost" size="sm" className="mx-2 my-2 justify-start font-normal text-muted-foreground" onClick={props.onManage}>
-        <SettingsIcon />
-        {props.manageLabel}
-      </Button>
+      {props.drives !== false && (
+        <Button variant="ghost" size="sm" className="mx-2 my-2 justify-start font-normal text-muted-foreground" onClick={props.onManage}>
+          <SettingsIcon />
+          {props.manageLabel}
+        </Button>
+      )}
     </>
   );
 }

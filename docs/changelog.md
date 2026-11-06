@@ -320,3 +320,11 @@ Folder tree empty after `FileManager` mounts again over cached listings (reporte
 ## 2026-11-06 03:20 [progress]
 
 Explorer header actions (new file / folder, refresh, collapse all) are no longer hidden on touch screens, which cannot hover. With a mouse they appear on hover at any tree width. e2e covers the default and a narrowed tree.
+
+## 2026-11-06 06:00 [progress]
+
+`sidebar.drives: false` leaves the drives and "Manage drives" out of the folder tree, so only its sections remain; with `features.starred` / `features.recent` off the tree shows the Changes section only. The demo turns this on with `?review`. e2e covers it in the review test.
+
+## 2026-11-06 06:30 [progress]
+
+The Changes section header shows the line counts of every change added up (`+N −M`, `FmTreeSection.extra`). The local driver now counts the lines of untracked text files up to 1 MiB (`additions`, `deletions: 0`), since `git diff --numstat` leaves them out; binaries and larger files stay uncounted. Unit test for untracked counts; the review e2e checks the totals.
