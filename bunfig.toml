@@ -1,6 +1,9 @@
 [test]
 coverageThreshold = { line = 0.80, function = 0.80 }
 coverageSkipTestFiles = true
+# React components are exercised by the e2e suite; the DOM tests that load them would otherwise
+# pull every component into the unit coverage report.
+coveragePathIgnorePatterns = ["apps/**", "registry/fm/**/*.tsx"]
 
 [install]
 # registry/ sources resolve dependencies from the root node_modules.

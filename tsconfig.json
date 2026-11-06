@@ -12,7 +12,9 @@
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    // `bun test` resolves the shadcn components imported by registry/fm/react from the demo app.
+    "paths": { "@/*": ["./apps/fm-web/src/*"] }
   },
   "include": ["registry/fm/core", "registry/fm/server", "registry/fm/drivers", "registry/fm/client", "registry/fm/thumbnails", "scripts"]
 }

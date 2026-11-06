@@ -312,3 +312,7 @@ Security review: the baseline of a renamed file is read from its previous path, 
 ## 2026-11-05 19:30 [progress]
 
 Adoption fixes from the bks review (20261105-1830-adoption-fixes): `implicitFolders` and `uploads: false` mount options, `runDriverContract` options for flat / seeded storages, `data-tree-path` / `data-tree-mount` on tree rows.
+
+## 2026-11-06 02:30 [pitfall]
+
+Folder tree empty after `FileManager` mounts again over cached listings (reported from bks: switching tabs away and back). `FileTree` read its scroll element from a ref that `viewportRef` fills on the `ScrollArea` root, an ancestor; React attaches an ancestor's ref after its children's layout effects, so the virtualizer saw no scroll element on the first commit and only recovered when a later render followed (the listing arriving on a cold mount). The tree viewport is now state in `FileManager` and passed as `scrollElement`, so attaching it re-renders the tree. `FileList` and the archive view own their `ScrollArea`, so their refs are attached in time. Regression: `react/file-manager.test.ts` (happy-dom, first DOM unit test; `bunfig.toml` keeps `.tsx` components out of the unit coverage report) and an e2e that toggles the demo's new "Mounted" switch. Verified: `bun run check`, 84 Playwright e2e (run in the `mcr.microsoft.com/playwright:v1.64.1-noble` container; station lacks Chromium's system libraries).

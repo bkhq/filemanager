@@ -41,6 +41,7 @@ const demoText = {
     title: "File manager",
     viewOnly: "View only",
     askMessage: "Ask for change notes",
+    mounted: "Mounted",
     language: "Language",
     theme: "Theme",
     themes: { light: "Light", dark: "Dark", system: "System" },
@@ -49,6 +50,7 @@ const demoText = {
     title: "文件管理器",
     viewOnly: "只读",
     askMessage: "询问修改说明",
+    mounted: "已挂载",
     language: "语言",
     theme: "主题",
     themes: { light: "浅色", dark: "深色", system: "跟随系统" },
@@ -142,6 +144,8 @@ function ManagerDemo() {
     localStorage.setItem(ASK_KEY, on ? "1" : "0");
     setAskMessage(on);
   };
+  // Unmounting and mounting again keeps the query cache, as a host switching tabs would.
+  const [mounted, setMounted] = useState(true);
   const [lang, setLang] = useState<Lang>(initialLang);
   const { theme, setTheme } = useTheme();
   const text = demoText[lang];
@@ -154,6 +158,10 @@ function ManagerDemo() {
       <header className="flex items-center gap-2">
         <h1 className="text-lg font-medium">{text.title}</h1>
         <span className="flex-1" />
+        <label className="mr-2 flex items-center gap-2 text-sm text-muted-foreground">
+          <Checkbox checked={mounted} onCheckedChange={setMounted} />
+          {text.mounted}
+        </label>
         <label className="mr-2 flex items-center gap-2 text-sm text-muted-foreground">
           <Checkbox checked={askMessage} onCheckedChange={changeAskMessage} />
           {text.askMessage}
@@ -189,24 +197,26 @@ function ManagerDemo() {
           </DropdownMenuContent>
         </DropdownMenu>
       </header>
-      <FileManager
-        baseUrl="/api/fm"
-        labels={lang === "zh"
-          ? zhLabels
-          : enLabels}
-        className="flex-1"
-        readOnly={readOnly}
-        plugins={plugins}
-        sidebar={sidebar}
-        meta={meta}
-        changeMessage={askMessage
-          ? {
-              mode: params.get("ask") === "required"
-                ? "required"
-                : "optional",
-            }
-          : undefined}
-      />
+      {mounted && (
+        <FileManager
+          baseUrl="/api/fm"
+          labels={lang === "zh"
+            ? zhLabels
+            : enLabels}
+          className="flex-1"
+          readOnly={readOnly}
+          plugins={plugins}
+          sidebar={sidebar}
+          meta={meta}
+          changeMessage={askMessage
+            ? {
+                mode: params.get("ask") === "required"
+                  ? "required"
+                  : "optional",
+              }
+            : undefined}
+        />
+      )}
     </main>
   );
 }

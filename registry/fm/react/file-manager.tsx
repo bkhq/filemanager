@@ -1321,9 +1321,12 @@ export function FileManager(props: FileManagerProps) {
       </DropdownMenuContent>
     </DropdownMenu>
   );
+  // State, not a ref: the viewport is attached after FileTree's first layout effect (it is an
+  // ancestor), so the tree must re-render to pick it up even when no data change follows.
+  const [treeViewport, setTreeViewport] = useState<HTMLDivElement | null>(null);
+  const treeViewportRef = useMemo(() => viewportRef<HTMLDivElement>(setTreeViewport), []);
   // Explorer refresh also reveals the selected row (or the current folder) like VS Code:
   // its ancestors open and the tree scrolls the row into view once it is loaded.
-  const treeScrollRef = useRef<HTMLDivElement>(null);
   const [revealTick, setRevealTick] = useState(0);
   const refreshTree = () => {
     void qc.invalidateQueries({
@@ -1464,7 +1467,7 @@ export function FileManager(props: FileManagerProps) {
       <ScrollArea
         className="min-h-0 flex-1"
         // The virtualized tree scrolls the viewport, not the root.
-        ref={viewportRef(treeScrollRef)}
+        ref={treeViewportRef}
       >
         {shownMounts && (
           <ContextMenu>
@@ -1506,7 +1509,7 @@ export function FileManager(props: FileManagerProps) {
                 groupLabel={labels.driverGroup}
                 manageLabel={labels.manageDrives}
                 onManage={() => setDialog({ kind: "manageDrives" })}
-                scrollRef={treeScrollRef}
+                scrollElement={treeViewport}
                 revealTick={revealTick}
                 filterEntries={treeFilter}
                 changesOf={changesOf}

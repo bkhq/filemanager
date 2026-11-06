@@ -1,4 +1,4 @@
-import type { DragEvent, KeyboardEvent, ReactNode, RefObject } from "react";
+import type { DragEvent, KeyboardEvent, ReactNode } from "react";
 import type { FmClient, FmListFilter } from "../client/client";
 import type { FmEntry, FmMountInfo } from "../core/schema";
 import type { FmChangeIndex } from "./changes";
@@ -185,7 +185,7 @@ function parentIndex(rows: readonly Row[], i: number) {
 
 /**
  * Sidebar tree: mounts at the top level (or under driver sections), folders loaded lazily on expand.
- * Rows are flattened and virtualized inside `scrollRef`, so large folders stay cheap.
+ * Rows are flattened and virtualized inside `scrollElement`, so large folders stay cheap.
  */
 export function FileTree(props: TreeProps & {
   mounts: FmMountInfo[];
@@ -196,7 +196,7 @@ export function FileTree(props: TreeProps & {
   manageLabel: string;
   onManage: () => void;
   /** Scroll container of the tree. */
-  scrollRef: RefObject<HTMLElement | null>;
+  scrollElement: HTMLElement | null;
   /** Bumping it scrolls the selected row (or the current folder) into view once it is rendered. */
   revealTick?: number;
   /** Host lists (starred, recent) above the drives. */
@@ -403,7 +403,7 @@ export function FileTree(props: TreeProps & {
 
   const virtualizer = useVirtualizer({
     count: rows.length,
-    getScrollElement: () => props.scrollRef.current,
+    getScrollElement: () => props.scrollElement,
     estimateSize: () => ROW_H,
     scrollMargin: PAD,
     overscan: 10,

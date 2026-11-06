@@ -805,6 +805,18 @@ test("collapses every tree row at once", async ({ page }) => {
   await expect(item("docs")).toHaveAttribute("aria-selected", "true");
 });
 
+test("shows the tree rows again when the manager mounts over cached listings", async ({ page }) => {
+  await openTreeMount(page, "Local disk");
+  const tree = page.getByRole("tree");
+  await expect(tree.getByRole("treeitem", { name: "docs", exact: true })).toBeVisible();
+  const mounted = page.getByRole("checkbox", { name: "Mounted" });
+  await mounted.click();
+  await expect(tree).toHaveCount(0);
+  await mounted.click();
+  await expect(tree.getByRole("treeitem", { name: "Local disk", exact: true })).toBeVisible();
+  await expect(tree.getByRole("treeitem", { name: "docs", exact: true })).toBeVisible();
+});
+
 test("reopens the last folder and file after a reload", async ({ page }) => {
   await openTreeMount(page, "Local disk");
   const item = (name: string) => page.getByRole("tree").getByRole("treeitem", { name, exact: true });
