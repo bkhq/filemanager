@@ -373,6 +373,11 @@
           "target": "~/src/fm/react/text-preview.tsx"
         },
         {
+          "path": "registry/fm/react/tidy-menu.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/tidy-menu.ts"
+        },
+        {
           "path": "registry/fm/react/transform.ts",
           "type": "registry:file",
           "target": "~/src/fm/react/transform.ts"

@@ -86,4 +86,53 @@ describe("FileManager", () => {
     act(() => root.unmount());
     container.remove();
   });
+
+  it("ends the entry menu of a read-only file without a separator", async () => {
+    const app = new Hono();
+    app.route("/fm", createFmRouter({
+      mounts: () => [
+        {
+          id: "m",
+          label: "Main",
+          readOnly: true,
+          driver: memoryDriver({
+            files: { "/b.txt": "b" },
+          }),
+        },
+      ],
+    }));
+    const client = createFmClient({
+      baseUrl: "http://localhost/fm",
+      fetch: (input, init) => app.request(input, init),
+    });
+    const qc = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Infinity },
+      },
+    });
+    const container = document.createElement("div");
+    document.body.append(container);
+    const settle = () => act(() => new Promise(r => setTimeout(r, 50)));
+    const root = createRoot(container);
+    await act(async () => root.render(createElement(QueryClientProvider, { client: qc }, createElement(FileManager, { client }))));
+    const row = () => [
+      ...container.querySelectorAll("[role=treeitem]"),
+    ].find(r => r.textContent === "b.txt");
+    for (let i = 0; i < 20 && !row(); i++)
+      await settle();
+    await act(async () => {
+      row()!.dispatchEvent(new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 10,
+        clientY: 10,
+      }));
+    });
+    await settle();
+    const menu = document.querySelector("[data-slot=context-menu-content]");
+    expect(menu?.textContent).toContain("Details");
+    expect(menu?.lastElementChild?.getAttribute("data-slot")).not.toBe("context-menu-separator");
+    act(() => root.unmount());
+    container.remove();
+  });
 });

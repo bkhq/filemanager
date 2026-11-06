@@ -328,3 +328,7 @@ Explorer header actions (new file / folder, refresh, collapse all) are no longer
 ## 2026-11-06 06:30 [progress]
 
 The Changes section header shows the line counts of every change added up (`+N −M`, `FmTreeSection.extra`). The local driver now counts the lines of untracked text files up to 1 MiB (`additions`, `deletions: 0`), since `git diff --numstat` leaves them out; binaries and larger files stay uncounted. Unit test for untracked counts; the review e2e checks the totals.
+
+## 2026-11-06 07:30 [progress]
+
+Context menus no longer show separators that hidden items leave at either end or side by side (a read-only file used to end its menu with one, since Delete is hidden). `menuContent` passes every list, tree and blank-area menu through `tidyMenu` (`react/tidy-menu.ts`), which also flattens nested groups. Unit tests for `tidyMenu`; a render test checks the read-only file menu.

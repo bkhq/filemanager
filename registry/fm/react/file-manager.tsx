@@ -10,6 +10,7 @@ import type { FmLabels } from "./labels";
 import type { FmMeta } from "./meta";
 import type { FmActionContext, FmFileAction, FmPlugin } from "./plugins";
 import type { FmClipboard, FmSelection, FmSelectMode } from "./state";
+import type { FmMenuItems } from "./tidy-menu";
 import type { FmUndo } from "./undo";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { cn } from "cn";
@@ -116,6 +117,7 @@ import { QuickOpen } from "./quick-open";
 import { ReviewDialog, ReviewView } from "./review-dialog";
 import { viewportRef } from "./scroll";
 import { EMPTY_SELECTION, formatSize, kindOf, prune, select, step } from "./state";
+import { tidyMenu } from "./tidy-menu";
 import { TrashView } from "./trash-view";
 import { undoFor } from "./undo";
 import { UploadPanel } from "./upload-panel";
@@ -1223,7 +1225,7 @@ export function FileManager(props: FileManagerProps) {
           </ContextMenuItem>
         );
   /** Shared shell for the list and tree context menus. */
-  const menuContent = (items: ReactNode) => <ContextMenuContent className="w-56">{items}</ContextMenuContent>;
+  const menuContent = (items: FmMenuItems | false | undefined) => <ContextMenuContent className="w-56">{tidyMenu(items || [])}</ContextMenuContent>;
 
   const runAction = (action: FmFileAction, targets: FmEntry[], at?: FolderRef) => {
     const m = at?.mount ?? mount;
