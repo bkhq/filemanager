@@ -451,6 +451,115 @@
           "path": "registry/fm/react/code-language.ts",
           "type": "registry:file",
           "target": "~/src/fm/react/code-language.ts"
+        },
+        {
+          "path": "registry/fm/react/manager-shared.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/manager-shared.ts"
+        },
+        {
+          "path": "registry/fm/react/use-view-state.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/use-view-state.ts"
+        },
+        {
+          "path": "registry/fm/react/use-listing-state.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/use-listing-state.ts"
+        },
+        {
+          "path": "registry/fm/react/use-changes.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/use-changes.tsx"
+        },
+        {
+          "path": "registry/fm/react/use-commands.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/use-commands.ts"
+        },
+        {
+          "path": "registry/fm/react/manager-menus.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/manager-menus.tsx"
+        },
+        {
+          "path": "registry/fm/react/use-file-manager.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/use-file-manager.ts"
+        },
+        {
+          "path": "registry/fm/react/manager-overlays.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/manager-overlays.tsx"
+        },
+        {
+          "path": "registry/fm/react/workspace-shell.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/workspace-shell.tsx"
+        },
+        {
+          "path": "registry/fm/react/workspace-tree-pane.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/workspace-tree-pane.tsx"
+        },
+        {
+          "path": "registry/fm/react/manager-list.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/manager-list.tsx"
+        },
+        {
+          "path": "registry/fm/react/manager-frame.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/manager-frame.tsx"
+        },
+        {
+          "path": "registry/fm/react/manager-tree.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/manager-tree.tsx"
+        },
+        {
+          "path": "registry/fm/react/columns.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/columns.tsx"
+        }
+      ]
+    },
+    {
+      "name": "fm-drive",
+      "type": "registry:block",
+      "title": "File manager: drive view",
+      "description": "Optional cloud-drive presentation: <DriveManager> with the folder tree (folders only) on the left, the chosen folder as a grid or list on the right, a batch bar, and files opening in the preview dialog. Uses the fm-react state and dialogs; no extra npm dependencies.",
+      "dependencies": [
+        "cn",
+        "lucide-react",
+        "react-resizable-panels"
+      ],
+      "registryDependencies": [
+        "button",
+        "input",
+        "dropdown-menu",
+        "breadcrumb",
+        "resizable",
+        "dialog",
+        "scroll-area",
+        "progress",
+        "@bkhq/fm-react"
+      ],
+      "files": [
+        {
+          "path": "registry/fm/react/drive-manager.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/drive-manager.tsx"
+        },
+        {
+          "path": "registry/fm/react/drive-shell.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/drive-shell.tsx"
+        },
+        {
+          "path": "registry/fm/react/drive-folder-picker.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/drive-folder-picker.tsx"
         }
       ]
     },

@@ -65,3 +65,10 @@ Each plan is a single line linking to its detail file. All detailed information 
 - [x] [**20261105-1300-change-message Change messages (commit notes) for writes**](20261105-1300-change-message.md) `2026-11-05`
 - [x] [**20261105-1400-review-changes Changes / review, external edits, SVG preview**](20261105-1400-review-changes.md) `2026-11-05`
 - [x] [**20261105-1830-adoption-fixes Upstream fixes from the bks adoption review**](20261105-1830-adoption-fixes.md) `2026-11-05`
+- [x] [**20261106-0700-drive-variant Drive variant of FileManager (phases 1 and 2)**](20261106-0700-drive-variant.md) `2026-11-06`
+- [~] [**20261106-0741-drive-host-extensions Drive host extensions (phase 3)**](20261106-0741-drive-host-extensions.md) `2026-11-06`
+- [x] [**20261106-0815-fm-drive-item Optional fm-drive registry item**](20261106-0815-fm-drive-item.md) `2026-11-06`
+- [x] [**20261106-0830-drive-tree-layout Drive view: folder tree + folder contents + preview dialog**](20261106-0830-drive-tree-layout.md) `2026-11-06`
+- [x] [**20261106-0913-subfolder-hint Subfolder hints on folder entries**](20261106-0913-subfolder-hint.md) `2026-11-06`
+- [x] [**20261106-0913-bithk-extension-points Drive extension points for bithk**](20261106-0913-bithk-extension-points.md) `2026-11-06`
+- [x] [**20261106-0943-native-trash Driver-provided trash**](20261106-0943-native-trash.md) `2026-11-06`

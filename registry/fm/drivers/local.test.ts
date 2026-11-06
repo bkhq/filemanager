@@ -37,6 +37,33 @@ runDriverContract("local", async () => {
   };
 });
 
+describe("localDriver subfolder hints", () => {
+  it("tells folders with subfolders from those without, up to a bound", async () => {
+    const t = await tempRoot();
+    try {
+      await mkdir(join(t.root, "files"));
+      await writeFile(join(t.root, "files", "a.txt"), "a");
+      await mkdir(join(t.root, "nested", "deep"), { recursive: true });
+      await mkdir(join(t.root, "empty"));
+      await mkdir(join(t.root, "many"));
+      await Promise.all(Array.from({ length: 300 }, (_, i) => writeFile(join(t.root, "many", `f${i}.txt`), "")));
+      await writeFile(join(t.root, "top.txt"), "t");
+      const d = localDriver({ root: t.root });
+      const by = Object.fromEntries((await d.list("/")).map(e => [e.name, e.hasSubfolders]));
+      expect(by).toEqual({
+        "files": false,
+        "nested": true,
+        "empty": false,
+        "many": undefined,
+        "top.txt": undefined,
+      });
+    }
+    finally {
+      await t.cleanup();
+    }
+  });
+});
+
 describe("localDriver jail", () => {
   it("hides symlinks that escape the root and refuses to follow them", async () => {
     const t = await tempRoot();

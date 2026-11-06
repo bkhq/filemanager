@@ -62,3 +62,11 @@ Each task is a single line linking to its detail file. All detailed information 
 - [x] [**20261104-0558-listing Listing: hidden files toggle and git-ignored entries**](20261104-0558-listing.md) `P2`
 - [x] [**20261104-0558-previews Previews: binary sniff, PDF toolbar, Markdown plugin**](20261104-0558-previews.md) `P2`
 - [x] [**20261104-0843-dropzone-streamdown Dropzone uploads, streamdown live preview, dependency catalog**](20261104-0843-dropzone-streamdown.md) `P2`
+- [x] [**20261106-0700-drive-variant Drive variant of FileManager**](20261106-0700-drive-variant.md) `P1`
+- [~] [**20261106-0741-drive-host-extensions Drive host extensions: groups, quota, columns, Move to**](20261106-0741-drive-host-extensions.md) `P1`
+- [x] [**20261106-0815-fm-drive-item Move the drive variant into an optional fm-drive item**](20261106-0815-fm-drive-item.md) `P1`
+- [x] [**20261106-0830-drive-tree-layout Drive view: folder tree on the left, folder contents on the right**](20261106-0830-drive-tree-layout.md) `P1`
+- [x] [**20261106-0913-subfolder-hint Folder entries tell whether they hold subfolders**](20261106-0913-subfolder-hint.md) `P2`
+- [x] [**20261106-0913-bithk-extension-points Drive extension points for bithk**](20261106-0913-bithk-extension-points.md) `P1`
+- [x] [**20261106-0943-native-trash Drivers may bring their own trash**](20261106-0943-native-trash.md) `P1`
+- [x] [**20261106-0959-demo-native-trash Demo: a database-style space with its own trash**](20261106-0959-demo-native-trash.md) `P2`

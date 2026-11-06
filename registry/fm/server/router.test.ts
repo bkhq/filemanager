@@ -59,6 +59,43 @@ function setup(opts: { files?: Record<string, string>; mounts?: FmMount[]; autho
 const q = (path: string) => encodeURIComponent(path);
 
 describe("mounts and access", () => {
+  it("lists mount groups and quotas when the host sets them", async () => {
+    const { req } = setup({
+      mounts: [
+        {
+          id: "me",
+          label: "Mine",
+          driver: memoryDriver(),
+          group: "Personal",
+          quota: { used: 1024, total: 4096 },
+        },
+        {
+          id: "team",
+          label: "Team",
+          driver: memoryDriver(),
+          group: "Teams",
+          quota: { used: 7 },
+        },
+        {
+          id: "plain",
+          label: "Plain",
+          driver: memoryDriver(),
+        },
+      ],
+    });
+    const { mounts } = await (await req("/mounts")).json();
+    expect(mounts[0]).toMatchObject({
+      group: "Personal",
+      quota: { used: 1024, total: 4096 },
+    });
+    expect(mounts[1]).toMatchObject({
+      group: "Teams",
+      quota: { used: 7 },
+    });
+    expect("total" in mounts[1].quota).toBe(false);
+    expect("group" in mounts[2] || "quota" in mounts[2]).toBe(false);
+  });
+
   it("lists mounts with caps and hides unreadable ones", async () => {
     const { req } = setup({
       mounts: [
@@ -166,6 +203,76 @@ describe("list", () => {
     const shown = await (await req("/m/m/list?path=/&hidden=0")).json();
     expect(shown.items.map((e: { name: string }) => e.name)).toEqual(["a.txt"]);
     expect(shown.total).toBe(1);
+  });
+
+  it("passes subfolder hints through and leaves them out when unknown", async () => {
+    const { req } = setup({
+      files: { "/files/a.txt": "a", "/nested/deep/b.txt": "b" },
+    });
+    const list = await (await req("/m/m/list?path=/")).json();
+    const by = Object.fromEntries(list.items.map((e: { name: string; hasSubfolders?: boolean }) => [e.name, e.hasSubfolders]));
+    expect(by).toEqual({ files: false, nested: true });
+    expect((await (await req("/m/m/stat?path=/nested")).json()).hasSubfolders).toBe(true);
+    const base = memoryDriver({
+      files: { "/x/y.txt": "y" },
+    });
+    const driver: FmDriver = {
+      ...base,
+      list: async path => (await base.list(path)).map(({ hasSubfolders: _, ...e }) => e),
+    };
+    const plain = await (await setup({
+      mounts: [
+        { id: "m", label: "M", driver },
+      ],
+    }).req("/m/m/list?path=/")).json();
+    expect("hasSubfolders" in plain.items[0]).toBe(false);
+  });
+
+  it("passes driver ids and extra fields through list, stat and search", async () => {
+    const base = memoryDriver({
+      files: { "/a.txt": "a", "/b.txt": "b" },
+    });
+    const tag = <T extends { path: string }>(e: T) => (e.path === "/a.txt"
+      ? {
+          ...e,
+          id: "id-a",
+          extra: {
+            owner: "ada",
+            shared: true,
+            size: 1,
+            note: null,
+          },
+        }
+      : e);
+    const driver: FmDriver = {
+      ...base,
+      stat: async path => tag(await base.stat(path)),
+      list: async path => (await base.list(path)).map(tag),
+    };
+    const { req } = setup({
+      mounts: [
+        { id: "m", label: "M", driver },
+      ],
+    });
+    const list = await (await req("/m/m/list?path=/")).json();
+    expect(list.items[0]).toMatchObject({
+      name: "a.txt",
+      id: "id-a",
+      extra: {
+        owner: "ada",
+        shared: true,
+        size: 1,
+        note: null,
+      },
+    });
+    expect("id" in list.items[1]).toBe(false);
+    expect("extra" in list.items[1]).toBe(false);
+    expect(await (await req("/m/m/stat?path=/a.txt")).json()).toMatchObject({
+      id: "id-a",
+      extra: { owner: "ada" },
+    });
+    const found = await (await req("/m/m/search?path=/&q=a.txt")).json();
+    expect(found.items[0]).toMatchObject({ id: "id-a" });
   });
 
   it("flags, counts and drops ignored entries", async () => {
@@ -729,6 +836,122 @@ describe("search", () => {
       const { req } = setup();
       expect((await req("/m/m/search?path=/&q=a&mode=regex")).status).toBe(422);
     });
+  });
+});
+
+describe("driver trash", () => {
+  function nativeSetup(extra: FmMount[] = []) {
+    const driver = memoryDriver({
+      files: { "/a.txt": "a", "/d/b.txt": "b" },
+      nativeTrash: true,
+    });
+    return {
+      ...setup({
+        mounts: [
+          {
+            id: "m",
+            label: "Main",
+            driver,
+            trash: true,
+          },
+          ...extra,
+        ],
+      }),
+      driver,
+    };
+  }
+
+  it("deletes into the driver's trash, lists, restores beside a clash and purges", async () => {
+    const { req, json, driver } = nativeSetup();
+    expect(driver.trash).toBeDefined();
+    const del = (await (await json("POST", "/m/m/ops", {
+      op: "delete",
+      paths: ["/a.txt", "/d"],
+    })).json()).results;
+    expect(del.every((r: { ok: boolean; trashId?: string }) => r.ok && r.trashId)).toBe(true);
+    await expect(driver.stat("/a.txt")).rejects.toThrow();
+    // No trash folder on the driver.
+    await expect(driver.stat("/.fm-trash")).rejects.toThrow();
+    expect((await driver.trash!.list()).map(i => i.path).sort()).toEqual(["/a.txt", "/d"]);
+
+    const { items } = await (await req("/m/m/trash")).json();
+    expect(items.find((i: { path: string }) => i.path === "/d")).toMatchObject({ name: "d", kind: "dir", size: 0 });
+
+    await driver.write("/a.txt", new TextEncoder().encode("new"));
+    const restored = (await (await json("POST", "/m/m/trash/restore", {
+      ids: [del[0].trashId, del[1].trashId],
+    })).json()).results;
+    expect(restored.map((r: { entry: { path: string } }) => r.entry.path)).toEqual(["/a (1).txt", "/d"]);
+    expect((await driver.stat("/d/b.txt")).size).toBe(1);
+    expect((await (await req("/m/m/trash")).json()).items).toEqual([]);
+
+    const again = (await (await json("POST", "/m/m/ops", {
+      op: "delete",
+      paths: ["/a.txt", "/d"],
+    })).json()).results;
+    await json("POST", "/m/m/trash/purge", {
+      ids: [again[0].trashId],
+    });
+    expect((await (await req("/m/m/trash")).json()).items).toHaveLength(1);
+    await json("POST", "/m/m/trash/purge", {});
+    expect(await driver.trash!.list()).toEqual([]);
+    const unknown = (await (await json("POST", "/m/m/trash/restore", {
+      ids: ["nope"],
+    })).json()).results;
+    expect(unknown[0].error.code).toBe("NOT_FOUND");
+  });
+
+  it("prefers the driver's expiry over the mount retention", async () => {
+    const base = memoryDriver({
+      files: { "/a.txt": "a" },
+      nativeTrash: true,
+    });
+    const expires = Date.UTC(2030, 0, 1);
+    const driver: FmDriver = {
+      ...base,
+      trash: {
+        ...base.trash!,
+        list: async () => (await base.trash!.list()).map(i => ({ ...i, expiresAt: expires })),
+        get: async id => ({
+          ...await base.trash!.get(id),
+          expiresAt: expires,
+        }),
+      },
+    };
+    const { req, json } = setup({
+      mounts: [
+        {
+          id: "m",
+          label: "Main",
+          driver,
+          trash: { retentionDays: 7 },
+        },
+      ],
+    });
+    await json("POST", "/m/m/ops", {
+      op: "delete",
+      paths: ["/a.txt"],
+    });
+    const { items } = await (await req("/m/m/trash")).json();
+    expect(items[0].expiresAt).toBe(new Date(expires).toISOString());
+  });
+
+  it("trashes the source of a cross-mount move in the driver's trash", async () => {
+    const { json, driver } = nativeSetup([
+      {
+        id: "o",
+        label: "Other",
+        driver: memoryDriver(),
+      },
+    ]);
+    const res = (await (await json("POST", "/m/m/ops", {
+      op: "move",
+      paths: ["/a.txt"],
+      dest: "/",
+      destMount: "o",
+    })).json()).results;
+    expect(res[0].ok).toBe(true);
+    expect((await driver.trash!.list()).map(i => i.path)).toEqual(["/a.txt"]);
   });
 });
 

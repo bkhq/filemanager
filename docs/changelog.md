@@ -336,3 +336,35 @@ Context menus no longer show separators that hidden items leave at either end or
 ## 2026-11-06 07:45 [progress]
 
 Manage drives is left out (tree button and storage menu) when the host shows only one drive, since there is nothing to pick. Drives the user hid still count, so the dialog stays reachable to show them again. `FileTree.onManage` is optional; a render test checks one drive against two.
+
+## 2026-11-06 08:00 [progress]
+
+Drive variant (20261106-0700-drive-variant, phases 1 and 2). Phase 1: `react/file-manager.tsx` (2302 lines) split without behaviour change into state hooks (`use-view-state`, `use-listing-state`, `use-changes`, `use-commands`, composed by `use-file-manager`), `manager-menus`, `manager-overlays`, `manager-list`, `manager-shared`, and the workspace shell (`workspace-shell`, `workspace-tree-pane`); every file is under 800 lines and the 85 e2e tests passed unchanged. Entries gain optional `id` and `extra`, passed through list / stat / search (router test). Phase 2: `<FileManager variant="drive">` (`drive-shell`, `drive-nav`, `drive-ref-list`): spaces navigation with Recent / Starred / Trash (an overlay on narrow containers), New and Upload menus, search, grid by default (preference stored apart), filter and sort bar, batch bar for the selection (download, copy, cut, rename, host actions, delete), preview dialog; no tree, review, quick open or hidden / ignored toggles. The preview dialog steps through siblings only when the file is in the current folder. Demo: `?variant=drive`. Verified: `bun run check` (302 pass), 93 Playwright e2e (8 new in `tests/e2e/drive.spec.ts`), `registry:smoke`.
+
+## 2026-11-06 08:30 [decision]
+
+The drive view leaves `fm-react`: hosts that only browse and edit files should not carry it. `FileManager` loses `variant` and every drive import; `<DriveManager>` (`react/drive-manager.tsx`) is the new optional `fm-drive` registry item with `drive-shell`, `drive-nav`, `drive-ref-list`, and depends on `fm-react`. Both share `useFileManager(props, mode)` and the new `ManagerFrame` (unreachable / empty states, container, overlays). Host extensions (plan 20261106-0741, rejected) and the managed store (plan 20261105-1120) wait for a drive redesign; the managed store will be its own `fm-managed` item.
+
+## 2026-11-06 09:00 [progress]
+
+Drive layout for bithk (20261106-0830-drive-tree-layout): `<DriveManager>` now shows the workspace's folder tree on the left (spaces, Starred, Recent, Trash; folders only, the listed folder expanded and highlighted), the chosen folder on the right (grid by default, list toggle, filter / sort bar, batch bar), and files in the preview dialog, including Starred / Recent files. No Changes section or change badges. In `fm-react`, drive mode keeps the tree but never acts as the explorer, and the tree part of the workspace pane is shared as `manager-tree.tsx`. The spaces navigation and its Recent / Starred lists (`drive-nav.tsx`, `drive-ref-list.tsx`, 5 labels) are removed. Verified: `bun run check` (307 pass), 95 Playwright e2e (10 in `drive.spec.ts`), `registry:smoke`.
+
+## 2026-11-06 09:20 [progress]
+
+Drive tree: a listed folder without subfolders is a leaf (no chevron, no `aria-expanded`), so folders that only hold files no longer open to nothing. `FileTree` gains `foldersOnly` (drive rows list folders only; the filter moved out of `treeFilter`); folders not listed yet keep their chevron until first opened. The drive e2e checks it. The 2026-11-06 fixes on `main` (menu separators via `tidyMenu`, Manage drives hidden with one drive) were already carried into the split files; no merge was needed.
+
+## 2026-11-06 09:40 [progress]
+
+Subfolder hints (20261106-0913-subfolder-hint): folder entries may carry `hasSubfolders`, passed through list / stat / search. The memory driver always sets it; the local driver reads each child folder with `opendir` (32 at a time, stopping at the first folder, unknown past 256 entries or at a symlink); S3 / R2 leave it unset. Listing 1 000 folders locally went from about 24 ms to about 38 ms. The drive tree (`FileTree.foldersOnly`) shows folders with `hasSubfolders: false` as leaves before they are opened; a loaded listing still wins over the hint. Contract suite checks hints when given; router, memory, local tests and a drive e2e added.
+
+## 2026-11-06 10:10 [progress]
+
+Drive extension points for bithk (20261106-0913-bithk-extension-points). Server: `FmMount.group` and `FmMount.quota` (`{ used, total? }`) reach `FmMountInfo`. Drive tree groups spaces by `group` (`FileTree` `group: "space"`, ungrouped spaces at the top level) and shows the current space's quota (bar and text) under the tree. `fm-react`: `columns` (`FmColumn` over `entry.extra`: list cells, details rows, column-value filters stored in `FmListFilters.extra`) and `detailTabs` (`FmDetailTab`: host tabs in the details panel) on both managers. `fm-drive`: "Move to… / Copy to…" actions with `DriveFolderPicker` (writable spaces, folders only, blocks moving into itself or back into its folder; cross-space via `destMount`). Demo: "Personal" group and quota on Local disk, a read-only "Team plans" space in "Shared with me" with `extra.owner` (hidden outside the drive demo), an Owner column with a filter and an Activity tab. Verified: `bun run check` (318 pass), 101 Playwright e2e (16 drive; workspace spec unchanged), `registry:smoke`.
+
+## 2026-11-06 10:30 [progress]
+
+Driver-provided trash (20261106-0943-native-trash): optional `FmDriver.trash` (`remove` / `list` / `get` / `restore` / `purge`, items with epoch `deletedAt` and optional `expiresAt`). The router reaches every trash path through `trashOf(mount)` (the driver's trash, else `folderTrash(driver)` wrapping the `/.fm-trash` layout unchanged): ops delete, the source of a cross-mount move, `GET /trash`, restore (the router still picks a free path under the original folder), purge, retention and `purgeExpired`. An item's own `expiresAt` wins over `retentionDays`; `/.fm-trash` is hidden only for folder trash. `purgeExpiredItems` / `expiresAt` in `server/trash.ts` were folded into the router. Routes, client, undo and `TrashView` are unchanged. `memoryDriver({ nativeTrash: true })` is the reference (the demo's Scratch space uses it); the contract suite runs trash cases when the hook exists.
+
+## 2026-11-06 09:59 [progress]
+
+Drive demo: a "Team drive" space in the "Team" group shows a database-style backend (task 20261106-0959-demo-native-trash): a memory driver wrapped with stable entry ids that follow renames and moves, owners kept by id, and its own trash (`FmDriver.trash`) whose items expire after 14 days with no mount `retentionDays`. The Activity tab shows the entry id. Fix: `TrashView` now shows the Expires column whenever an item has `expiresAt` (a driver's own expiry), not only with the mount retention. e2e: delete into the space's trash, see "In 14 days", restore; the id stays across a rename.

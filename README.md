@@ -35,6 +35,7 @@ bunx shadcn add @bkhq/fm-react                        # UI + client
 | `fm-driver-contract` | `bun:test` suite a new driver must pass |
 | `fm-client` | typed fetch client, TanStack Query hooks, upload queue |
 | `fm-react` | `<FileManager />`: tree, list/grid, previews (image / video rotate, flip, zoom), uploads, trash, undo |
+| `fm-drive` | optional `<DriveManager />`: cloud-drive view (folder tree, folder grid / list, batch bar, preview dialog) over the `fm-react` state |
 | `fm-plugin-sheet` | optional plugin: CSV / TSV / XLSX table (virtualized rows, typed cells); CSV / TSV cells editable and saved with `If-Match` |
 | `fm-plugin-review` | optional plugin: diffs of changed files (side by side / inline, CodeMirror merge) and a stacked "Review all changes" view, for mounts whose driver reports changes |
 | `fm-plugin-archive` | optional plugin: browse `.zip` / `.jar` without extracting (folder tree, inline text / image preview, per-entry download) via `GET /m/:mount/zip/entries` and `/zip/read` |
@@ -84,6 +85,38 @@ import { FileManager } from "@/fm/react/file-manager";
 // The tree and details panes are resizable (drag or arrow keys); sizes persist per `storageKey`.
 <FileManager baseUrl="/api/fm" layout="single" />;
 ```
+
+### Drive view (optional)
+
+`bunx shadcn add @bkhq/fm-drive` adds `<DriveManager>`, a cloud-drive presentation of the
+same state: the folder tree on the left (spaces, Starred, Recent, Trash; folders only), the
+chosen folder on the right as a grid (default) or list, a batch bar for the selection, and
+files opening in the preview dialog. It shows no changes and has no review, quick open or
+inline editor; it takes the `FileManager` props except `layout` and `pick`. Its
+preferences are kept apart, so both can share a `storageKey`. Hosts that do not install it
+carry no drive code.
+
+```tsx
+import { DriveManager } from "@/fm/react/drive-manager";
+
+<DriveManager baseUrl="/api/fm" meta={meta} />;
+```
+
+Host extension points (all optional):
+
+- **Spaces and quota** (server): `FmMount.group` puts a space under a group row in the drive
+  tree ("Personal", "Team: Sales", "Shared with me"; ungrouped spaces stay at the top
+  level), `FmMount.quota = { used, total? }` (bytes) shows the current space's usage under
+  the tree. Mounts are resolved per request, so both can follow the user. A "Shared with me"
+  space is just a mount in its own group.
+- **Columns** (`columns`, also on `FileManager`): `{ id, label, render?, width?, filter? }`
+  over `entry.extra[id]`, shown in the list view and the details panel; `filter: true`
+  offers the column's values of the loaded folder in the filter menu.
+- **Detail tabs** (`detailTabs`, also on `FileManager`): `{ id, label, when?, render(entry,
+  { client, refresh }) }` next to the details, for host data such as versions, shares or
+  activity (key them by `entry.id` when the driver sets it).
+- **Move to… / Copy to…**: built into `DriveManager` (context menu and batch bar), with a
+  folder picker across writable spaces.
 
 `readOnly` / `features` only hide UI actions. Enforce access on the server with
 `readOnly` mounts or `authorize`.
@@ -299,6 +332,20 @@ import { runDriverContract } from "@/fm/server/contract";
 
 runDriverContract("my-driver", async () => ({ driver: myDriver(), cleanup: async () => {} }));
 ```
+
+A backend with its own trash (a database that marks rows deleted) implements the optional
+`FmDriver.trash` (`remove` / `list` / `get` / `restore` / `purge`); the router then uses it
+for deletes, the trash routes and retention instead of moving entries into a hidden
+`/.fm-trash` folder. An item's `expiresAt` from the driver wins over the mount's
+`retentionDays`. The contract suite runs trash cases when the hook is there;
+`memoryDriver({ nativeTrash: true })` is a reference.
+
+Entries may carry `id` (a stable id that survives renames and moves, for hosts that key
+shares or versions by id) and `extra` (host data such as owner or shared, string / number /
+boolean / null values); the router passes both through `list`, `stat` and `search`.
+Folder entries may also carry `hasSubfolders` when the driver knows it cheaply (memory and
+local set it, S3 / R2 do not); the drive tree then shows folders without subfolders as
+leaves before they are opened. The contract suite checks the hint when it is given.
 
 ## Publishing
 

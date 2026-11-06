@@ -85,18 +85,20 @@ echo '@import "tailwindcss";' > src/index.css
 
 bun add react react-dom >/dev/null
 bun add -d vite @vitejs/plugin-react tailwindcss @tailwindcss/vite @types/react @types/react-dom @types/bun "typescript@npm:typescript@7" >/dev/null
-bunx shadcn add -y @bkhq/fm-react @bkhq/fm-plugin-sheet @bkhq/fm-server @bkhq/fm-driver-memory @bkhq/fm-driver-local @bkhq/fm-driver-s3 @bkhq/fm-driver-contract
+bunx shadcn add -y @bkhq/fm-react @bkhq/fm-drive @bkhq/fm-plugin-sheet @bkhq/fm-server @bkhq/fm-driver-memory @bkhq/fm-driver-local @bkhq/fm-driver-s3 @bkhq/fm-driver-contract
 
 cat > src/main.tsx <<'TSX'
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { sheetPlugin } from "@/fm/plugins/sheet";
+import { DriveManager } from "@/fm/react/drive-manager";
 import { FileManager } from "@/fm/react/file-manager";
 import "./index.css";
 
 createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={new QueryClient()}>
     <FileManager baseUrl="/api/fm" plugins={[sheetPlugin()]} />
+    <DriveManager baseUrl="/api/fm" />
   </QueryClientProvider>,
 );
 TSX

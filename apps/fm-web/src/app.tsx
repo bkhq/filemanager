@@ -1,3 +1,4 @@
+import type { FmEntry } from "@/fm/core/schema";
 import type { FmSidebarOptions } from "@/fm/react/file-manager";
 import type { FmMeta, FmRef } from "@/fm/react/meta";
 import { LanguagesIcon, MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
@@ -16,6 +17,7 @@ import { archivePlugin } from "@/fm/plugins/archive";
 import { markdownPlugin } from "@/fm/plugins/markdown";
 import { reviewPlugin } from "@/fm/plugins/review";
 import { sheetPlugin } from "@/fm/plugins/sheet";
+import { DriveManager } from "@/fm/react/drive-manager";
 import { FileManager } from "@/fm/react/file-manager";
 import { FilePicker } from "@/fm/react/file-picker";
 import { enLabels, zhLabels } from "@/fm/react/labels";
@@ -110,10 +112,51 @@ const sidebar: FmSidebarOptions = {
   group: params.get("group") === "driver"
     ? "driver"
     : "none",
-  hidden: params.get("hidden")?.split(",") ?? [],
+  hidden: [
+    ...params.get("hidden")?.split(",") ?? [],
+    // The shared space only serves the drive demo.
+    ...(params.get("variant") === "drive"
+      ? []
+      : ["shared", "team"]),
+  ],
   // `?review`: the tree shows changes only.
   drives: !params.has("review"),
 };
+// `?variant=drive`: the optional drive view (fm-drive item).
+const drive = params.get("variant") === "drive";
+const Manager = drive
+  ? DriveManager
+  : FileManager;
+// Drive demo: an owner column from `entry.extra` and a host details tab.
+function driveExtras(lang: Lang) {
+  return drive
+    ? {
+        columns: [
+          {
+            id: "owner",
+            label: lang === "zh"
+              ? "所有者"
+              : "Owner",
+            filter: true,
+          },
+        ],
+        detailTabs: [
+          {
+            id: "activity",
+            label: lang === "zh"
+              ? "动态"
+              : "Activity",
+            render: (e: FmEntry) => (
+              <div className="grid gap-1 text-muted-foreground">
+                <p>{`${e.name} · ${new Date(e.mtime).toLocaleString()}`}</p>
+                {e.id && <p data-demo-id="">{`id: ${e.id}`}</p>}
+              </div>
+            ),
+          },
+        ],
+      }
+    : {};
+}
 const features = params.has("review")
   ? { starred: false, recent: false }
   : {};
@@ -203,7 +246,7 @@ function ManagerDemo() {
         </DropdownMenu>
       </header>
       {mounted && (
-        <FileManager
+        <Manager
           baseUrl="/api/fm"
           labels={lang === "zh"
             ? zhLabels
@@ -213,6 +256,7 @@ function ManagerDemo() {
           plugins={plugins}
           sidebar={sidebar}
           features={features}
+          {...driveExtras(lang)}
           meta={meta}
           changeMessage={askMessage
             ? {

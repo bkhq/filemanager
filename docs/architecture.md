@@ -137,7 +137,7 @@ expose a stable `id` so renames don't break references.
 interface FmEntry {
   mount: string;
   path: string;              // "/docs/a.md"
-  id?: string;               // stable id (managed driver only)
+  id?: string;               // stable id from drivers that have one (managed store, host adapters)
   name: string;
   kind: "file" | "dir";
   size?: number;             // dirs: optional (indexed drivers only)
@@ -145,7 +145,9 @@ interface FmEntry {
   mime?: string;
   etag: string;              // optimistic concurrency token
   caps: EntryCaps;           // effective capabilities for the caller
-  meta?: Record<string, unknown>; // driver extras: favorite, version count, git-ignored…
+  ignored?: boolean;         // matched by an ignore rule (git)
+  hasSubfolders?: boolean;   // folders: holds folders (drivers that know cheaply)
+  extra?: Record<string, string | number | boolean | null>; // host data shown by the UI (owner, shared…)
 }
 ```
 
@@ -166,6 +168,7 @@ interface FmDriver {
   move(from, to): Promise<FmDriverEntry>;      // same-mount; cross-mount is done by the router
   copy(from, to): Promise<FmDriverEntry>;
   remove(path): Promise<void>;                 // recursive; trash is done by the router
+  trash?: FmDriverTrash;                       // optional own trash: remove / list / get / restore / purge
   search?(dir, q, opts): Promise<FmDriverEntry[] | null>; // null → router walks
   multipart?: FmMultipart;                     // without it the router stores parts as hidden files
 }
@@ -189,7 +192,8 @@ interface FmMultipart {                        // parts numbered from 1, all but
 // FmUploadPart = { n, size, etag }
 ```
 
-Not built yet: `presignRead`, a driver-native `TrashApi`, `versions`, `watch`.
+Not built yet: `presignRead`, `versions`, `watch`. A driver-native trash is the optional
+`FmDriver.trash`; without it the router keeps the trash in a hidden `/.fm-trash` folder.
 
 Built-in drivers:
 
@@ -295,6 +299,9 @@ Layered so hosts can take only what they need:
    `PropertiesPanel`.
 3. **Compositions** — `<FileManager />` (tree + list + preview pane; hosts
    put it in their own drawer / side panel, it adapts to narrow widths),
+   `<DriveManager />` in the optional `fm-drive` item (cloud-drive layout:
+   folder tree, the chosen folder as grid / list, batch bar, preview dialog;
+   both read one controller, `useFileManager`),
    `<FilePicker />` (dialog returning entries; replaces bithk
    `DriveFilePicker`), `<AttachmentList />`.
 

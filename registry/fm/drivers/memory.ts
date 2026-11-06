@@ -1,4 +1,4 @@
-import type { FmDriver, FmDriverEntry, FmUploadPart, FmWriteOptions } from "../server/driver";
+import type { FmDriver, FmDriverEntry, FmDriverTrash, FmDriverTrashItem, FmUploadPart, FmWriteOptions } from "../server/driver";
 import { FmError } from "../core/errors";
 import { basename, dirname, isWithin } from "../core/path";
 import { ALL_CAPS } from "../core/schema";
@@ -14,6 +14,8 @@ interface Node {
 export interface FmMemoryDriverOptions {
   /** Initial files: path -> content. Parent directories are created. */
   files?: Record<string, string | Uint8Array>;
+  /** Keep deleted entries in the driver's own trash (`FmDriver.trash`) instead of the router's folder. */
+  nativeTrash?: boolean;
 }
 
 /** In-memory driver for tests and demos. */
@@ -42,6 +44,11 @@ export function memoryDriver(opts: FmMemoryDriverOptions = {}): FmDriver {
       : 0,
     mtime: node.mtime,
     etag: `${node.version.toString(36)}-${node.data.byteLength.toString(36)}`,
+    ...(node.kind === "dir"
+      ? {
+          hasSubfolders: [...nodes].some(([p, n]) => n.kind === "dir" && p !== "/" && dirname(p) === path),
+        }
+      : {}),
   });
 
   const get = (path: string): Node => {
@@ -118,6 +125,65 @@ export function memoryDriver(opts: FmMemoryDriverOptions = {}): FmDriver {
     if (upload?.path !== path)
       throw new FmError("NOT_FOUND", `Unknown upload: ${id}`);
     return upload;
+  };
+
+  /** Deleted subtrees kept by id, paths relative to the deleted entry. */
+  const nativeTrash = (): FmDriverTrash => {
+    const bin = new Map<string, { item: FmDriverTrashItem; nodes: [string, Node][] }>();
+    const take = (id: string) => {
+      const kept = bin.get(id);
+      if (!kept)
+        throw new FmError("NOT_FOUND", "Trash item not found");
+      return kept;
+    };
+    return {
+      async remove(path) {
+        if (path === "/")
+          throw new FmError("INVALID", "Cannot remove the root");
+        const node = get(path);
+        const id = crypto.randomUUID();
+        bin.set(id, {
+          item: {
+            id,
+            path,
+            name: basename(path),
+            kind: node.kind,
+            size: node.kind === "file"
+              ? node.data.byteLength
+              : 0,
+            deletedAt: Date.now(),
+          },
+          nodes: subtree(path).map(p => [
+            p.slice(path.length),
+            nodes.get(p)!,
+          ]),
+        });
+        for (const p of subtree(path))
+          nodes.delete(p);
+        return id;
+      },
+      async list() {
+        return [
+          ...bin.values(),
+        ].map(k => k.item).sort((a, b) => b.deletedAt - a.deletedAt);
+      },
+      async get(id) {
+        return take(id).item;
+      },
+      async restore(id, to) {
+        const kept = take(id);
+        assertFree(to);
+        ensureDir(dirname(to));
+        for (const [rel, node] of kept.nodes)
+          nodes.set(to + rel, node);
+        bin.delete(id);
+        return toEntry(to, get(to));
+      },
+      async purge(id) {
+        take(id);
+        bin.delete(id);
+      },
+    };
   };
 
   const driver: FmDriver = {
@@ -237,5 +303,7 @@ export function memoryDriver(opts: FmMemoryDriverOptions = {}): FmDriver {
       ? enc.encode(content)
       : new Uint8Array(content)));
   }
+  if (opts.nativeTrash)
+    driver.trash = nativeTrash();
   return driver;
 }

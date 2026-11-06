@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { applyFilters, filterKindOf, modifiedSince, NO_FILTERS, parseFilters } from "./filters";
+import { applyFilters, columnValues, filterKindOf, hasFilters, modifiedSince, NO_FILTERS, parseFilters } from "./filters";
 
 function file(name: string, mime?: string, mtime = "2026-11-05T10:00:00.000Z") {
   return {
@@ -81,5 +81,77 @@ describe("parseFilters", () => {
     expect(parseFilters("{bad")).toEqual(NO_FILTERS);
     expect(parseFilters(null)).toEqual(NO_FILTERS);
     expect(parseFilters(JSON.stringify({ modified: "forever" }))).toEqual(NO_FILTERS);
+  });
+});
+
+describe("column filters", () => {
+  const owned = (name: string, owner?: string | boolean | null) => ({
+    ...file(name),
+    ...(owner === undefined
+      ? {}
+      : {
+          extra: { owner },
+        }),
+  });
+
+  it("keeps entries whose column value is chosen; folders follow keepFolders", () => {
+    const es = [
+      owned("a", "ada"),
+      owned("b", "bo"),
+      owned("c"),
+      {
+        ...dir("d"),
+        extra: { owner: "bo" },
+      },
+    ];
+    const f = {
+      ...NO_FILTERS,
+      extra: {
+        owner: ["ada"],
+      },
+    };
+    expect(hasFilters(f)).toBe(true);
+    expect(applyFilters(es, f).map(e => e.name)).toEqual(["a"]);
+    expect(applyFilters(es, f, { keepFolders: true }).map(e => e.name)).toEqual(["a", "d"]);
+    expect(applyFilters(es, {
+      ...NO_FILTERS,
+      extra: { owner: [] },
+    })).toBe(es);
+  });
+
+  it("lists the distinct values of a column, as text, sorted", () => {
+    const es = [
+      owned("a", "bo"),
+      owned("b", "ada"),
+      owned("c", "bo"),
+      owned("d"),
+      owned("e", true),
+      owned("f", null),
+    ];
+    expect(columnValues(es, "owner")).toEqual(["ada", "bo", "true"]);
+    expect(applyFilters(es, {
+      ...NO_FILTERS,
+      extra: {
+        owner: ["true"],
+      },
+    }).map(e => e.name)).toEqual(["e"]);
+  });
+
+  it("parses stored column filters, dropping malformed ones", () => {
+    expect(parseFilters(JSON.stringify({
+      types: [],
+      modified: "any",
+      extra: {
+        owner: ["ada", 3],
+        bad: "x",
+      },
+    }))).toEqual({
+      types: [],
+      modified: "any",
+      extra: {
+        owner: ["ada"],
+      },
+    });
+    expect(parseFilters(JSON.stringify({ types: [] })).extra).toBeUndefined();
   });
 });
