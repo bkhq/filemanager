@@ -9,6 +9,14 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    {
+      // Files outside the Vite root are watched one inode at a time, so an atomic save (write temp
+      // + rename) silently drops the watch. Watching the directory keeps HMR working for registry edits.
+      name: "watch-registry",
+      configureServer(server) {
+        server.watcher.add(registry);
+      },
+    },
   ],
   resolve: {
     // `@/fm` mirrors where `shadcn add` places the registry files in a host app.
