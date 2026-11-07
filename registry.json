@@ -239,7 +239,8 @@
         "@codemirror/state",
         "lucide-react",
         "react-resizable-panels",
-        "react-dropzone@20.1.4"
+        "react-dropzone@20.1.4",
+        "react-zoom-pan-pinch@4.2.0"
       ],
       "registryDependencies": [
         "button",
