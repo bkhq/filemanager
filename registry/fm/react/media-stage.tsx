@@ -1,12 +1,14 @@
+import type { ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 import type { FmLabels } from "./labels";
 import type { FmMediaView, FmSize } from "./transform";
 import { cn } from "cn";
 import { FlipHorizontal2Icon, RotateCcwIcon, RotateCwIcon, ZoomInIcon, ZoomOutIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "./icon-button";
-import { clampZoom, INITIAL_VIEW, layoutOf, rotateBy, ZOOM_STEP } from "./transform";
+import { clampZoom, INITIAL_VIEW, layoutOf, rotateBy } from "./transform";
 
 const PAD = 16;
 
@@ -36,15 +38,12 @@ export function MediaStage({ kind, src, alt, labels, actions }: {
   actions?: HTMLElement | null | undefined;
 }) {
   const [view, setView] = useState<FmMediaView>(INITIAL_VIEW);
+  const transformRef = useRef<ReactZoomPanPinchRef>(null);
+  const [transformScale, setTransformScale] = useState(1);
   const [natural, setNatural] = useState<FmSize>();
   const [stageRef, stage] = useStageSize();
   const layout = natural && stage && layoutOf(natural, stage, view);
   const isImage = kind === "image";
-
-  const zoomTo = (z: number) => setView(v => ({
-    ...v,
-    zoom: clampZoom(z),
-  }));
 
   // Image keys: + / - zoom, 0 fit, R / Shift+R rotate, F flip. Active while focus is in the
   // preview's dialog or pane (not the tree, not text fields).
@@ -62,13 +61,13 @@ export function MediaStage({ kind, src, alt, labels, actions }: {
       }
       const key = e.key.toLowerCase();
       if ((key === "+" || key === "=") && scale) {
-        zoomTo(scale * ZOOM_STEP);
+        transformRef.current?.zoomIn(0.25);
       }
       else if (key === "-" && scale) {
-        zoomTo(scale / ZOOM_STEP);
+        transformRef.current?.zoomOut(0.25);
       }
       else if (key === "0") {
-        setView(v => ({ ...v, zoom: undefined }));
+        transformRef.current?.resetTransform();
       }
       else if (key === "r") {
         setView(v => rotateBy(v, e.shiftKey
@@ -103,24 +102,26 @@ export function MediaStage({ kind, src, alt, labels, actions }: {
   const tools = (
     <>
       {isImage && layout && (
-        <>
-          <IconButton label={labels.zoomOut} onClick={() => zoomTo(layout.scale / ZOOM_STEP)}><ZoomOutIcon /></IconButton>
-          <Button size="sm" variant="ghost" className="w-14 tabular-nums" title={labels.fitToScreen} onClick={() => setView(v => ({ ...v, zoom: undefined }))}>
-            {`${Math.round(layout.scale * 100)}%`}
+        <div className="flex items-center gap-0.5 rounded-lg bg-muted/60 p-0.5">
+          <IconButton label={labels.zoomOut} onClick={() => transformRef.current?.zoomOut(0.25)}><ZoomOutIcon /></IconButton>
+          <Button size="sm" variant="ghost" className="w-14 tabular-nums" title={labels.fitToScreen} onClick={() => transformRef.current?.resetTransform()}>
+            {`${Math.round(layout.scale * transformScale * 100)}%`}
           </Button>
-          <IconButton label={labels.zoomIn} onClick={() => zoomTo(layout.scale * ZOOM_STEP)}><ZoomInIcon /></IconButton>
-        </>
+          <IconButton label={labels.zoomIn} onClick={() => transformRef.current?.zoomIn(0.25)}><ZoomInIcon /></IconButton>
+        </div>
       )}
-      <IconButton label={labels.rotateLeft} onClick={() => setView(v => rotateBy(v, -90))}><RotateCcwIcon /></IconButton>
-      <IconButton label={labels.rotateRight} onClick={() => setView(v => rotateBy(v, 90))}><RotateCwIcon /></IconButton>
-      <IconButton label={labels.flip} aria-pressed={view.flip} onClick={() => setView(v => ({ ...v, flip: !v.flip }))}><FlipHorizontal2Icon /></IconButton>
+      <div className="flex items-center gap-0.5 rounded-lg bg-muted/60 p-0.5">
+        <IconButton label={labels.rotateLeft} onClick={() => setView(v => rotateBy(v, -90))}><RotateCcwIcon /></IconButton>
+        <IconButton label={labels.rotateRight} onClick={() => setView(v => rotateBy(v, 90))}><RotateCwIcon /></IconButton>
+        <IconButton label={labels.flip} aria-pressed={view.flip} onClick={() => setView(v => ({ ...v, flip: !v.flip }))}><FlipHorizontal2Icon /></IconButton>
+      </div>
     </>
   );
 
   return (
-    <div ref={setRoot} className={cn("flex h-full overflow-auto", isImage ? "bg-muted/30" : "bg-black/90")} style={{ padding: PAD }}>
+    <div ref={setRoot} className={cn("flex h-full overflow-hidden", isImage ? "bg-muted/30" : "bg-black/90")} style={{ padding: PAD }}>
       {actions && createPortal(tools, actions)}
-      <div ref={stageRef} className="flex min-h-0 min-w-0 flex-1">
+      <div ref={stageRef} className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         <div
           className="relative m-auto shrink-0"
           style={layout
@@ -129,22 +130,51 @@ export function MediaStage({ kind, src, alt, labels, actions }: {
         >
           {isImage
             ? (
-                <img
-                  src={src}
-                  alt={alt}
-                  draggable={false}
-                  style={style}
-                  className={view.zoom === undefined
-                    ? "cursor-zoom-in"
-                    : "cursor-zoom-out"}
-                  onLoad={e => setNatural({ width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })}
-                  onClick={() => setView(v => ({
-                    ...v,
-                    zoom: v.zoom === undefined
-                      ? 1
-                      : undefined,
-                  }))}
-                />
+                <TransformWrapper
+                  ref={transformRef}
+                  smooth
+                  centerOnInit
+                  wheel={{ step: 0.08, touchPadDisabled: false }}
+                  panning={{ velocityDisabled: false, allowLeftClickPan: true }}
+                  trackPadPanning={{ velocityDisabled: false }}
+                  keyboard={{
+                    disabled: false,
+                    panStep: 48,
+                    zoomStep: 0.25,
+                    animationTime: 180,
+                    animationType: "easeOut",
+                  }}
+                  doubleClick={{
+                    mode: "toggle",
+                    step: 0.5,
+                    animationTime: 220,
+                    animationType: "easeOut",
+                  }}
+                  pinch={{ step: 5, allowPanning: true }}
+                  zoomAnimation={{ animationTime: 220, animationType: "easeOut" }}
+                  autoAlignment={{ animationTime: 180, velocityAlignmentTime: 220 }}
+                  minScale={1}
+                  maxScale={4}
+                  limitToBounds
+                  centerZoomedOut
+                  onTransform={(_, state) => setTransformScale(clampZoom(state.scale))}
+                >
+                  <TransformComponent
+                    wrapperStyle={{ width: "100%", height: "100%" }}
+                    contentStyle={{ width: "100%", height: "100%" }}
+                  >
+                    <img
+                      src={src}
+                      alt={alt}
+                      draggable={false}
+                      style={style}
+                      className={view.zoom === undefined
+                        ? "cursor-zoom-in"
+                        : "cursor-grab"}
+                      onLoad={e => setNatural({ width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })}
+                    />
+                  </TransformComponent>
+                </TransformWrapper>
               )
             : (
                 <video

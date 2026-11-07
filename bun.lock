@@ -56,6 +56,7 @@
         "react-dom": "^19.3.1",
         "react-dropzone": "20.1.4",
         "react-resizable-panels": "4.17.0",
+        "react-zoom-pan-pinch": "^4.2.0",
         "shadcn": "catalog:",
         "streamdown": "2.7.1",
         "tailwindcss": "^4.3.3",
@@ -1460,6 +1461,8 @@
     "react-dropzone": ["react-dropzone@20.1.4", "", { "dependencies": { "attr-accept": "^4.0.0", "file-selector": "^5.0.1" }, "peerDependencies": { "@types/react": "*", "react": ">= 18" }, "optionalPeers": ["@types/react"] }, "sha512-LyjT9iQySNkJGC6yL+XTlmfTRxHhPx0eSoTh+WlR0Ge+W35rLcRH/oH7w5bzijfPHeCFcLnO9G7i+hX+LINAAA=="],
 
     "react-resizable-panels": ["react-resizable-panels@4.17.0", "", { "peerDependencies": { "@types/react": "^18.2.6 || ^19.0.0", "react": "^18.0.0 || ^19.0.0", "react-dom": "^18.0.0 || ^19.0.0" }, "optionalPeers": ["@types/react"] }, "sha512-ln2vGr4/cBmK8OllGpyaeo6sfeYvlzmCaE40RDVSAiyGpmgaYsxrI+EBy06Vo6bQBd17jcMKaEKOAA+w+i03bQ=="],
+
+    "react-zoom-pan-pinch": ["react-zoom-pan-pinch@4.2.0", "", { "peerDependencies": { "react": "*", "react-dom": "*" } }, "sha512-QSw1dvr6QGv5zHCUY7SEIY7EWRDbx1y6plylrWf2Nko9KOMW1MEoPC6oJ+Y/qOSeQjhvbkMV0m5bFF7pBxCH4A=="],
 
     "read-excel-file": ["read-excel-file@9.3.14", "", { "dependencies": { "fflate": "^0.8.3", "saxen": "^11.1.0", "unzipper-esm": "^0.13.3", "worker-f": "^0.1.12" } }, "sha512-rfEpNMthm/REIpSCLnGTrQD5aW+U9rrhFuGYF+XRO8Soz+7b+rAOW1z2vJbNiEINbFPbjRW16vz0KnX41Si9qw=="],
 
