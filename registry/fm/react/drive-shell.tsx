@@ -419,6 +419,7 @@ export function DriveShell({ props, fm }: { props: FileManagerProps; fm: FmContr
               key={detailsEntry.path}
               entry={detailsEntry}
               mountLabel={currentMount?.label ?? ""}
+              absoluteRoot={currentMount?.absoluteRoot}
               client={client}
               labels={labels}
               overlay={false}
@@ -437,6 +438,7 @@ export function DriveShell({ props, fm }: { props: FileManagerProps; fm: FmContr
           key={detailsEntry.path}
           entry={detailsEntry}
           mountLabel={currentMount?.label ?? ""}
+          absoluteRoot={currentMount?.absoluteRoot}
           client={client}
           labels={labels}
           overlay

@@ -74,3 +74,4 @@ Each plan is a single line linking to its detail file. All detailed information 
 - [x] [**20261106-0943-native-trash Driver-provided trash**](20261106-0943-native-trash.md) `2026-11-06`
 - [x] [**20261107-0950-image-pan-zoom Image preview: real-size zoom and stage-wide pan**](20261107-0950-image-pan-zoom.md) `2026-11-07`
 - [x] [**20261108-0546-image-viewer-extras Image preview: minimap, checkerboard, pixel size**](20261108-0546-image-viewer-extras.md) `2026-11-08`
+- [x] [**20261109-0117-copy-absolute-path Absolute and relative copy path**](20261109-0117-copy-absolute-path.md) `2026-11-09`

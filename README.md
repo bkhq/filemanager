@@ -104,6 +104,9 @@ import { DriveManager } from "@/fm/react/drive-manager";
 
 Host extension points (all optional):
 
+- **Copy path**: set `FmMount.absoluteRoot` to the real directory behind a mount and "Copy
+  path" gives the absolute path, in both managers. It is sent to the browser, so set it only
+  where users may see it; without it only "Copy relative path" is offered.
 - **Spaces and quota** (server): `FmMount.group` puts a space under a group row in the drive
   tree ("Personal", "Team: Sales", "Shared with me"; ungrouped spaces stay at the top
   level), `FmMount.quota = { used, total? }` (bytes) shows the current space's usage under

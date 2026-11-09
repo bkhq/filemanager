@@ -611,6 +611,7 @@ export function WorkspaceShell({ props, fm }: { props: FileManagerProps; fm: FmC
               key={detailsEntry.path}
               entry={detailsEntry}
               mountLabel={currentMount?.label ?? ""}
+              absoluteRoot={currentMount?.absoluteRoot}
               client={client}
               labels={labels}
               overlay={false}
@@ -629,6 +630,7 @@ export function WorkspaceShell({ props, fm }: { props: FileManagerProps; fm: FmC
           key={detailsEntry.path}
           entry={detailsEntry}
           mountLabel={currentMount?.label ?? ""}
+          absoluteRoot={currentMount?.absoluteRoot}
           client={client}
           labels={labels}
           overlay

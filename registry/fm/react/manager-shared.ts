@@ -125,6 +125,12 @@ export const KEYS = {
   paste: MAC
     ? "⌘V"
     : "Ctrl+V",
+  copyPath: MAC
+    ? "⌥⌘C"
+    : "Ctrl+Alt+C",
+  copyRelativePath: MAC
+    ? "⇧⌥⌘C"
+    : "Ctrl+Shift+Alt+C",
   rename: "F2",
   delete: MAC
     ? "⌦"

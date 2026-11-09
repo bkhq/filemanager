@@ -331,7 +331,16 @@ test("copies an entry's path and name to the clipboard", async ({ page, context 
   await row(page, "/notes").dblclick();
   await contextAction(page, "/notes/todo.txt", "Copy path");
   await expect(page.getByRole("status").filter({ hasText: "Path copied" })).toBeVisible();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("/notes/todo.txt");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/^\/.*\/\.tmp\/e2e-root\/notes\/todo\.txt$/);
+  await contextAction(page, "/notes/todo.txt", "Copy relative path");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("notes/todo.txt");
+  // The shortcuts shown in the menu.
+  await page.keyboard.press("Escape");
+  await row(page, "/notes/todo.txt").click();
+  await page.keyboard.press("Control+Alt+KeyC");
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toMatch(/^\/.*\/notes\/todo\.txt$/);
+  await page.keyboard.press("Control+Shift+Alt+KeyC");
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("notes/todo.txt");
   await contextAction(page, "/notes/todo.txt", "Copy name");
   await expect(page.getByRole("status").filter({ hasText: "Name copied" })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("todo.txt");

@@ -59,6 +59,27 @@ function setup(opts: { files?: Record<string, string>; mounts?: FmMount[]; autho
 const q = (path: string) => encodeURIComponent(path);
 
 describe("mounts and access", () => {
+  it("lists a mount's absolute root only when the host sets it", async () => {
+    const { req } = setup({
+      mounts: [
+        {
+          id: "a",
+          label: "A",
+          driver: memoryDriver(),
+          absoluteRoot: "/srv/proj",
+        },
+        {
+          id: "b",
+          label: "B",
+          driver: memoryDriver(),
+        },
+      ],
+    });
+    const { mounts } = await (await req("/mounts")).json();
+    expect(mounts[0].absoluteRoot).toBe("/srv/proj");
+    expect("absoluteRoot" in mounts[1]).toBe(false);
+  });
+
   it("lists mount groups and quotas when the host sets them", async () => {
     const { req } = setup({
       mounts: [

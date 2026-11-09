@@ -116,6 +116,7 @@ export function createApp(config: Config) {
       label: "Local disk",
       // Review demo: run `git init` (and commit) in the root to see changes.
       driver: localDriver({ root: config.root, gitChanges: true }),
+      absoluteRoot: config.root,
       trash: { retentionDays: 30 },
       // Drive demo: a space group and a usage figure, as a host would resolve per user.
       group: "Personal",

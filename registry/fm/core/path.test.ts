@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { isFmError } from "./errors";
-import { assertName, basename, dirname, isWithin, joinPath, nextFreeName, normalizePath } from "./path";
+import { absolutePath, assertName, basename, dirname, isWithin, joinPath, nextFreeName, normalizePath, relativePath } from "./path";
 
 describe("normalizePath", () => {
   it("normalizes slashes and dots", () => {
@@ -45,5 +45,19 @@ describe("path helpers", () => {
     expect(nextFreeName("a (1).txt", 2)).toBe("a (2).txt");
     expect(nextFreeName("dir", 3)).toBe("dir (3)");
     expect(nextFreeName(".env", 1)).toBe(".env (1)");
+  });
+});
+
+describe("copied paths", () => {
+  it("joins a mount root and an entry path", () => {
+    expect(absolutePath("/srv/proj", "/a/b.txt")).toBe("/srv/proj/a/b.txt");
+    expect(absolutePath("/srv/proj/", "/a")).toBe("/srv/proj/a");
+    expect(absolutePath("/srv/proj", "/")).toBe("/srv/proj");
+    expect(absolutePath("/", "/a")).toBe("/a");
+  });
+
+  it("drops the leading slash for a relative path", () => {
+    expect(relativePath("/a/b.txt")).toBe("a/b.txt");
+    expect(relativePath("/")).toBe(".");
   });
 });
