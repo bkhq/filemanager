@@ -398,3 +398,7 @@ The file preview and review dialogs have a full-screen toggle (20261109-0125-dia
 Image zoom smoothness: zooming no longer re-renders `MediaStage` on every frame (the percentage is written directly; only crossing fit renders), every zoom uses one 280 ms `easeOutCubic` curve, and the minimap image decodes asynchronously.
 
 The full-screen toggle is instant (`transition-none`): the dialog animated height and position while `max-width` jumped, which jittered.
+
+## 2026-11-09 02:30 [progress]
+
+Audit clean-up (20261109-0211-audit-cleanup): no compatibility layer existed. Removed `registerPreviewer` (previewers come from `FmPlugin.previewers`) and the unused labels `folderName`, `newName` and `rotateLeft`; `server/trash.ts` only exports `TRASH_DIR` and `folderTrash`. The demo's `fm-demo:*` localStorage keys are now `fm-web:*`. `docs/architecture.md` and ADR 001 match the code, and task statuses are synced (bkd pilot completed by bkd PR #162).

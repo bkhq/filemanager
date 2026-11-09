@@ -108,8 +108,6 @@ export const enLabels = {
   more: "More",
   discardEdits: "Discard changes",
   wordWrap: "Word wrap",
-  folderName: "Folder name",
-  newName: "New name",
   selected: (n: number) => `${n} selected`,
   confirmDelete: (n: number) => (n === 1
     ? "Delete this item?"
@@ -196,7 +194,6 @@ export const enLabels = {
   manageDrives: "Manage drives",
   manageDrivesHint: "Choose which drives appear in the sidebar. The current drive stays visible.",
   driverGroup: (driver: string) => ({ local: "Local", s3: "S3", memory: "Memory" } as Record<string, string>)[driver] ?? driver,
-  rotateLeft: "Rotate left",
   rotateRight: "Rotate right",
   flip: "Flip horizontally",
   zoomIn: "Zoom in",
@@ -331,8 +328,6 @@ export const zhLabels: FmLabels = {
   more: "更多",
   discardEdits: "放弃更改",
   wordWrap: "自动换行",
-  folderName: "文件夹名称",
-  newName: "新名称",
   selected: n => `已选择 ${n} 项`,
   confirmDelete: n => (n === 1
     ? "确定删除此项？"
@@ -409,7 +404,6 @@ export const zhLabels: FmLabels = {
   manageDrives: "管理存储",
   manageDrivesHint: "选择在侧栏中显示的存储，当前存储始终显示。",
   driverGroup: driver => ({ local: "本地", s3: "S3", memory: "内存" } as Record<string, string>)[driver] ?? driver,
-  rotateLeft: "向左旋转",
   rotateRight: "向右旋转",
   flip: "水平翻转",
   zoomIn: "放大",

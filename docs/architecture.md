@@ -53,7 +53,7 @@ Goals
 
 Non-goals (v1)
 
-- User / team / share management (host app owns them; exposed via hooks and UI slots).
+- User / team / share management (host app owns them; exposed via hooks and actions).
 - Office document editing, offline download, media transcoding.
 - Desktop sync clients, WebDAV server endpoint.
 - Standalone deployable product with its own auth.
@@ -209,7 +209,7 @@ Built-in drivers:
   copy + delete, bounded per request.
 - **r2** — Workers R2 binding; same semantics as `s3`, plus native multipart.
 - **memory** — for tests and the playground.
-- **managed** (`fm/managed`) — bithk's model generalised: `fm_entries`
+- **managed** (`fm/managed`, not implemented yet) — bithk's model generalised: `fm_entries`
   (tree), `fm_blobs` (sha256, driver, key, ref_count), `fm_versions`; blobs
   stored through a nested driver (local, s3 or r2); SQLite via `bun:sqlite` or D1. Gains dedupe, versions,
   trash, favorites, server-side paging and search.
@@ -303,17 +303,16 @@ Layered so hosts can take only what they need:
    folder tree, the chosen folder as grid / list, batch bar, preview dialog;
    both read one controller, `useFileManager`),
    `<FilePicker />` (dialog returning entries; replaces bithk
-   `DriveFilePicker`), `<AttachmentList />`.
+   `DriveFilePicker`).
 
 Extension points:
 
-- **Preview registry**: `registerPreviewer({ match: (entry) => bool, component, priority })`.
+- **Preview registry**: plugins add `previewers: [{ id, match: (entry) => bool, component, priority }]`.
   Built-ins: image (thumb + full), pdf, video/audio, text/code (CodeMirror, from bkd),
   markdown, unknown → download. Hosts add e.g. Univer spreadsheet.
 - **Editor registry**: text/code editor with draft persistence and `etag` conflict handling.
-- **Actions**: `getActions(entries) => FmFileAction[]` merged into toolbar / context menu
+- **Actions**: the `actions` prop (`FmFileAction[]`) extends the entry context menu
   (bithk's `getCustomActions`, generalised to multi-select); host adds Share, Attach to issue…
-- **Slots**: sidebar footer (quota), header extras, empty state, row badges.
 - **i18n**: `enLabels` / `zhLabels` objects passed as the `labels` prop; no i18n library dependency.
 
 Everything visible is gated by `entry.caps`, not by props flags — removing
@@ -323,16 +322,16 @@ bithk's per-consumer `capabilities` duplication.
 
 | App | Path |
 | --- | --- |
-| bkd | Replace `routes/files.ts` + `filesystem.ts` with `createFmRouter` + `local` driver per project/worktree mount; swap `components/files/*` for `<FileManager />` inside bkd's own `SidePanel`. Keep git-ignore as driver option. |
+| bkd | Adopted (bkd PR #162): `createFmRouter` + `local` driver, `<FileManager />` in the workspace panel and skills; sources vendored from this registry. |
 | bithk | Phase 1: write a `bithkDrive` driver adapter over the existing `drive_entries` / `file` service (no schema change), render with `fm/react`. Phase 2: move to `fm/managed` tables with a data migration. Share/team/project remain bithk features via hooks + actions. |
 | zzci/drive | Unchanged; stays a reference. |
 
 ## 6. Delivery phases
 
 1. **P0 foundation** — workspace + registry scaffold, `core`, `server`, drivers `memory` + `local` + `s3`, list/stat/read/write/mkdir/ops/archive, `client`, `react` list/tree/breadcrumb/preview (image, text, pdf)/single-PUT upload, `fm-api` + `fm-web`, `shadcn build` registry output.
-   Verify: driver contract suite against memory + local + s3 (MinIO); `shadcn add` from the built registry into a scratch app compiles; e2e in `fm-web` (browse, upload, rename, move, delete).
+   Verify: driver contract suite against memory + local + s3 (RustFS); `shadcn add` from the built registry into a scratch app compiles; e2e in `fm-web` (browse, upload, rename, move, delete).
 2. **P1 object storage + Workers** — `r2` driver, chunked + multipart upload sessions, presign, thumbnail hook, local trash, `fm-worker`.
-   Verify: contract suite against MinIO container and `wrangler dev` (miniflare R2); resume-after-abort upload test.
-3. **P2 managed** — `fm/managed` (dedupe, versions, trash, favorites, search) on SQLite / D1.
+   Verify: contract suite against RustFS container and `wrangler dev` (miniflare R2); resume-after-abort upload test.
+3. **P2 managed** (not implemented yet) — `fm/managed` (dedupe, versions, trash, favorites, search) on SQLite / D1.
    Verify: contract suite + managed-specific tests on both `bun:sqlite` and D1 (miniflare).
-4. **P3 adoption** — bkd migration, bithk adapter then migration, picker / attachment compositions, SFTP / WebDAV drivers, watch.
+4. **P3 adoption** — bkd migration (done), bithk adapter then migration, attachment compositions, SFTP / WebDAV drivers, watch.

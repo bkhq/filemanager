@@ -1,6 +1,6 @@
 # 20261103-0508-sidebar-drives Sidebar drive visibility and grouping
 
-- **status**: in_progress
+- **status**: completed
 - **priority**: P1
 - **owner**: bkd-l2/cixdvil5
 - **createdAt**: 2026-11-03 05:08

@@ -59,14 +59,14 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     if (!localStorage.getItem("fm:layout"))
       localStorage.setItem("fm:layout", "single");
-    if (!localStorage.getItem("fm-demo:meta-off"))
-      localStorage.setItem("fm-demo:meta-off", "1");
+    if (!localStorage.getItem("fm-web:meta-off"))
+      localStorage.setItem("fm-web:meta-off", "1");
   });
 });
 
 /** Turns on the demo's localStorage starred / recent lists for this test. */
 async function withMeta(page: Page) {
-  await page.addInitScript(() => localStorage.setItem("fm-demo:meta-off", "0"));
+  await page.addInitScript(() => localStorage.setItem("fm-web:meta-off", "0"));
 }
 
 test("browses folders with the list and breadcrumb", async ({ page }) => {
@@ -1664,7 +1664,7 @@ test("browses a zip archive and previews its entries", async ({ page }) => {
 });
 
 test("asks for a change note and sends it with the change", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("fm-demo:ask-message", "1"));
+  await page.addInitScript(() => localStorage.setItem("fm-web:ask-message", "1"));
   await putText(page, "/note-e2e/a.txt", "a");
   const notes: string[] = [];
   page.on("request", (r) => {

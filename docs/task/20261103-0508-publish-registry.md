@@ -1,6 +1,6 @@
 # 20261103-0508-publish-registry Publish the shadcn registry
 
-- **status**: in_progress
+- **status**: completed
 - **priority**: P1
 - **owner**: bkd-l2/vid1r7hm
 - **createdAt**: 2026-11-03 05:08

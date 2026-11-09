@@ -6,13 +6,13 @@
 
 ## Context
 
-`pma-web` requires file-based TanStack Router routing. `apps/demo-web` is a
+`pma-web` requires file-based TanStack Router routing. `apps/fm-web` is a
 single-screen harness that renders `<FileManager />` for development and e2e;
 it ships nothing to hosts.
 
 ## Decision
 
-`apps/demo-web` has no router. The registry UI (`registry/fm/react`) does not
+`apps/fm-web` has no router. The registry UI (`registry/fm/react`) does not
 depend on a router either, so hosts can mount it in any route.
 
 ## Consequences

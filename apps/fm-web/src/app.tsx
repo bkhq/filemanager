@@ -30,7 +30,7 @@ const plugins = [
 ];
 
 type Lang = "en" | "zh";
-const LANG_KEY = "fm-demo:lang";
+const LANG_KEY = "fm-web:lang";
 const initialLang: Lang = (localStorage.getItem(LANG_KEY) ?? navigator.language).startsWith("zh")
   ? "zh"
   : "en";
@@ -63,10 +63,10 @@ const langNames: Record<Lang, string> = { en: "English", zh: "中文" };
 const themeIcon = { light: <SunIcon />, dark: <MoonIcon />, system: <MonitorIcon /> };
 
 /** Demo switch: ask for a change note before every change. */
-const ASK_KEY = "fm-demo:ask-message";
+const ASK_KEY = "fm-web:ask-message";
 
 /** Starred / recent kept in localStorage; a real host would use its own database. */
-const META_KEY = "fm-demo:meta";
+const META_KEY = "fm-web:meta";
 interface DemoMeta { starred: FmRef[]; recent: FmRef[] }
 function readMeta(): DemoMeta {
   try {
@@ -102,8 +102,8 @@ const demoMeta: FmMeta = {
   })),
 };
 
-// e2e turns the lists off (`fm-demo:meta-off` = "1") so they do not duplicate tree rows.
-const meta = localStorage.getItem("fm-demo:meta-off") === "1"
+// e2e turns the lists off (`fm-web:meta-off` = "1") so they do not duplicate tree rows.
+const meta = localStorage.getItem("fm-web:meta-off") === "1"
   ? undefined
   : demoMeta;
 
