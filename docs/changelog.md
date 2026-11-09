@@ -402,3 +402,7 @@ The full-screen toggle is instant (`transition-none`): the dialog animated heigh
 ## 2026-11-09 02:30 [progress]
 
 Audit clean-up (20261109-0211-audit-cleanup): no compatibility layer existed. Removed `registerPreviewer` (previewers come from `FmPlugin.previewers`) and the unused labels `folderName`, `newName` and `rotateLeft`; `server/trash.ts` only exports `TRASH_DIR` and `folderTrash`. The demo's `fm-demo:*` localStorage keys are now `fm-web:*`. `docs/architecture.md` and ADR 001 match the code, and task statuses are synced (bkd pilot completed by bkd PR #162).
+
+## 2026-11-09 03:40 [progress]
+
+`DriveShell` and `WorkspaceShell` share their common UI through `react/shell-parts.tsx` in `fm-react` (20261109-0221-shared-shell-ui): drop section, notices, trash, details, breadcrumb, search, sort and upload menu items, view toggle, empty trash and selection actions. Props and behaviour are unchanged.

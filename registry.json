@@ -494,6 +494,11 @@
           "target": "~/src/fm/react/manager-overlays.tsx"
         },
         {
+          "path": "registry/fm/react/shell-parts.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/shell-parts.tsx"
+        },
+        {
           "path": "registry/fm/react/workspace-shell.tsx",
           "type": "registry:file",
           "target": "~/src/fm/react/workspace-shell.tsx"

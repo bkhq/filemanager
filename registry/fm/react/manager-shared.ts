@@ -1,6 +1,7 @@
 import type { FmUploadFile } from "../client/upload";
 import type { FmEntry } from "../core/schema";
 import type { FmListFilters } from "./filters";
+import type { FmController } from "./use-file-manager";
 
 import { useCallback, useEffect, useState } from "react";
 
@@ -149,4 +150,13 @@ export function useWidth() {
     return () => ro.disconnect();
   }, [el]);
   return [setEl, width] as const;
+}
+
+/** Entry shown in the details panel, if it is open. */
+export function shellDetailsEntry({ detailsOpen, features, inTrash, selected, dir }: FmController): FmEntry | undefined {
+  if (!detailsOpen || !features.details || inTrash)
+    return undefined;
+  return selected.length === 1
+    ? selected[0]
+    : dir;
 }
