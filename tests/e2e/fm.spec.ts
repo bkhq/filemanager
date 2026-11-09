@@ -735,14 +735,18 @@ test("toggles hidden files in the tree", async ({ page }) => {
     await page.getByRole("toolbar", { name: "Folder actions" }).locator("..").getByRole("button", { name: "More" }).click();
     return page.getByRole("menuitemcheckbox", { name: "Show hidden files" });
   };
+  // Opening "More" again while the menu still animates out breaks it, so each step waits.
+  const menuClosed = () => expect(page.getByRole("menu")).toHaveCount(0);
   const toggle = {
-    click: async () => (await hiddenItem()).click(),
+    click: async () => {
+      await (await hiddenItem()).click();
+      await menuClosed();
+    },
   };
   const expectHidden = async (shown: boolean) => {
     await expect(await hiddenItem()).toHaveAttribute("aria-checked", String(shown));
     await page.keyboard.press("Escape");
-    // Opening "More" again while the menu still animates out leaves it closed.
-    await expect(page.getByRole("menu")).toHaveCount(0);
+    await menuClosed();
   };
   await item("dotted").click();
   await expect(item("plain.txt")).toBeVisible();

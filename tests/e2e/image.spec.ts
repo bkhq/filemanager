@@ -217,3 +217,22 @@ test("keeps the image over the view when moving with the minimap or zooming out"
   await page.waitForTimeout(400);
   expect(await covered()).toBe(true);
 });
+
+test("goes full screen and back, refitting the image", async ({ page }) => {
+  const { dialog, img, percent } = await openImage(page, "huge.png");
+  await expect.poll(percent).toBeLessThan(30);
+  const smallFit = await percent();
+  await dialog.getByRole("button", { name: "Full screen", exact: true }).click();
+  // At once: an animated resize jitters.
+  await expect.poll(async () => (await dialog.boundingBox())!.width).toBe(1400);
+  expect((await dialog.boundingBox())!.height).toBe(900);
+  // The image refits to the larger stage and stays centred in it.
+  await expect.poll(percent).toBeGreaterThan(smallFit);
+  await expect.poll(async () => {
+    const stage = (await dialog.locator(".react-transform-wrapper").boundingBox())!;
+    const b = (await img.boundingBox())!;
+    return Math.abs(b.x + b.width / 2 - (stage.x + stage.width / 2)) + Math.abs(b.y + b.height / 2 - (stage.y + stage.height / 2));
+  }).toBeLessThan(2);
+  await dialog.getByRole("button", { name: "Exit full screen" }).click();
+  await expect.poll(async () => (await dialog.boundingBox())!.width).toBe(1024);
+});

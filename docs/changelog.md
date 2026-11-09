@@ -390,3 +390,11 @@ Image minimap could drag the view off the image: `MiniMap`'s own panning (on by 
 Copy path (20261109-0117-copy-absolute-path): "Copy path" copied the mount-relative path, which only looked absolute. `FmMount.absoluteRoot` (host-set, returned by `GET /mounts`, never derived from the driver) now gives the real path; without it the item is hidden. New "Copy relative path" drops the leading slash. The details panel copies the absolute path when known, else the relative one. Hosts must set `absoluteRoot` to keep "Copy path".
 
 Copy path follow-up, as in VS Code: "Copy path" and "Copy relative path" form their own menu group with shortcuts (Option+Cmd+C and Shift+Option+Cmd+C; Ctrl+Alt+C and Ctrl+Shift+Alt+C elsewhere).
+
+## 2026-11-09 01:50 [progress]
+
+The file preview and review dialogs have a full-screen toggle (20261109-0125-dialog-fullscreen, shared `dialog-maximize.tsx`): the dialog fills the browser window, without the Fullscreen API so toasts and nested dialogs keep working. An image refits and stays centred. e2e covers the preview dialog; the review dialog shares the button and classes.
+
+Image zoom smoothness: zooming no longer re-renders `MediaStage` on every frame (the percentage is written directly; only crossing fit renders), every zoom uses one 280 ms `easeOutCubic` curve, and the minimap image decodes asynchronously.
+
+The full-screen toggle is instant (`transition-none`): the dialog animated height and position while `max-width` jumped, which jittered.

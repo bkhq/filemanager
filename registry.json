@@ -522,6 +522,11 @@
           "path": "registry/fm/react/columns.tsx",
           "type": "registry:file",
           "target": "~/src/fm/react/columns.tsx"
+        },
+        {
+          "path": "registry/fm/react/dialog-maximize.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/dialog-maximize.tsx"
         }
       ]
     },

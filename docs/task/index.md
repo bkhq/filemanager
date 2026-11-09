@@ -74,3 +74,4 @@ Each task is a single line linking to its detail file. All detailed information 
 - [x] [**20261108-0342-one-rotate-button Image preview: one rotate button**](20261108-0342-one-rotate-button.md) `P3`
 - [x] [**20261108-0546-image-viewer-extras Image preview: minimap, transparency checkerboard, pixel size**](20261108-0546-image-viewer-extras.md) `P2`
 - [x] [**20261109-0117-copy-absolute-path Copy path gives the real absolute path**](20261109-0117-copy-absolute-path.md) `P1`
+- [x] [**20261109-0125-dialog-fullscreen Preview dialogs can go full screen**](20261109-0125-dialog-fullscreen.md) `P1`

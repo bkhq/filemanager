@@ -203,6 +203,8 @@ export const enLabels = {
   zoomOut: "Zoom out",
   fitToScreen: "Fit to screen",
   actualSize: "Actual size",
+  fullScreen: "Full screen",
+  exitFullScreen: "Exit full screen",
   sheetRows: (n: number) => `${n} ${n === 1
     ? "row"
     : "rows"}`,
@@ -414,6 +416,8 @@ export const zhLabels: FmLabels = {
   zoomOut: "缩小",
   fitToScreen: "适应窗口",
   actualSize: "实际大小",
+  fullScreen: "全屏",
+  exitFullScreen: "退出全屏",
   sheetRows: n => `${n} 行`,
   addRow: "添加行",
   deleteRow: "删除行",

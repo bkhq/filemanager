@@ -14,6 +14,9 @@ import { centerOn, clampPan, INITIAL_VIEW, layoutOf, maxZoomOf, rotateBy, zoomAr
 const PAD = 16;
 /** Zoom in / out buttons and keys multiply or divide by this. */
 const ZOOM_FACTOR = 1.5;
+/** One curve for every zoom: buttons, keys, the percentage, double-click. */
+const ZOOM_MS = 280;
+const ZOOM_EASING = "easeOutCubic";
 /** Below this stage width the pixel size and the minimap are left out. */
 const WIDE_STAGE = 480;
 /** Longer side of the minimap in pixels. */
@@ -60,8 +63,9 @@ export function MediaStage({ kind, src, alt, labels, actions }: {
 }) {
   const [view, setView] = useState<FmMediaView>(INITIAL_VIEW);
   const transformRef = useRef<ReactZoomPanPinchRef>(null);
-  // Zoom relative to the fitted image: 1 is fit, 1 / fit is the real size.
-  const [transformScale, setTransformScale] = useState(1);
+  // Only crossing fit re-renders; the percentage is written directly so zooming stays off React.
+  const [zoomed, setZoomed] = useState(false);
+  const percentRef = useRef<HTMLSpanElement>(null);
   const panZoomRef = useRef<FmPanZoom>({ scale: 1, positionX: 0, positionY: 0 });
   const [natural, setNatural] = useState<FmSize>();
   const [stageRef, stage] = useStageSize();
@@ -82,9 +86,9 @@ export function MediaStage({ kind, src, alt, labels, actions }: {
       ? clampPan(zoomedTo, layout, viewport)
       : zoomedTo;
     if (next.scale <= 1)
-      void t.resetTransform(180, "easeOut");
+      void t.resetTransform(ZOOM_MS, ZOOM_EASING);
     else
-      void t.setTransform(next.positionX, next.positionY, next.scale, 180, "easeOut");
+      void t.setTransform(next.positionX, next.positionY, next.scale, ZOOM_MS, ZOOM_EASING);
   };
   const zoomByRef = useRef(zoomBy);
   zoomByRef.current = zoomBy;
@@ -111,7 +115,7 @@ export function MediaStage({ kind, src, alt, labels, actions }: {
         zoomByRef.current(1 / ZOOM_FACTOR);
       }
       else if (key === "0") {
-        transformRef.current?.resetTransform();
+        transformRef.current?.resetTransform(ZOOM_MS, ZOOM_EASING);
       }
       else if (key === "r") {
         setView(v => rotateBy(v, e.shiftKey
@@ -145,15 +149,16 @@ export function MediaStage({ kind, src, alt, labels, actions }: {
   const box = layout
     ? { width: layout.width, height: layout.height }
     : undefined;
-  const zoomed = transformScale > 1.001;
+  // `scale` is relative to the fitted image: 1 is fit, 1 / fit is the real size.
+  const percent = (scale: number) => `${Math.round((layout?.fit ?? 1) * scale * 100)}%`;
   const wide = !!stage && stage.width >= WIDE_STAGE;
   const pixels = natural && `${natural.width} × ${natural.height}`;
   // The percentage toggles between fit and the real size.
   const toggleRealSize = () => {
     if (zoomed || !layout || layout.fit >= 1)
-      transformRef.current?.resetTransform();
+      transformRef.current?.resetTransform(ZOOM_MS, ZOOM_EASING);
     else
-      transformRef.current?.centerView(1 / layout.fit);
+      transformRef.current?.centerView(1 / layout.fit, ZOOM_MS, ZOOM_EASING);
   };
 
   // The library's minimap dragging assumes content as large as the viewport, so it is done here.
@@ -187,7 +192,7 @@ export function MediaStage({ kind, src, alt, labels, actions }: {
               : labels.actualSize} · ${pixels}`}
             onClick={toggleRealSize}
           >
-            {`${Math.round(layout.fit * transformScale * 100)}%`}
+            <span ref={percentRef}>{percent(panZoomRef.current.scale)}</span>
           </Button>
           <IconButton label={labels.zoomIn} onClick={() => zoomBy(ZOOM_FACTOR)}><ZoomInIcon /></IconButton>
         </div>
@@ -225,11 +230,11 @@ export function MediaStage({ kind, src, alt, labels, actions }: {
                 doubleClick={{
                   mode: "toggle",
                   step: 0.5,
-                  animationTime: 220,
-                  animationType: "easeOut",
+                  animationTime: ZOOM_MS,
+                  animationType: ZOOM_EASING,
                 }}
                 pinch={{ step: 5, allowPanning: true }}
-                zoomAnimation={{ animationTime: 220, animationType: "easeOut" }}
+                zoomAnimation={{ animationTime: ZOOM_MS, animationType: ZOOM_EASING }}
                 autoAlignment={{ animationTime: 180, velocityAlignmentTime: 220 }}
                 minScale={1}
                 maxScale={maxZoom}
@@ -237,7 +242,9 @@ export function MediaStage({ kind, src, alt, labels, actions }: {
                 centerZoomedOut
                 onTransform={(_, state) => {
                   panZoomRef.current = state;
-                  setTransformScale(state.scale);
+                  setZoomed(state.scale > 1.001);
+                  if (percentRef.current)
+                    percentRef.current.textContent = percent(state.scale);
                 }}
               >
                 <TransformComponent
@@ -283,7 +290,7 @@ export function MediaStage({ kind, src, alt, labels, actions }: {
                         : { height: MINIMAP })}
                     >
                       <div style={{ ...box, position: "relative" }}>
-                        <img src={src} alt="" draggable={false} style={style} />
+                        <img src={src} alt="" decoding="async" draggable={false} style={style} />
                       </div>
                     </MiniMap>
                   </div>
