@@ -7,15 +7,20 @@ import { expect, test } from "@playwright/test";
 const row = (page: Page, path: string) => page.locator(`[data-path="${path}"]`);
 const fileList = (page: Page) => page.locator("[role=grid]");
 
+/** Waits for a menu to finish closing: reopening one while it animates out breaks it. */
+const menuClosed = (page: Page) => expect(page.getByRole("menu")).toHaveCount(0);
+
 /** Switches mounts through the storage menu of the single layout. */
 async function switchMount(page: Page, label: string) {
   await page.getByRole("button", { name: "Storage" }).click();
   await page.getByRole("menuitemradio", { name: label, exact: true }).click();
+  await menuClosed(page);
 }
 
 async function openTrash(page: Page) {
   await page.getByRole("button", { name: "Storage" }).click();
   await page.getByRole("menuitem", { name: "Trash" }).click();
+  await menuClosed(page);
 }
 
 /** Opens a mount in the list layout (the default for these tests). */
@@ -735,18 +740,16 @@ test("toggles hidden files in the tree", async ({ page }) => {
     await page.getByRole("toolbar", { name: "Folder actions" }).locator("..").getByRole("button", { name: "More" }).click();
     return page.getByRole("menuitemcheckbox", { name: "Show hidden files" });
   };
-  // Opening "More" again while the menu still animates out breaks it, so each step waits.
-  const menuClosed = () => expect(page.getByRole("menu")).toHaveCount(0);
   const toggle = {
     click: async () => {
       await (await hiddenItem()).click();
-      await menuClosed();
+      await menuClosed(page);
     },
   };
   const expectHidden = async (shown: boolean) => {
     await expect(await hiddenItem()).toHaveAttribute("aria-checked", String(shown));
     await page.keyboard.press("Escape");
-    await menuClosed();
+    await menuClosed(page);
   };
   await item("dotted").click();
   await expect(item("plain.txt")).toBeVisible();
