@@ -70,3 +70,6 @@ Each task is a single line linking to its detail file. All detailed information 
 - [x] [**20261106-0913-bithk-extension-points Drive extension points for bithk**](20261106-0913-bithk-extension-points.md) `P1`
 - [x] [**20261106-0943-native-trash Drivers may bring their own trash**](20261106-0943-native-trash.md) `P1`
 - [x] [**20261106-0959-demo-native-trash Demo: a database-style space with its own trash**](20261106-0959-demo-native-trash.md) `P2`
+- [x] [**20261107-0950-image-pan-zoom Image preview: zoom to real size and pan over the whole stage**](20261107-0950-image-pan-zoom.md) `P2`
+- [x] [**20261108-0342-one-rotate-button Image preview: one rotate button**](20261108-0342-one-rotate-button.md) `P3`
+- [x] [**20261108-0546-image-viewer-extras Image preview: minimap, transparency checkerboard, pixel size**](20261108-0546-image-viewer-extras.md) `P2`

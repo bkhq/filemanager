@@ -171,11 +171,14 @@ test("rotates, flips and zooms an image without changing it", async ({ page }) =
   await expect(img).toHaveAttribute("style", /rotate\(90deg\) scaleX\(-1\)/);
   // Viewing only: nothing offers to write the rotated image back.
   await expect(dialog.getByRole("button", { name: "Save" })).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Rotate left" }).click();
+  // One rotate button: four quarter turns come back round.
+  await expect(dialog.getByRole("button", { name: "Rotate left" })).toHaveCount(0);
+  for (let i = 0; i < 3; i++)
+    await dialog.getByRole("button", { name: "Rotate right" }).click();
   await expect(img).toHaveAttribute("style", /rotate\(0deg\)/);
   await dialog.getByRole("button", { name: "Zoom in" }).click();
-  await expect(dialog.getByRole("button", { name: "125%" })).toBeVisible();
-  await dialog.getByRole("button", { name: "125%" }).click();
+  await expect(dialog.getByRole("button", { name: "150%" })).toBeVisible();
+  await dialog.getByRole("button", { name: "150%" }).click();
   await expect(dialog.getByRole("button", { name: "100%" })).toBeVisible();
 });
 
@@ -1320,7 +1323,7 @@ test("image keys zoom, fit, rotate and flip", async ({ page }) => {
   const img = dialog.locator("img[alt='dot.png']");
   await expect(dialog.getByRole("button", { name: "100%" })).toBeVisible();
   await page.keyboard.press("+");
-  await expect(dialog.getByRole("button", { name: "125%" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "150%" })).toBeVisible();
   await page.keyboard.press("0");
   await expect(dialog.getByRole("button", { name: "100%" })).toBeVisible();
   await page.keyboard.press("r");

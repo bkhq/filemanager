@@ -368,3 +368,19 @@ Driver-provided trash (20261106-0943-native-trash): optional `FmDriver.trash` (`
 ## 2026-11-06 09:59 [progress]
 
 Drive demo: a "Team drive" space in the "Team" group shows a database-style backend (task 20261106-0959-demo-native-trash): a memory driver wrapped with stable entry ids that follow renames and moves, owners kept by id, and its own trash (`FmDriver.trash`) whose items expire after 14 days with no mount `retentionDays`. The Activity tab shows the entry id. Fix: `TrashView` now shows the Expires column whenever an item has `expiresAt` (a driver's own expiry), not only with the mount retention. e2e: delete into the space's trash, see "In 14 days", restore; the id stays across a rename.
+
+## 2026-11-08 01:20 [progress]
+
+Image preview zoom (20261107-0950-image-pan-zoom), keeping `react-zoom-pan-pinch` 4.2.0: the zoom viewport is the whole preview stage and its content the fitted (rotated) image box, so any aspect ratio uses the full area when zoomed (a 1000x3000 image no longer stays in a 228 px column). The ceiling is `maxZoomOf(fit)` = max(4x fit, 4x real size), so large images reach their pixels (a 6000x4000 image stopped at 43% before). Zoom in / out (buttons, `+` / `-`) multiply by 1.5 around the middle of the view (`zoomAround`) instead of the library's additive step, which barely moved large images. The percentage toggles fit and real size ("Actual size"); the cursor is `zoom-in` at fit and `grab` / `grabbing` when zoomed; while zoomed, arrow keys pan (library keyboard), at fit they still step through files. Removed the unused `FmMediaView.zoom`, `clampZoom` and `ZOOM_STEP`; `apps/fm-web` pins `react-zoom-pan-pinch` to 4.2.0. Tests: `transform.test.ts` (layout, ceiling, zoom around a point), `tests/e2e/image.spec.ts` (generated 6000x4000 and 1000x3000 PNGs: real size, beyond it, drag, stage-wide view); the zoom-step expectations in `fm.spec.ts` changed from 125% to 150%. Verified: `bun run check` (351 pass), 105 Playwright e2e, `registry:smoke`.
+
+## 2026-11-08 03:50 [progress]
+
+Image preview toolbar keeps one rotate button (clockwise, task 20261108-0342-one-rotate-button); Shift+R still rotates the other way. The `rotateLeft` label stays in `FmLabels` so hosts with full label objects keep compiling. e2e: no "Rotate left" button, four quarter turns come back to 0°.
+
+## 2026-11-08 06:10 [progress]
+
+Image preview extras (20261108-0546-image-viewer-extras): a minimap (`react-zoom-pan-pinch`'s `MiniMap`, 160 px on the longer side, bottom-right) while zoomed, showing the view on the whole image; click or drag in it to move. A checkerboard (theme `--muted` on `--background`) behind the image box, so transparent pixels of PNG / WebP / SVG read as transparent. The toolbar shows the pixel size ("6000 × 4000"), also in the percentage button's title. Pixel size and minimap are left out below a 480 px stage. No new dependency, prop or export. e2e: minimap appears when zoomed, moves the view, goes at fit; pixel size; checkerboard behind a half-transparent PNG. Verified: `bun run check` (351 pass), 108 Playwright e2e, `registry:smoke`.
+
+## 2026-11-09 [pitfall]
+
+Image minimap could drag the view off the image: `MiniMap`'s own panning (on by default) assumes content as large as the viewport. It is off now (`panning={false}`); `media-stage.tsx` moves the view itself with `centerOn`, and zoom buttons use `clampPan`, so the image stays over the view.
