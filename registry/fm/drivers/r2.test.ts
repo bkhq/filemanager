@@ -182,6 +182,70 @@ describe("r2Driver specifics", () => {
     expect(await driver.list("/")).toEqual([]);
   });
 
+  it("rolls back a folder move whose copy fails midway", async () => {
+    const prefix = `t-${crypto.randomUUID()}/`;
+    const driver = r2Driver({
+      prefix,
+      bucket: new Proxy(bucket, {
+        get(target, prop, receiver) {
+          if (prop !== "put")
+            return Reflect.get(target, prop, receiver) as unknown;
+          const put: FmR2Bucket["put"] = async (key, value, options) => {
+            if (key === `${prefix}e/b.txt`)
+              throw new Error("put failed");
+            return target.put(key, value, options);
+          };
+          return put;
+        },
+      }),
+    });
+    for (const n of ["a", "b", "c"])
+      await driver.write(`/d/${n}.txt`, enc.encode(n));
+    await expect(driver.move("/d", "/e")).rejects.toThrow("put failed");
+    expect((await bucket.list({ prefix })).objects.map(o => o.key.slice(prefix.length)).sort()).toEqual(["d/a.txt", "d/b.txt", "d/c.txt"]);
+    await driver.remove("/d");
+  });
+
+  it("makes exclusive and ifMatch writes conditional on the put itself", async () => {
+    const prefix = `t-${crypto.randomUUID()}/`;
+    const seen: unknown[] = [];
+    // A concurrent writer lands between the driver's check and its put.
+    let race: string | undefined;
+    const driver = r2Driver({
+      prefix,
+      bucket: new Proxy(bucket, {
+        get(target, prop, receiver) {
+          if (prop !== "put")
+            return Reflect.get(target, prop, receiver) as unknown;
+          const put: FmR2Bucket["put"] = async (key, value, options) => {
+            seen.push(options?.onlyIf);
+            if (race !== undefined) {
+              await target.put(key, enc.encode(race));
+              race = undefined;
+            }
+            return target.put(key, value, options);
+          };
+          return put;
+        },
+      }),
+    });
+    const text = async (path: string) => new TextDecoder().decode(await readAll((await driver.read(path)).body));
+    await driver.write("/a.txt", enc.encode("a"), { exclusive: true });
+    expect(seen).toEqual([
+      { etagDoesNotMatch: "*" },
+    ]);
+    race = "raced";
+    await expect(driver.write("/b.txt", enc.encode("b"), { exclusive: true })).rejects.toMatchObject({ code: "EXISTS" });
+    expect(await text("/b.txt")).toBe("raced");
+    const current = await driver.stat("/a.txt");
+    race = "raced";
+    await expect(driver.write("/a.txt", enc.encode("x"), { ifMatch: current.etag })).rejects.toMatchObject({ code: "ETAG_MISMATCH" });
+    expect(seen.at(-1)).toEqual({ etagMatches: current.etag });
+    expect(await text("/a.txt")).toBe("raced");
+    await driver.remove("/a.txt");
+    await driver.remove("/b.txt");
+  });
+
   it("checks write preconditions", async () => {
     const driver = fresh();
     await driver.mkdir("/dir");

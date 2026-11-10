@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { DragEvent, ReactNode } from "react";
 import type { FmClient, FmListFilter } from "../client/client";
 import type { FmEntry, FmMountInfo } from "../core/schema";
 import type { FmLabels } from "./labels";
@@ -16,8 +16,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useListing } from "../client/hooks";
 import { basename, dirname } from "../core/path";
-import { EntryIcon } from "./file-list";
+import { DRAG_TYPE, EntryIcon } from "./file-list";
 import { MenuScroll } from "./menu-scroll";
+import { springDrag, springKey } from "./spring-load";
 
 /** A picker: one line per entry, capped in width and height. */
 const PICKER = "w-auto max-w-72 min-w-40 overflow-hidden p-0";
@@ -97,6 +98,31 @@ export function PathBar({ client, mounts, mount, path, file, labels, filter, roo
   const trail = file
     ? [...folders, file.path]
     : folders;
+  /** Drag handlers of a folder crumb: a drag resting on it opens the folder (needs `onOpenFolder`). */
+  const spring = (target: string) => {
+    const info = mounts.find(m => m.id === at);
+    if (!onOpenFolder || !info || target === dir || (file && target === file.path))
+      return {};
+    const key = springKey(at, target);
+    const folder: FmEntry = {
+      mount: at,
+      path: target,
+      name: basename(target) || info.label,
+      kind: "dir",
+      size: 0,
+      mtime: "",
+      etag: "",
+      caps: info.caps,
+    };
+    return {
+      onDragOver: (e: DragEvent) => springDrag.over(e.dataTransfer.types, DRAG_TYPE, key, () => onOpenFolder(folder)),
+      onDragLeave: (e: DragEvent) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null))
+          springDrag.leave(key);
+      },
+      onDrop: springDrag.end,
+    };
+  };
   const crumb = (last: boolean) => cn("max-w-48 shrink-0 truncate rounded-sm px-1 py-0.5 hover:bg-muted hover:text-foreground", last
     ? "font-medium text-foreground"
     : "text-muted-foreground");
@@ -107,7 +133,7 @@ export function PathBar({ client, mounts, mount, path, file, labels, filter, roo
         ? target
         : undefined)}
     >
-      <DropdownMenuTrigger render={<button type="button" className={crumb(last)} />}>{label}</DropdownMenuTrigger>
+      <DropdownMenuTrigger render={<button type="button" className={crumb(last)} {...spring(target)} />}>{label}</DropdownMenuTrigger>
       <DropdownMenuContent align="start" className={PICKER}>
         <MenuScroll>
           <PickerEntries

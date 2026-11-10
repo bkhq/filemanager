@@ -428,3 +428,15 @@ Verified: `bun run check` (357 unit tests), 122 e2e, registry smoke. The trackin
 - react-zoom-pan-pinch with `smooth` scales the wheel step by `|deltaY|` additively; a mouse notch adds 8.
 - The serial `fm.spec.ts` fills the root: folders near the bottom leave the virtual list's first screen or sit under the floating selection bar, which swallows a double click's second press. It runs at a 1200px tall viewport; new fixtures should sort early (`/0-…`).
 - `image.spec.ts` "shows a minimap while zoomed that moves the view" is flaky on `main` (3 of 15 runs); tracked as 20261110-0300-flaky-minimap-e2e.
+
+## 2026-11-10 07:10 [decision]
+
+Plan 20261110-0700-filen-audit-fixes approved: audit against the public Filen repositories (filen-ts, filen-rs, filen-relay; AGPL / unlicensed, ideas only) and this codebase. Nine tasks in two workstreams (server security / reliability / performance; client and UI). Copies of a source holding an unreadable subtree answer FORBIDDEN rather than copying a partial tree.
+
+## 2026-11-10 08:20 [progress]
+
+Audit fixes delivered (20261110-0700-filen-audit-fixes), uncommitted in the main worktree for review: per-directory authorization in recursive walks, S3 multipart copy over 5 GiB with rollback, conditional writes on s3 / r2 and race-free rename conflicts, listing snapshots for paging, thumbnail concurrency limit, bounded upload sweep, parallel upload parts with pause / resume and a leave-page guard, remote Markdown images off by default, spring-loaded folders, a keyboard shortcuts dialog. Verified on the combined branch: `bun run check` with the RustFS S3 contract (491 pass, 2 skip, 0 fail) and a fully green `bun run test:e2e` run (130 passed).
+
+## 2026-11-10 08:20 [pitfall]
+
+`tests/e2e/fm.spec.ts:446` (trash multi-select) fails in about half of full e2e runs, also on `d90448a`; `fm.spec.ts` runs serially, so one failure skips ~75 tests. Tracked as 20261110-0815-flaky-trash-e2e. Router state keyed by driver instance does not work for hosts that build drivers per request; key by mount id or document instance reuse.

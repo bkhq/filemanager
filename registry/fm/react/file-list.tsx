@@ -28,6 +28,7 @@ import { columnContent } from "./columns";
 import { setDownloadUrl } from "./drop";
 import { IconButton } from "./icon-button";
 import { viewportRef } from "./scroll";
+import { springDrag, springKey } from "./spring-load";
 import { formatSize, kindOf } from "./state";
 
 export const DRAG_TYPE = "application/x-fm-paths";
@@ -105,6 +106,10 @@ function useEntryHandlers(p: FileListProps, entry: FmEntry) {
   const selected = p.selection.paths.has(entry.path);
   const isDir = entry.kind === "dir";
   const disabled = !!p.disabled?.(entry);
+  const key = springKey(entry.mount, entry.path);
+  const springs = isDir && entry.caps.write;
+  // A row scrolled away or replaced mid-drag must not open later.
+  useEffect(() => () => springDrag.leave(key), [key]);
   return {
     over,
     selected,
@@ -130,20 +135,29 @@ function useEntryHandlers(p: FileListProps, entry: FmEntry) {
           ? [...p.selection.paths]
           : [entry.path];
         e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(paths));
+        springDrag.start(paths.map(x => springKey(entry.mount, x)));
         if (paths.length === 1)
           setDownloadUrl(e.dataTransfer, p.client, entry);
         e.dataTransfer.effectAllowed = "copyMove";
       },
+      "onDragEnd": springDrag.end,
       "onDragOver": (e: DragEvent) => {
-        if (!isDir || !entry.caps.write || !e.dataTransfer.types.includes(DRAG_TYPE))
+        if (springs)
+          springDrag.over(e.dataTransfer.types, DRAG_TYPE, key, () => p.onOpen(entry));
+        if (!springs || !e.dataTransfer.types.includes(DRAG_TYPE))
           return;
         e.preventDefault();
         e.stopPropagation();
         setOver(true);
       },
-      "onDragLeave": () => setOver(false),
+      "onDragLeave": (e: DragEvent) => {
+        setOver(false);
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null))
+          springDrag.leave(key);
+      },
       "onDrop": (e: DragEvent) => {
         setOver(false);
+        springDrag.end();
         if (!isDir || !e.dataTransfer.types.includes(DRAG_TYPE))
           return;
         e.preventDefault();

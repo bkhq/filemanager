@@ -74,6 +74,11 @@
           "target": "~/src/fm/server/trash.ts"
         },
         {
+          "path": "registry/fm/server/walk.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/server/walk.ts"
+        },
+        {
           "path": "registry/fm/server/zip.ts",
           "type": "registry:file",
           "target": "~/src/fm/server/zip.ts"
@@ -362,6 +367,21 @@
           "path": "registry/fm/react/quick-open.tsx",
           "type": "registry:file",
           "target": "~/src/fm/react/quick-open.tsx"
+        },
+        {
+          "path": "registry/fm/react/shortcuts.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/shortcuts.ts"
+        },
+        {
+          "path": "registry/fm/react/shortcuts-dialog.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/shortcuts-dialog.tsx"
+        },
+        {
+          "path": "registry/fm/react/spring-load.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/react/spring-load.ts"
         },
         {
           "path": "registry/fm/react/state.ts",
@@ -679,6 +699,11 @@
           "path": "registry/fm/plugins/markdown-view.tsx",
           "type": "registry:file",
           "target": "~/src/fm/plugins/markdown-view.tsx"
+        },
+        {
+          "path": "registry/fm/plugins/markdown-images.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/plugins/markdown-images.ts"
         }
       ]
     }

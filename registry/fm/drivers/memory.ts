@@ -218,7 +218,10 @@ export function memoryDriver(opts: FmMemoryDriverOptions = {}): FmDriver {
     },
     async write(path, body, o = {}) {
       checkWrite(path, o);
-      return putFile(path, (await readAll(body)).slice());
+      const data = (await readAll(body)).slice();
+      // Check again: another write may have landed while the body was read.
+      checkWrite(path, o);
+      return putFile(path, data);
     },
     async mkdir(path) {
       assertFree(path);

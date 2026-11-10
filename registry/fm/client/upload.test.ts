@@ -3,7 +3,7 @@ import type { FmClient } from "./client";
 import type { FmPartTransport, FmTransport, FmUploadTask } from "./upload";
 import { describe, expect, it } from "bun:test";
 import { FmApiError } from "./client";
-import { createUploadQueue } from "./upload";
+import { createUploadQueue, guardUploadsOnUnload } from "./upload";
 
 function deferredTransport() {
   const pending = new Map<string, { resolve: () => void; reject: (e: Error) => void; progress: (n: number) => void }>();
@@ -20,6 +20,31 @@ function file(name: string, size = 3) {
   ]), { name });
 }
 const flush = () => new Promise(r => setTimeout(r, 0));
+/** Waits past the 100 ms progress timer used when `requestAnimationFrame` is missing. */
+const tick = () => new Promise(r => setTimeout(r, 120));
+
+/** Replaces `requestAnimationFrame` with a manual frame queue. */
+function manualFrames() {
+  const g = globalThis as { requestAnimationFrame?: ((cb: (t: number) => void) => number) | undefined };
+  const prev = g.requestAnimationFrame;
+  let frames: ((t: number) => void)[] = [];
+  g.requestAnimationFrame = (cb) => {
+    frames.push(cb);
+    return frames.length;
+  };
+  return {
+    pending: () => frames.length,
+    run: () => {
+      const due = frames;
+      frames = [];
+      for (const cb of due)
+        cb(0);
+    },
+    restore: () => {
+      g.requestAnimationFrame = prev;
+    },
+  };
+}
 
 describe("upload queue", () => {
   it("runs with bounded concurrency and builds target paths", async () => {
@@ -47,6 +72,7 @@ describe("upload queue", () => {
     expect(s().map(t => t.status)).toEqual(["uploading", "uploading", "queued"]);
 
     pending.get("u1")!.progress(2);
+    await tick();
     expect(s()[0]!.loaded).toBe(2);
     pending.get("u1")!.resolve();
     await flush();
@@ -276,6 +302,7 @@ describe("upload sessions", () => {
       : undefined));
     const q = createUploadQueue({
       ...base,
+      partConcurrency: 1,
       client,
       storage: memoryStorage(),
       partTransport,
@@ -309,7 +336,8 @@ describe("upload sessions", () => {
       },
     ]);
     expect(await settle(q)).toMatchObject({ status: "done" });
-    expect(puts.map(p => p.text)).toEqual(["0123", "4567", "89"]);
+    // The retried part lands after its parallel siblings.
+    expect(puts.map(p => p.text).sort()).toEqual(["0123", "4567", "89"]);
   });
 
   it("fails after the retries and keeps the session for resume", async () => {
@@ -331,7 +359,8 @@ describe("upload sessions", () => {
         file: big(),
       },
     ]);
-    expect(await settle(q)).toMatchObject({ status: "error", error: "down", loaded: 4 });
+    // Parts 1 and 3 land in parallel; part 2 keeps failing.
+    expect(await settle(q)).toMatchObject({ status: "error", error: "down", loaded: 6 });
     expect(storage.map.get(KEY)).toBe("s1");
     expect(calls).not.toContain("complete s1");
   });
@@ -414,5 +443,388 @@ describe("upload sessions", () => {
     await flush();
     expect(calls).toContain("abort s1");
     expect(storage.map.size).toBe(0);
+  });
+});
+
+/** Part transport whose requests stay open until the test settles them. */
+function controlledParts() {
+  const calls: { url: string; size: number; open: boolean; aborted: boolean; progress: (n: number) => void; close: () => void; resolve: () => void }[] = [];
+  let inflight = 0;
+  let max = 0;
+  const partTransport: FmPartTransport = (url, body, _headers, onProgress, signal) => new Promise((resolve, reject) => {
+    inflight++;
+    max = Math.max(max, inflight);
+    const call = {
+      url,
+      size: body.size,
+      open: true,
+      aborted: false,
+      progress: onProgress,
+      close: () => {
+        if (call.open)
+          inflight--;
+        call.open = false;
+      },
+      resolve: () => {
+        call.close();
+        resolve();
+      },
+    };
+    signal.addEventListener("abort", () => {
+      call.close();
+      call.aborted = true;
+      reject(new DOMException("Aborted", "AbortError"));
+    });
+    calls.push(call);
+  });
+  return {
+    partTransport,
+    calls,
+    max: () => max,
+    inflight: () => inflight,
+  };
+}
+
+const parts = (calls: { url: string }[]) => calls.map(c => Number(c.url.split("/").pop()));
+
+describe("parallel parts", () => {
+  const base = {
+    retryDelayMs: 0,
+    sessionThreshold: 10,
+    storage: memoryStorage(),
+  };
+
+  for (const [label, partConcurrency, bound] of [
+    ["default 3", undefined, 3],
+    ["option 2", 2, 2],
+  ] as const) {
+    it(`keeps at most ${label} parts in flight`, async () => {
+      const { client, calls: api } = fakeClient({ partSize: 1, parts: 10 });
+      const t = controlledParts();
+      const q = createUploadQueue({
+        ...base,
+        client,
+        partTransport: t.partTransport,
+        transport: async () => {},
+        ...(partConcurrency
+          ? { partConcurrency }
+          : {}),
+      });
+      q.getState().enqueue("m", "/", [
+        {
+          file: big(),
+        },
+      ]);
+      await flush();
+      await flush();
+      expect(t.calls).toHaveLength(bound);
+      for (let i = 0; i < 10; i++) {
+        expect(t.inflight()).toBeLessThanOrEqual(bound);
+        t.calls.find(c => c.open)!.resolve();
+        await flush();
+        await flush();
+      }
+      expect(t.max()).toBe(bound);
+      expect(parts(t.calls).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+      expect(await settle(q)).toMatchObject({ status: "done", loaded: 10 });
+      expect(api).toContain("complete s1");
+    });
+  }
+
+  it("sums completed parts and the bytes in flight", async () => {
+    const frames = manualFrames();
+    try {
+      const { client } = fakeClient();
+      const t = controlledParts();
+      const q = createUploadQueue({
+        ...base,
+        client,
+        partTransport: t.partTransport,
+        transport: async () => {},
+      });
+      q.getState().enqueue("m", "/", [
+        {
+          file: big(),
+        },
+      ]);
+      await flush();
+      await flush();
+      t.calls[0]!.progress(2);
+      t.calls[1]!.progress(3);
+      frames.run();
+      expect(q.getState().tasks[0]!.loaded).toBe(5);
+      t.calls[0]!.resolve();
+      await flush();
+      frames.run();
+      expect(q.getState().tasks[0]!.loaded).toBe(7);
+    }
+    finally {
+      frames.restore();
+    }
+  });
+});
+
+describe("progress coalescing", () => {
+  it("writes the store at most once per animation frame across tasks", async () => {
+    const frames = manualFrames();
+    try {
+      const { transport, pending } = deferredTransport();
+      const q = createUploadQueue({ transport });
+      q.getState().enqueue("m", "/", [
+        {
+          file: file("a", 1000),
+        },
+        {
+          file: file("b", 1000),
+        },
+      ]);
+      let writes = 0;
+      const off = q.subscribe(() => writes++);
+      for (let i = 1; i <= 200; i++) {
+        pending.get("u1")!.progress(i);
+        pending.get("u2")!.progress(i * 2);
+      }
+      expect(writes).toBe(0);
+      expect(frames.pending()).toBe(1);
+      frames.run();
+      expect(writes).toBe(1);
+      expect(q.getState().tasks.map(t => t.loaded)).toEqual([200, 400]);
+      pending.get("u1")!.progress(999);
+      pending.get("u1")!.resolve();
+      await flush();
+      expect(q.getState().tasks[0]).toMatchObject({ status: "done", loaded: 1000 });
+      off();
+    }
+    finally {
+      frames.restore();
+    }
+  });
+
+  it("falls back to a 100 ms timer and keeps the last value", async () => {
+    const { transport, pending } = deferredTransport();
+    const q = createUploadQueue({ transport });
+    q.getState().enqueue("m", "/", [
+      {
+        file: file("a", 1000),
+      },
+    ]);
+    let writes = 0;
+    const off = q.subscribe(() => writes++);
+    for (let i = 1; i <= 500; i++)
+      pending.get("u1")!.progress(i);
+    expect(writes).toBe(0);
+    await tick();
+    expect(writes).toBe(1);
+    expect(q.getState().tasks[0]!.loaded).toBe(500);
+    off();
+  });
+
+  it("keeps the last progress when a status change follows", async () => {
+    const { client } = fakeClient();
+    const t = controlledParts();
+    const q = createUploadQueue({
+      retryDelayMs: 0,
+      sessionThreshold: 10,
+      storage: memoryStorage(),
+      client,
+      partTransport: t.partTransport,
+      transport: async () => {},
+    });
+    q.getState().enqueue("m", "/", [
+      {
+        file: big(),
+      },
+    ]);
+    await flush();
+    await flush();
+    t.calls[0]!.resolve();
+    await flush();
+    q.getState().pause("u1");
+    expect(await settle(q)).toMatchObject({ status: "paused", loaded: 4 });
+  });
+});
+
+describe("pause and resume", () => {
+  const base = { retryDelayMs: 0, sessionThreshold: 10 };
+
+  it("pauses a session without aborting it and resumes the missing parts", async () => {
+    const { client, calls } = fakeClient({}, async () => ({
+      id: "s1",
+      mode: "chunked",
+      path: "/big (1).bin",
+      size: 10,
+      partSize: 4,
+      parts: 3,
+      received: [1],
+      expiresAt: 0,
+    }));
+    const t = controlledParts();
+    // Storage that forgets: the queue must remember the session id itself.
+    const q = createUploadQueue({
+      ...base,
+      storage: {
+        getItem: () => null,
+        setItem: () => {},
+        removeItem: () => {},
+      },
+      client,
+      partTransport: t.partTransport,
+      transport: async () => {},
+    });
+    q.getState().enqueue("m", "/", [
+      {
+        file: big(),
+      },
+    ]);
+    await flush();
+    await flush();
+    expect(parts(t.calls)).toEqual([1, 2, 3]);
+    t.calls[0]!.resolve();
+    await flush();
+    q.getState().pause("u1");
+    expect(await settle(q)).toMatchObject({ status: "paused", loaded: 4 });
+    expect(t.calls.slice(1).every(c => c.aborted)).toBe(true);
+    await flush();
+    expect(calls).not.toContain("abort s1");
+
+    q.getState().resume("u1");
+    expect(q.getState().tasks[0]!.status).toBe("uploading");
+    await flush();
+    await flush();
+    expect(calls).toContain("get s1");
+    const again = t.calls.slice(3);
+    expect(parts(again)).toEqual([2, 3]);
+    for (const c of again)
+      c.resolve();
+    expect(await settle(q)).toMatchObject({ status: "done", loaded: 10 });
+    expect(calls.filter(c => c.startsWith("create"))).toHaveLength(1);
+    expect(calls).toContain("complete s1");
+  });
+
+  it("does not start a paused queued task until resumed", async () => {
+    const { transport, pending } = deferredTransport();
+    const q = createUploadQueue({ transport, concurrency: 1 });
+    q.getState().enqueue("m", "/", [
+      {
+        file: file("a"),
+      },
+      {
+        file: file("b"),
+      },
+    ]);
+    q.getState().pause("u2");
+    expect(q.getState().tasks[1]!.status).toBe("paused");
+    pending.get("u1")!.resolve();
+    await flush();
+    expect(q.getState().tasks.map(t => t.status)).toEqual(["done", "paused"]);
+    expect(pending.has("u2")).toBe(false);
+    q.getState().resume("u2");
+    expect(q.getState().tasks[1]!.status).toBe("uploading");
+    pending.get("u2")!.resolve();
+    await flush();
+    expect(q.getState().tasks[1]!.status).toBe("done");
+  });
+
+  it("restarts a single-PUT upload from zero", async () => {
+    const { transport, pending } = deferredTransport();
+    const q = createUploadQueue({ transport });
+    q.getState().enqueue("m", "/", [
+      {
+        file: file("a", 10),
+      },
+    ]);
+    const first = pending.get("u1")!;
+    first.progress(6);
+    q.getState().pause("u1");
+    await flush();
+    expect(q.getState().tasks[0]!.status).toBe("paused");
+    q.getState().resume("u1");
+    expect(pending.get("u1")).not.toBe(first);
+    expect(q.getState().tasks[0]).toMatchObject({ status: "uploading", loaded: 0 });
+    pending.get("u1")!.resolve();
+    await flush();
+    expect(q.getState().tasks[0]!.status).toBe("done");
+  });
+
+  it("pauses and resumes all tasks", async () => {
+    const { transport } = deferredTransport();
+    const q = createUploadQueue({ transport, concurrency: 1 });
+    q.getState().enqueue("m", "/", [
+      {
+        file: file("a"),
+      },
+      {
+        file: file("b"),
+      },
+    ]);
+    q.getState().pauseAll();
+    await flush();
+    expect(q.getState().tasks.map(t => t.status)).toEqual(["paused", "paused"]);
+    q.getState().resumeAll();
+    expect(q.getState().tasks.map(t => t.status)).toEqual(["uploading", "queued"]);
+    q.getState().clearFinished();
+    expect(q.getState().tasks).toHaveLength(2);
+  });
+
+  it("aborts the server session when a paused task is canceled", async () => {
+    const { client, calls } = fakeClient();
+    const t = controlledParts();
+    const storage = memoryStorage();
+    const q = createUploadQueue({
+      ...base,
+      storage,
+      client,
+      partTransport: t.partTransport,
+      transport: async () => {},
+    });
+    q.getState().enqueue("m", "/", [
+      {
+        file: big(),
+      },
+    ]);
+    await flush();
+    await flush();
+    q.getState().pause("u1");
+    expect(await settle(q)).toMatchObject({ status: "paused" });
+    expect(storage.map.get(KEY)).toBe("s1");
+    q.getState().cancel("u1");
+    await flush();
+    expect(q.getState().tasks[0]!.status).toBe("canceled");
+    expect(calls).toContain("abort s1");
+    expect(storage.map.size).toBe(0);
+  });
+});
+
+describe("leave-page guard", () => {
+  it("listens for beforeunload only while uploads are queued or running", async () => {
+    const log: string[] = [];
+    const target = {
+      addEventListener: (type: string) => void log.push(`add ${type}`),
+      removeEventListener: (type: string) => void log.push(`remove ${type}`),
+    };
+    const { transport, pending } = deferredTransport();
+    const q = createUploadQueue({ transport });
+    const off = guardUploadsOnUnload(q, target);
+    expect(log).toEqual([]);
+    q.getState().enqueue("m", "/", [
+      {
+        file: file("a"),
+      },
+    ]);
+    expect(log).toEqual(["add beforeunload"]);
+    q.getState().pause("u1");
+    await flush();
+    expect(log).toEqual(["add beforeunload", "remove beforeunload"]);
+    q.getState().resume("u1");
+    pending.get("u1")!.resolve();
+    await flush();
+    expect(log).toEqual([
+      "add beforeunload",
+      "remove beforeunload",
+      "add beforeunload",
+      "remove beforeunload",
+    ]);
+    off();
+    expect(log).toHaveLength(4);
   });
 });

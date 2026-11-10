@@ -195,10 +195,10 @@ describe("list", () => {
     expect(page1.items.map((e: { name: string }) => e.name)).toEqual(["z", "a2.txt", "a10.txt"]);
     expect(page1).toMatchObject({
       total: 4,
-      cursor: "3",
       entry: { kind: "dir" },
     });
-    const page2 = await (await req("/m/m/list?path=/&limit=3&cursor=3")).json();
+    expect(page1.cursor).toMatch(/\.3$/);
+    const page2 = await (await req(`/m/m/list?path=/&limit=3&cursor=${page1.cursor}`)).json();
     expect(page2.items.map((e: { name: string }) => e.name)).toEqual(["b.txt"]);
     expect(page2.cursor).toBeUndefined();
     const bySize = await (await req("/m/m/list?path=/&sort=size&order=desc")).json();
@@ -334,6 +334,160 @@ describe("list", () => {
     });
     expect((await req("/m/m/list?path=/a.txt")).status).toBe(400);
   });
+
+  describe("snapshots", () => {
+    const files = Object.fromEntries(Array.from({ length: 25 }, (_, i) => [`/d/f${String(i).padStart(2, "0")}.txt`, "x"]));
+    const counted = () => {
+      const t = setup({ files });
+      const list = spyOn(t.driver, "list");
+      const page = async (cursor?: string) => (await t.req(`/m/m/list?path=/d&limit=10${cursor === undefined
+        ? ""
+        : `&cursor=${cursor}`}`)).json();
+      return { ...t, list, page };
+    };
+    const names = (p: { items: { name: string }[] }) => p.items.map(e => e.name);
+
+    it("pages from one listing", async () => {
+      const { list, page } = counted();
+      const p1 = await page();
+      const p2 = await page(p1.cursor);
+      const p3 = await page(p2.cursor);
+      expect(list).toHaveBeenCalledTimes(1);
+      expect(names(p1)[0]).toBe("f00.txt");
+      expect(names(p2)[0]).toBe("f10.txt");
+      expect(names(p3)).toEqual([
+        "f20.txt",
+        "f21.txt",
+        "f22.txt",
+        "f23.txt",
+        "f24.txt",
+      ]);
+      expect(p3.cursor).toBeUndefined();
+      expect(p3.total).toBe(25);
+    });
+
+    it("lists the first page fresh and keeps sort and filters apart", async () => {
+      const { list, page, req } = counted();
+      const p1 = await page();
+      await page();
+      expect(list).toHaveBeenCalledTimes(2);
+      const other = await (await req(`/m/m/list?path=/d&limit=10&order=desc&cursor=${p1.cursor}`)).json();
+      expect(list).toHaveBeenCalledTimes(3);
+      expect(names(other)[0]).toBe("f14.txt");
+    });
+
+    it("re-lists after a write, mkdir or move through the router", async () => {
+      const { list, page, req, json } = counted();
+      const p1 = await page();
+      await req("/m/m/write?path=/d/f10a.txt", { method: "PUT", body: "n" });
+      const p2 = await page(p1.cursor);
+      expect(names(p2).slice(0, 2)).toEqual(["f10.txt", "f10a.txt"]);
+      expect(list).toHaveBeenCalledTimes(2);
+      await page(p2.cursor);
+      expect(list).toHaveBeenCalledTimes(2);
+
+      const p1b = await page();
+      await json("POST", "/m/m/mkdir", { path: "/d/sub" });
+      expect(names(await page(p1b.cursor))[0]).toBe("f09.txt");
+
+      const p1c = await page();
+      await json("POST", "/m/m/ops", {
+        op: "move",
+        paths: ["/d/f24.txt"],
+        dest: "/",
+      });
+      const p3 = await page((await page(p1c.cursor)).cursor);
+      expect(names(p3)).not.toContain("f24.txt");
+      expect(p3.total).toBe(26);
+    });
+
+    it("re-lists after a cross-mount move into the folder", async () => {
+      const a = memoryDriver({ files });
+      const b = memoryDriver({
+        files: { "/new.txt": "n" },
+      });
+      const { req, json } = setup({
+        mounts: [
+          { id: "m", label: "A", driver: a },
+          { id: "o", label: "B", driver: b },
+        ],
+      });
+      const p1 = await (await req("/m/m/list?path=/d&limit=10")).json();
+      await json("POST", "/m/o/ops", {
+        op: "move",
+        paths: ["/new.txt"],
+        dest: "/d",
+        destMount: "m",
+      });
+      const p2 = await (await req(`/m/m/list?path=/d&limit=10&cursor=${p1.cursor}`)).json();
+      expect(p2.total).toBe(26);
+    });
+
+    it("re-lists at the requested offset for expired, unknown and legacy cursors", async () => {
+      const { list, page } = counted();
+      const p1 = await page();
+      const now = Date.now();
+      const clock = spyOn(Date, "now").mockReturnValue(now + 60_000);
+      try {
+        expect(names(await page(p1.cursor))[0]).toBe("f10.txt");
+      }
+      finally {
+        clock.mockRestore();
+      }
+      expect(list).toHaveBeenCalledTimes(2);
+      expect(names(await page("00000000-0000-4000-8000-000000000000.20"))[0]).toBe("f20.txt");
+      const legacy = await page("10");
+      expect(names(legacy)[0]).toBe("f10.txt");
+      expect(legacy.cursor).toMatch(/\.20$/);
+      expect(list).toHaveBeenCalledTimes(4);
+      expect(names(await page(legacy.cursor))[0]).toBe("f20.txt");
+      expect(list).toHaveBeenCalledTimes(4);
+    });
+  });
+});
+
+describe("per-request drivers", () => {
+  // Hosts may build a fresh driver object in `mounts` on every request.
+  const fresh = (files: Record<string, string> = {}) => {
+    const base = memoryDriver({ files });
+    const list = spyOn(base, "list");
+    const app = new Hono();
+    app.route("/fm", createFmRouter({
+      mounts: () => [
+        {
+          id: "m",
+          label: "Main",
+          driver: { ...base },
+        },
+      ],
+    }));
+    const req = (path: string, init?: RequestInit) => app.request(`/fm${path}`, init);
+    return { list, req };
+  };
+
+  it("throttles the upload sweep per mount id", async () => {
+    const { list, req } = fresh();
+    const create = (path: string) => req("/m/m/uploads", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path, size: 1 }),
+    });
+    const sweeps = () => list.mock.calls.filter(([p]) => p === "/.fm-uploads").length;
+    expect((await create("/a.txt")).status).toBe(201);
+    expect(sweeps()).toBe(1);
+    expect((await create("/b.txt")).status).toBe(201);
+    expect((await create("/c.txt")).status).toBe(201);
+    expect(sweeps()).toBe(1);
+  });
+
+  it("does not serve a snapshot to a different driver instance", async () => {
+    const files = Object.fromEntries(Array.from({ length: 15 }, (_, i) => [`/d/f${String(i).padStart(2, "0")}.txt`, "x"]));
+    const { list, req } = fresh(files);
+    const p1 = await (await req("/m/m/list?path=/d&limit=10")).json();
+    const p2 = await (await req(`/m/m/list?path=/d&limit=10&cursor=${p1.cursor}`)).json();
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(p2.items[0].name).toBe("f10.txt");
+  });
 });
 
 describe("read", () => {
@@ -406,6 +560,79 @@ describe("write", () => {
     expect((await put("/d/a.txt", "three", { "if-match": `"${first.etag}"` })).status).toBe(200);
     expect((await put("/d/big.txt", "123456789")).status).toBe(413);
     await expect(driver.stat("/d/big.txt")).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  /** A driver that lets `race` write `/d/a.txt` once, just before the next write of it. */
+  function racedSetup(race: (inner: FmDriver, path: string, body: ReadableStream<Uint8Array> | Uint8Array) => Promise<ReadableStream<Uint8Array> | Uint8Array>) {
+    const inner = memoryDriver();
+    let raced = false;
+    const driver: FmDriver = {
+      ...inner,
+      async write(path, body, o) {
+        if (path === "/d/a.txt" && !raced) {
+          raced = true;
+          body = await race(inner, path, body) as typeof body;
+        }
+        return inner.write(path, body, o);
+      },
+    };
+    const { req } = setup({
+      mounts: [
+        { id: "m", label: "Main", driver },
+      ],
+    });
+    const read = async (path: string) => new TextDecoder().decode(await readAll((await inner.read(path)).body));
+    const put = (body: string) => req(`/m/m/write?path=${q("/d/a.txt")}&conflict=rename`, { method: "PUT", body });
+    return { inner, read, put };
+  }
+
+  it("renames again when the driver finds the name taken before reading the body", async () => {
+    const { inner, read, put } = racedSetup(async (inner, path, body) => {
+      await inner.write(path, new TextEncoder().encode("raced"));
+      return body;
+    });
+    const res = await put("mine");
+    expect(res.status).toBe(200);
+    expect((await res.json()).path).toBe("/d/a (1).txt");
+    expect(await read("/d/a.txt")).toBe("raced");
+    expect(await read("/d/a (1).txt")).toBe("mine");
+    expect((await inner.list("/d")).map(e => e.name).sort()).toEqual(["a (1).txt", "a.txt"]);
+  });
+
+  it("answers 409 when the name is found taken only after the body was read", async () => {
+    const { inner, read, put } = racedSetup(async (inner, path, body) => {
+      const bytes = await readAll(body);
+      await inner.write(path, new TextEncoder().encode("raced"));
+      return bytes;
+    });
+    const res = await put("mine");
+    expect(res.status).toBe(409);
+    expect((await res.json()).error.code).toBe("EXISTS");
+    expect(await read("/d/a.txt")).toBe("raced");
+    expect((await inner.list("/d")).map(e => e.name)).toEqual(["a.txt"]);
+  });
+
+  it("gives up renaming after 10 names were taken", async () => {
+    const inner = memoryDriver();
+    const tried: string[] = [];
+    const driver: FmDriver = {
+      ...inner,
+      async write(path, body, o) {
+        tried.push(path);
+        if (o?.exclusive)
+          throw new FmError("EXISTS", `Already exists: ${path}`);
+        return inner.write(path, body, o);
+      },
+    };
+    const { req } = setup({
+      mounts: [
+        { id: "m", label: "Main", driver },
+      ],
+    });
+    const res = await req(`/m/m/write?path=${q("/a.txt")}&conflict=rename`, { method: "PUT", body: "x" });
+    expect(res.status).toBe(409);
+    expect(tried).toHaveLength(10);
+    expect(tried.every(p => p === "/a.txt")).toBe(true);
   });
 });
 
@@ -541,6 +768,24 @@ describe("archive", () => {
     const files = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`/many/${i}.txt`, "x"]));
     const { req } = setup({ files });
     expect((await req("/m/m/archive?path=/many")).status).toBe(413);
+  });
+
+  it("stats only the roots when archiving or measuring a tree", async () => {
+    const { req, driver } = setup({
+      files: {
+        "/d/a.txt": "a",
+        "/d/s/b.txt": "bb",
+        "/d/s/t/c.txt": "c",
+        "/c.txt": "c",
+      },
+    });
+    const stat = spyOn(driver, "stat");
+    const res = await req(`/m/m/archive?path=${q("/d")}&path=${q("/c.txt")}`);
+    expect(Object.keys(unzipSync(new Uint8Array(await res.arrayBuffer())))).toHaveLength(7);
+    expect(new Set(stat.mock.calls.map(([p]) => p))).toEqual(new Set(["/d", "/c.txt"]));
+    stat.mockClear();
+    expect(await (await req(`/m/m/usage?path=${q("/d")}`)).json()).toMatchObject({ files: 3, dirs: 2, bytes: 4 });
+    expect(new Set(stat.mock.calls.map(([p]) => p))).toEqual(new Set(["/d"]));
   });
 });
 
@@ -1365,6 +1610,94 @@ describe("change events", () => {
   });
 });
 
+describe("authorize in recursive operations", () => {
+  const files = {
+    "/team/a-needle.txt": "aa",
+    "/team/hr/x-needle.txt": "xxx",
+    "/team/hr/deep/y-needle.txt": "yyyy",
+  };
+  // Denies only the folder itself: the walks must ask for every folder they enter.
+  const authorize = (p: string) => (p === "/team/hr"
+    ? NONE
+    : ALL_CAPS);
+
+  it("omits unreadable folders from archives", async () => {
+    const { req } = setup({ files, authorize });
+    const res = await req(`/m/m/archive?path=${q("/team")}`);
+    expect(res.status).toBe(200);
+    const zip = unzipSync(new Uint8Array(await res.arrayBuffer()));
+    expect(Object.keys(zip).sort()).toEqual(["team/", "team/a-needle.txt"]);
+  });
+
+  it("leaves unreadable folders out of usage", async () => {
+    const { req } = setup({ files, authorize });
+    expect(await (await req("/m/m/usage?path=/team")).json()).toEqual({
+      bytes: 2,
+      files: 1,
+      dirs: 0,
+      truncated: false,
+    });
+  });
+
+  it("drops search results below unreadable folders", async () => {
+    const { req } = setup({ files, authorize });
+    const walked = await (await req("/m/m/search?path=/team&q=needle")).json();
+    expect(walked.items.map((e: { path: string }) => e.path)).toEqual(["/team/a-needle.txt"]);
+
+    const base = memoryDriver({ files });
+    const driver: FmDriver = {
+      ...base,
+      search: async () => [
+        await base.stat("/team/a-needle.txt"),
+        await base.stat("/team/hr/x-needle.txt"),
+        await base.stat("/team/hr/deep/y-needle.txt"),
+      ],
+    };
+    const searched = setup({
+      mounts: [
+        { id: "m", label: "M", driver },
+      ],
+      authorize,
+    });
+    const found = await (await searched.req("/m/m/search?path=/team&q=needle")).json();
+    expect(found.items.map((e: { path: string }) => e.path)).toEqual(["/team/a-needle.txt"]);
+  });
+
+  it("fails a same-mount copy with FORBIDDEN and writes nothing", async () => {
+    const { json, driver } = setup({
+      files: { ...files, "/out/keep.txt": "k" },
+      authorize,
+    });
+    const res = await (await json("POST", "/m/m/ops", {
+      op: "copy",
+      paths: ["/team"],
+      dest: "/out",
+    })).json();
+    expect(res.results).toEqual([
+      {
+        path: "/team",
+        ok: false,
+        error: expect.objectContaining({ code: "FORBIDDEN" }),
+      },
+    ]);
+    expect((await driver.list("/out")).map(e => e.path)).toEqual(["/out/keep.txt"]);
+  });
+
+  it("still moves within a mount", async () => {
+    const { json, driver } = setup({
+      files: { ...files, "/out/keep.txt": "k" },
+      authorize,
+    });
+    const res = await (await json("POST", "/m/m/ops", {
+      op: "move",
+      paths: ["/team"],
+      dest: "/out",
+    })).json();
+    expect(res.results[0]).toMatchObject({ path: "/team", ok: true });
+    expect((await driver.stat("/out/team/hr/x-needle.txt")).size).toBe(3);
+  });
+});
+
 describe("cross-mount ops", () => {
   const enc = (s: string) => new TextEncoder().encode(s);
   const text = async (d: FmDriver, path: string) => new TextDecoder().decode(await readAll((await d.read(path)).body));
@@ -1653,6 +1986,34 @@ describe("cross-mount ops", () => {
         expect(await has(drivers[to]!, "/d")).toBe(false);
         expect(await text(drivers[from]!, "/d/3.txt")).toBe("3");
       });
+
+      for (const op of ["copy", "move"] as const) {
+        it(`fails a ${op} with FORBIDDEN when the source holds an unreadable folder`, async () => {
+          const { drivers, ops } = await crossSetup({
+            files: { "/team/a.txt": "a", "/team/hr/x.txt": "x" },
+            authorize: (mount, path) => (mount === from && path === "/team/hr"
+              ? NONE
+              : ALL_CAPS),
+          });
+          await drivers[to]!.remove("/team");
+          const res = await ops(from, {
+            op,
+            paths: ["/team"],
+            dest: "/",
+            destMount: to,
+          });
+          expect(res.body.results).toEqual([
+            {
+              path: "/team",
+              ok: false,
+              error: expect.objectContaining({ code: "FORBIDDEN" }),
+            },
+          ]);
+          expect(await has(drivers[to]!, "/team")).toBe(false);
+          expect(await text(drivers[from]!, "/team/hr/x.txt")).toBe("x");
+          expect(await text(drivers[from]!, "/team/a.txt")).toBe("a");
+        });
+      }
 
       it("emits one event per item", async () => {
         const { drivers, events, ops } = await crossSetup({
@@ -1988,8 +2349,23 @@ describe.each([
       await put(req, session.id, 1, "hi");
       await driver.write(`/${conflict}.txt`, new TextEncoder().encode("raced"));
       const res = await json("POST", `/m/m/uploads/${session.id}/complete`, {});
-      expect(res.status).toBe(409);
       expect(await text(driver, `/${conflict}.txt`)).toBe("raced");
+      // A driver multipart upload is bound to its key, so only the fallback can move to a free name.
+      if (conflict === "rename" && !driver.multipart) {
+        expect(res.status).toBe(200);
+        expect(await res.json()).toMatchObject({ path: "/rename (1).txt", size: 2 });
+        expect(await text(driver, "/rename (1).txt")).toBe("hi");
+        expect(events).toEqual([
+          {
+            op: "write",
+            mount: "m",
+            path: "/rename (1).txt",
+            ok: true,
+          },
+        ]);
+        continue;
+      }
+      expect(res.status).toBe(409);
       expect(events).toEqual([
         {
           op: "write",
@@ -2045,6 +2421,42 @@ describe.each([
     finally {
       clock.mockRestore();
     }
+  });
+
+  it("reads a bounded number of records per sweep and sweeps at most once a minute", async () => {
+    const { json, driver, ready } = uploadSetup();
+    await ready;
+    for (let i = 0; i < 120; i++) {
+      const id = `old${String(i).padStart(3, "0")}`;
+      await driver.write(`/.fm-uploads/${id}.json`, new TextEncoder().encode(JSON.stringify({
+        id,
+        mount: "m",
+        path: `/${id}`,
+        size: 1,
+        partSize: 1,
+        parts: 1,
+        conflict: "overwrite",
+        mode: "fallback",
+        expiresAt: Date.now() - 1000,
+      })));
+    }
+    const read = spyOn(driver, "read");
+    const recordReads = () => read.mock.calls.filter(([p]) => p.startsWith("/.fm-uploads/")).length;
+    expect((await json("POST", "/m/m/uploads", { path: "/a.txt", size: 2 })).status).toBe(201);
+    expect(recordReads()).toBeLessThanOrEqual(100);
+    expect(recordReads()).toBeGreaterThan(0);
+    read.mockClear();
+    expect((await json("POST", "/m/m/uploads", { path: "/b.txt", size: 2 })).status).toBe(201);
+    expect(recordReads()).toBe(0);
+    const now = Date.now();
+    const clock = spyOn(Date, "now").mockReturnValue(now + 61 * 1000);
+    try {
+      expect((await json("POST", "/m/m/uploads", { path: "/c.txt", size: 2 })).status).toBe(201);
+    }
+    finally {
+      clock.mockRestore();
+    }
+    expect((await driver.list("/.fm-uploads")).filter(e => e.name.startsWith("old"))).toEqual([]);
   });
 
   it("is bound to its mount", async () => {
@@ -2211,6 +2623,66 @@ describe("thumbnails", () => {
     });
     expect((await req(`/m/m/thumb?path=${q("/locked/d.png")}&w=128`)).status).toBe(404);
     expect((await req(`/m/m/thumb?path=${q("/a.png")}&w=128`)).status).toBe(200);
+  });
+
+  it("runs at most thumbnailConcurrency hooks at once, in order", async () => {
+    const widths: number[] = [];
+    const gates: Array<() => void> = [];
+    let running = 0;
+    let peak = 0;
+    const { req } = setup({
+      files,
+      limits: { thumbnailConcurrency: 2 },
+      thumbnail: async (_c, input) => {
+        widths.push(input.width);
+        peak = Math.max(peak, ++running);
+        try {
+          await new Promise<void>(resolve => gates.push(resolve));
+          if (input.width === 512)
+            throw new Error("boom");
+          return { body: "t", type: "image/webp" };
+        }
+        finally {
+          running--;
+        }
+      },
+    });
+    const until = async (cond: () => boolean) => {
+      for (let i = 0; i < 1000 && !cond(); i++)
+        await new Promise(r => setTimeout(r, 0));
+      expect(cond()).toBe(true);
+    };
+    const thumb = (w: number, init?: RequestInit) => req(`/m/m/thumb?path=${q("/a.png")}&w=${w}`, init);
+    const failing = thumb(512);
+    const first = thumb(128);
+    await until(() => widths.length === 2);
+    const abort = new AbortController();
+    const aborted = Promise.resolve(thumb(256, { signal: abort.signal })).catch(() => undefined);
+    const rest = [
+      thumb(128),
+      thumb(128),
+      thumb(128),
+    ];
+    for (let i = 0; i < 20; i++)
+      await new Promise(r => setTimeout(r, 0));
+    expect(widths).toHaveLength(2);
+    abort.abort();
+    await aborted;
+    gates.shift()!();
+    expect((await failing).status).toBe(500);
+    await until(() => widths.length === 3);
+    for (let i = 0; i < 20; i++)
+      await new Promise(r => setTimeout(r, 0));
+    expect(widths).toHaveLength(3);
+    while (widths.length < 5 || gates.length > 0) {
+      await until(() => gates.length > 0);
+      gates.shift()!();
+    }
+    for (const res of [first, ...rest])
+      expect((await res).status).toBe(200);
+    expect(widths).toEqual([512, 128, 128, 128, 128]);
+    expect(peak).toBe(2);
+    expect(running).toBe(0);
   });
 });
 

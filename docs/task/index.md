@@ -80,3 +80,13 @@ Each task is a single line linking to its detail file. All detailed information 
 - [x] [**20261110-0614-drive-ui-iteration Drive and workspace UI iteration**](20261110-0614-drive-ui-iteration.md) `P2`
 - [ ] [**20261110-0300-flaky-minimap-e2e Flaky e2e: minimap moves the view**](20261110-0300-flaky-minimap-e2e.md) `P3`
 - [ ] [**20261110-0621-preview-dialog-resize Preview and review dialogs: resizable size**](20261110-0621-preview-dialog-resize.md) `P3`
+- [x] [**20261110-0700-walk-authorize Walks authorize every directory (archive, usage, copy)**](20261110-0700-walk-authorize.md) `P1`
+- [x] [**20261110-0700-s3-large-copy S3: copy objects over 5 GiB, detect copy errors, roll back failed folder moves**](20261110-0700-s3-large-copy.md) `P1`
+- [x] [**20261110-0700-conditional-writes Atomic conditional writes and race-free rename conflicts**](20261110-0700-conditional-writes.md) `P1`
+- [x] [**20261110-0700-list-paging-cost Paged listings stop re-listing the whole folder per page**](20261110-0700-list-paging-cost.md) `P1`
+- [x] [**20261110-0700-walk-thumb-budget Walk metadata reuse, thumbnail concurrency limit, bounded session sweep**](20261110-0700-walk-thumb-budget.md) `P2`
+- [x] [**20261110-0700-upload-throughput Uploads: parallel parts, coalesced progress, leave-page guard, pause / resume**](20261110-0700-upload-throughput.md) `P2`
+- [x] [**20261110-0700-markdown-remote-images Markdown preview blocks remote images by default**](20261110-0700-markdown-remote-images.md) `P2`
+- [x] [**20261110-0700-spring-loaded-folders Spring-loaded folders while dragging**](20261110-0700-spring-loaded-folders.md) `P2`
+- [x] [**20261110-0700-shortcuts-help Keyboard shortcuts catalog and help dialog**](20261110-0700-shortcuts-help.md) `P3`
+- [ ] [**20261110-0815-flaky-trash-e2e Flaky e2e: restores and deletes several trash items**](20261110-0815-flaky-trash-e2e.md) `P3`

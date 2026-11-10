@@ -118,15 +118,39 @@ export function parseParts(xml: string): PartsPage {
   };
 }
 
-/** Maps an S3 `<Error>` code to an FmError where one fits. */
-function s3Error(what: string, status: number, xml: string): Error {
+/** Headers that make S3 enforce `exclusive` / `ifMatch` atomically with the write. */
+function conditionHeaders(o: FmWriteOptions): Record<string, string> {
+  return {
+    ...(o.exclusive
+      ? { "if-none-match": "*" }
+      : {}),
+    ...(o.ifMatch === undefined
+      ? {}
+      : { "if-match": `"${o.ifMatch}"` }),
+  };
+}
+
+/** Maps an S3 `<Error>` code to an FmError where one fits; `o` are the conditions the request carried. */
+function s3Error(what: string, status: number, xml: string, o: FmWriteOptions = {}): Error {
   const code = tag(xml, "Code");
   if (code === "NoSuchUpload")
     return new FmError("NOT_FOUND", `Upload not found: ${what}`);
+  // 412: a condition failed. 409 ConditionalRequestConflict: a concurrent conditional write won.
+  // 404 NoSuchKey: the object an `If-Match` named is gone.
+  if (status === 412 || code === "PreconditionFailed" || code === "ConditionalRequestConflict" || (code === "NoSuchKey" && o.ifMatch !== undefined)) {
+    if (o.exclusive)
+      return new FmError("EXISTS", "Already exists");
+    if (o.ifMatch !== undefined)
+      return new FmError("ETAG_MISMATCH", "File changed since it was read");
+  }
   if (code === "InvalidPart" || code === "InvalidPartOrder" || code === "EntityTooSmall")
     return new FmError("INVALID", `${code}: ${xmlText(tag(xml, "Message") ?? "")}`);
   return new Error(`S3 ${what} failed: ${status} ${xml}`);
 }
+
+/** CopyObject handles sources up to 5 GiB; larger ones need a multipart copy. */
+const COPY_LIMIT = 5 * 1024 ** 3;
+const COPY_PART_SIZE = 512 * 1024 ** 2;
 
 const encodeKey = (key: string) => key.split("/").map(encodeURIComponent).join("/");
 
@@ -155,11 +179,16 @@ export function s3Driver(opts: FmS3DriverOptions): FmDriver {
     ? `?${query}`
     : ""}`;
 
-  const send = async (method: string, key: string, init: { headers?: Record<string, string>; body?: Uint8Array<ArrayBuffer> | ReadableStream<Uint8Array>; query?: string } = {}) => {
+  const send = async (method: string, key: string, init: { headers?: Record<string, string>; body?: Uint8Array<ArrayBuffer> | ReadableStream<Uint8Array>; query?: string; conditions?: FmWriteOptions } = {}) => {
+    const conditions = init.conditions ?? {};
+    const headers = {
+      ...init.headers,
+      ...conditionHeaders(conditions),
+    };
     const req: RequestInit = {
       method,
-      ...(init.headers
-        ? { headers: init.headers }
+      ...(Object.keys(headers).length > 0
+        ? { headers }
         : {}),
       ...(init.body
         ? { body: init.body }
@@ -170,12 +199,12 @@ export function s3Driver(opts: FmS3DriverOptions): FmDriver {
     const res = init.body instanceof ReadableStream
       ? await fetch(await client.sign(url, req))
       : await client.fetch(url, req);
-    if (res.status === 404 && method !== "GET") {
+    if (res.status === 404 && method !== "GET" && conditions.ifMatch === undefined) {
       await res.body?.cancel();
       throw new FmError("NOT_FOUND", `Not found: ${key}`);
     }
-    if (!res.ok && res.status !== 206 && res.status !== 404)
-      throw s3Error(`${method} ${key}`, res.status, await res.text());
+    if (!res.ok && res.status !== 206 && (res.status !== 404 || method !== "GET"))
+      throw s3Error(`${method} ${key}`, res.status, await res.text(), conditions);
     return res;
   };
 
@@ -269,17 +298,21 @@ export function s3Driver(opts: FmS3DriverOptions): FmDriver {
       throw new FmError("UNSUPPORTED", "Mount is read-only");
   };
 
-  const copyObject = (from: string, to: string) =>
-    send("PUT", to, {
-      headers: { "x-amz-copy-source": `/${opts.bucket}/${encodeKey(from)}` },
-    }).then(r => r.text());
-
   const inBatches = async <T>(items: T[], fn: (item: T) => Promise<unknown>) => {
-    for (let i = 0; i < items.length; i += 8)
-      await Promise.all(items.slice(i, i + 8).map(fn));
+    for (let i = 0; i < items.length; i += 8) {
+      // Settle the whole batch so no call is still in flight when this rejects.
+      const failed = (await Promise.allSettled(items.slice(i, i + 8).map(fn))).find(r => r.status === "rejected");
+      if (failed)
+        throw failed.reason;
+    }
   };
 
-  /** Rejects a write to `path` that `write` / `complete` must refuse. */
+  /**
+   * Rejects a write to `path` that `write` / `complete` must refuse. The request itself
+   * carries `If-None-Match` / `If-Match` too, so a concurrent writer between this check and
+   * the write cannot be overwritten; the check still answers IS_A_DIR and fails fast before
+   * the body is sent.
+   */
   const checkTarget = async (path: string, o: FmWriteOptions) => {
     const current = await head(fileKey(path));
     if (!current && await isDir(path))
@@ -292,6 +325,69 @@ export function s3Driver(opts: FmS3DriverOptions): FmDriver {
 
   const uploadQuery = (uploadId: string, extra: Record<string, string> = {}) =>
     new URLSearchParams({ ...extra, uploadId }).toString();
+
+  /** Sends a request whose 2xx body may still be an `<Error>` document; returns the body. */
+  const sendChecked = async (what: string, method: string, key: string, init: Parameters<typeof send>[2]) => {
+    const res = await send(method, key, init);
+    const text = await res.text();
+    if (/<Error>/.test(text))
+      throw s3Error(`${what} ${key}`, res.status, text);
+    return text;
+  };
+
+  /** Copies one object; objects over 5 GiB (the CopyObject limit) use a multipart copy. */
+  const copyObject = async (from: string, to: string, size: number) => {
+    const source = `/${opts.bucket}/${encodeKey(from)}`;
+    if (size <= COPY_LIMIT) {
+      await sendChecked("CopyObject", "PUT", to, {
+        headers: { "x-amz-copy-source": source },
+      });
+      return;
+    }
+    // CopyObject keeps the source content type; a multipart copy has to set it explicitly.
+    const type = (await send("HEAD", from)).headers.get("content-type");
+    const id = tag(await sendChecked("CreateMultipartUpload", "POST", to, {
+      query: "uploads",
+      ...(type
+        ? {
+            headers: { "content-type": type },
+          }
+        : {}),
+    }), "UploadId");
+    if (!id)
+      throw new Error(`S3 CreateMultipartUpload returned no UploadId for ${to}`);
+    const uploadId = xmlText(id);
+    try {
+      const partSize = Math.max(COPY_PART_SIZE, Math.ceil(size / 10000));
+      const parts = Array.from({
+        length: Math.ceil(size / partSize),
+      }, (_, i) => i + 1);
+      const etags: string[] = [];
+      await inBatches(parts, async (n) => {
+        const xml = await sendChecked("UploadPartCopy", "PUT", to, {
+          query: uploadQuery(uploadId, {
+            partNumber: String(n),
+          }),
+          headers: {
+            "x-amz-copy-source": source,
+            "x-amz-copy-source-range": `bytes=${(n - 1) * partSize}-${Math.min(n * partSize, size) - 1}`,
+          },
+        });
+        etags[n - 1] = xmlText(tag(xml, "ETag") ?? "").replace(/"/g, "");
+      });
+      await sendChecked("CompleteMultipartUpload", "POST", to, {
+        query: uploadQuery(uploadId),
+        body: new TextEncoder().encode(`<CompleteMultipartUpload>${etags.map((etag, i) =>
+          `<Part><PartNumber>${i + 1}</PartNumber><ETag>"${etag}"</ETag></Part>`).join("")}</CompleteMultipartUpload>`),
+      });
+    }
+    catch (err) {
+      await send("DELETE", to, {
+        query: uploadQuery(uploadId),
+      }).then(r => r.text(), () => {});
+      throw err;
+    }
+  };
 
   const multipart: FmMultipart = {
     minPartSize: 5 * 1024 * 1024,
@@ -356,11 +452,12 @@ export function s3Driver(opts: FmS3DriverOptions): FmDriver {
       const res = await send("POST", fileKey(path), {
         query: uploadQuery(uploadId),
         body: new TextEncoder().encode(xml),
+        conditions: o,
       });
       // S3 may report a failed completion as 200 with an <Error> body.
       const text = await res.text();
       if (/<Error>/.test(text))
-        throw s3Error(`CompleteMultipartUpload ${path}`, res.status, text);
+        throw s3Error(`CompleteMultipartUpload ${path}`, res.status, text, o);
       return stat(path);
     },
     async abort(path, uploadId) {
@@ -397,7 +494,7 @@ export function s3Driver(opts: FmS3DriverOptions): FmDriver {
     if (await exists(to))
       throw new FmError("EXISTS", `Already exists: ${to}`);
     if (src.kind === "file") {
-      await copyObject(fileKey(from), fileKey(to));
+      await copyObject(fileKey(from), fileKey(to), src.size);
       return [
         fileKey(from),
       ];
@@ -405,7 +502,19 @@ export function s3Driver(opts: FmS3DriverOptions): FmDriver {
     const objects = await listTree(from);
     const fromKey = dirKey(from);
     const toKey = dirKey(to);
-    await inBatches(objects, o => copyObject(o.key, toKey + o.key.slice(fromKey.length)));
+    const copied: string[] = [];
+    try {
+      await inBatches(objects, async (o) => {
+        const key = toKey + o.key.slice(fromKey.length);
+        await copyObject(o.key, key, o.size);
+        copied.push(key);
+      });
+    }
+    catch (err) {
+      // Best effort: drop the partial copy so a failed move / copy leaves no duplicates.
+      await inBatches(copied, key => send("DELETE", key).then(r => r.text(), () => {}));
+      throw err;
+    }
     return objects.map(o => o.key);
   };
 
@@ -466,8 +575,9 @@ export function s3Driver(opts: FmS3DriverOptions): FmDriver {
               "content-length": String(o.size),
             },
             body,
+            conditions: o,
           }
-        : { body: await readAll(body) }).then(r => r.text());
+        : { body: await readAll(body), conditions: o }).then(r => r.text());
       return stat(path);
     },
     async mkdir(path) {

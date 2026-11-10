@@ -42,7 +42,7 @@ export type FmR2Body = ReadableStream<Uint8Array> | Uint8Array<ArrayBuffer>;
 export interface FmR2Bucket {
   head: (key: string) => Promise<FmR2Object | null>;
   get: (key: string, options?: { range?: { offset: number; length: number } }) => Promise<FmR2ObjectBody | null>;
-  put: (key: string, value: FmR2Body, options?: { onlyIf?: { etagMatches?: string }; customMetadata?: Record<string, string> }) => Promise<FmR2Object | null>;
+  put: (key: string, value: FmR2Body, options?: { onlyIf?: { etagMatches?: string; etagDoesNotMatch?: string }; customMetadata?: Record<string, string> }) => Promise<FmR2Object | null>;
   delete: (keys: string[]) => Promise<void>;
   list: (options?: { prefix?: string; delimiter?: string; cursor?: string; limit?: number; include?: "customMetadata"[] }) => Promise<FmR2Objects>;
   createMultipartUpload: (key: string) => Promise<FmR2MultipartUpload>;
@@ -198,11 +198,20 @@ export function r2Driver(opts: FmR2DriverOptions): FmDriver {
   };
 
   const inBatches = async <T>(items: T[], fn: (item: T) => Promise<unknown>) => {
-    for (let i = 0; i < items.length; i += 8)
-      await Promise.all(items.slice(i, i + 8).map(fn));
+    for (let i = 0; i < items.length; i += 8) {
+      // Settle the whole batch so no call is still in flight when this rejects.
+      const failed = (await Promise.allSettled(items.slice(i, i + 8).map(fn))).find(r => r.status === "rejected");
+      if (failed)
+        throw failed.reason;
+    }
   };
 
-  /** Rejects a write to `path` that `write` / `complete` must refuse. */
+  /**
+   * Rejects a write to `path` that `write` / `complete` must refuse. `write` repeats the
+   * exclusive / ifMatch conditions in the put's `onlyIf`, so a concurrent writer cannot be
+   * overwritten; R2's multipart `complete` has no conditional form, so there the check is
+   * all there is and a writer between it and `complete` can still be overwritten.
+   */
   const checkTarget = async (path: string, o: FmWriteOptions) => {
     allowedTarget(path);
     const current = await bucket.head(fileKey(path));
@@ -313,7 +322,19 @@ export function r2Driver(opts: FmR2DriverOptions): FmDriver {
     const objects = await listTree(from);
     const fromKey = dirKey(from);
     const toKey = dirKey(to);
-    await inBatches(objects, o => copyObject(o.key, toKey + o.key.slice(fromKey.length)));
+    const copied: string[] = [];
+    try {
+      await inBatches(objects, async (o) => {
+        const key = toKey + o.key.slice(fromKey.length);
+        await copyObject(o.key, key);
+        copied.push(key);
+      });
+    }
+    catch (err) {
+      // Best effort: drop the partial copy so a failed move / copy leaves no duplicates.
+      await removeKeys(copied).catch(() => {});
+      throw err;
+    }
     return objects.map(o => o.key);
   };
 
@@ -378,13 +399,23 @@ export function r2Driver(opts: FmR2DriverOptions): FmDriver {
     async write(path, body, o = {}) {
       writable();
       await checkTarget(path, o);
-      const put = await bucket.put(fileKey(path), await putBody(body, o.size), o.ifMatch === undefined
-        ? {}
-        : {
-            onlyIf: { etagMatches: o.ifMatch },
-          });
-      if (!put)
-        throw new FmError("ETAG_MISMATCH", "File changed since it was read");
+      // `etagDoesNotMatch: "*"` fails when any object exists at the key.
+      const onlyIf = {
+        ...(o.exclusive
+          ? { etagDoesNotMatch: "*" }
+          : {}),
+        ...(o.ifMatch === undefined
+          ? {}
+          : { etagMatches: o.ifMatch }),
+      };
+      const put = await bucket.put(fileKey(path), await putBody(body, o.size), Object.keys(onlyIf).length > 0
+        ? { onlyIf }
+        : {});
+      if (!put) {
+        throw o.exclusive
+          ? new FmError("EXISTS", `Already exists: ${path}`)
+          : new FmError("ETAG_MISMATCH", "File changed since it was read");
+      }
       return fileEntry(path, put);
     },
     async mkdir(path) {

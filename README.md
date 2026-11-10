@@ -48,9 +48,12 @@ import { READ_ONLY_CAPS } from "@/fm/core/schema";
 import { localDriver } from "@/fm/drivers/local";
 import { createFmRouter } from "@/fm/server/router";
 
+// Create drivers once: list paging reuses a folder listing only for the same driver instance.
+const files = localDriver({ root: "/data/files" });
+
 app.route("/api/fm", createFmRouter({
   // Resolved per request: scope mounts to the current user / project here.
-  mounts: () => [{ id: "files", label: "Files", driver: localDriver({ root: "/data/files" }) }],
+  mounts: () => [{ id: "files", label: "Files", driver: files }],
   // Optional host policy for a path and everything below it; no `read` answers 404.
   authorize: (c, { path }) => READ_ONLY_CAPS,
   // Optional: one event per mutated item (write, delete, rename, ...), success or failure.
@@ -199,6 +202,12 @@ Add to the host's CSS (paths relative to that file):
 @source "../node_modules/@streamdown/code/dist/*.js";
 ```
 
+Markdown images load only from relative, same-origin and `data:image/...`
+URLs; others show their alt text, so opening an untrusted file does not tell a
+third-party host the viewer's IP address or when the file was read.
+`markdownPlugin({ remoteImages: true })` loads images from any URL. Links are
+unaffected.
+
 A plugin is a plain object (`FmPlugin` in `src/fm/react/plugins.ts`):
 
 ```tsx
@@ -244,6 +253,14 @@ createFmRouter({
 });
 ```
 
+On the client, `createUploadQueue` sends up to `concurrency` files (default 3)
+at once and up to `partConcurrency` parts of one session upload (default 3) in
+parallel. The queue's `pause(id)` / `resume(id)` (and `pauseAll` /
+`resumeAll`) hold an upload: a paused session upload keeps its server session
+and resumes with the missing parts only, a paused single-PUT upload starts
+over. The upload panel shows pause / resume buttons per file, and the browser
+asks before leaving the page while uploads are queued or running.
+
 Trash: `trash: true` moves deletes into a hidden `/.fm-trash` folder on the
 same storage. `trash: { retentionDays: 30 }` also deletes items older than
 that for good, lazily whenever the trash is listed; hosts that prefer a
@@ -266,6 +283,10 @@ createFmRouter({ mounts, thumbnail: bunThumbnail() });          // Bun.Image, no
 import { cloudflareThumbnail } from "@/fm/thumbnails/cloudflare"; // bunx shadcn add @bkhq/fm-thumbnail-cloudflare
 createFmRouter<Env>({ mounts, thumbnail: cloudflareThumbnail<Env>(c => c.env.IMAGES) }); // "images": { "binding": "IMAGES" }
 ```
+
+At most `limits.thumbnailConcurrency` (default 4) hooks run at once per
+router; further requests wait in order, and a request whose client went away
+leaves the queue without running the hook.
 
 On S3 parts go through the server by default. `s3Driver({ ..., presignUploads: true })`
 is opt-in and lets browsers `PUT` parts straight to the bucket via presigned
@@ -290,9 +311,10 @@ URLs. It requires both:
 bunx shadcn add @bkhq/fm-server @bkhq/fm-driver-r2
 ```
 
-Pass the R2 binding to the driver (`FM_BUCKET` is an `r2_buckets` binding in `wrangler.jsonc`):
+Pass the R2 binding to the driver (`FM_BUCKET` is an `r2_buckets` binding in `wrangler.jsonc`). The binding is only reachable through `c.env`, so build the driver on first use and reuse it for the isolate's lifetime (cheap list paging needs the same driver instance across requests):
 
 ```ts
+import type { FmDriver } from "@/fm/server/driver";
 import { Hono } from "hono";
 import { r2Driver } from "@/fm/drivers/r2";
 import { createFmRouter } from "@/fm/server/router";
@@ -300,9 +322,10 @@ import { createFmRouter } from "@/fm/server/router";
 interface Env { Bindings: { FM_BUCKET: R2Bucket } }
 
 const app = new Hono<Env>();
+let r2: FmDriver | undefined;
 
 app.route("/api/fm", createFmRouter<Env>({
-  mounts: c => [{ id: "r2", label: "R2 bucket", driver: r2Driver({ bucket: c.env.FM_BUCKET }), trash: true }],
+  mounts: c => [{ id: "r2", label: "R2 bucket", driver: (r2 ??= r2Driver({ bucket: c.env.FM_BUCKET })), trash: true }],
 }));
 
 export default app;

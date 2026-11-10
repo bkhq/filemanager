@@ -64,6 +64,23 @@ describe("localDriver subfolder hints", () => {
   });
 });
 
+describe("localDriver list", () => {
+  it("keeps the directory order across stat batches and skips dangling links", async () => {
+    const t = await tempRoot();
+    try {
+      await Promise.all(Array.from({ length: 100 }, (_, i) => writeFile(join(t.root, `f${i}.txt`), "x".repeat(i))));
+      await symlink(join(t.root, "missing"), join(t.root, "dangling"));
+      const expected = (await readdir(t.root)).filter(n => n !== "dangling");
+      const entries = await localDriver({ root: t.root }).list("/");
+      expect(entries.map(e => e.name)).toEqual(expected);
+      expect(entries.find(e => e.name === "f42.txt")).toMatchObject({ path: "/f42.txt", kind: "file", size: 42 });
+    }
+    finally {
+      await t.cleanup();
+    }
+  });
+});
+
 describe("localDriver jail", () => {
   it("hides symlinks that escape the root and refuses to follow them", async () => {
     const t = await tempRoot();

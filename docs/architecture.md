@@ -217,15 +217,17 @@ Built-in drivers:
 ### 3.3 Mounts and host hooks
 
 ```ts
+const ws = local({ root: "/work/foo" });        // create drivers once; see list paging in 3.4
 createFmRouter({
   mounts: async (ctx) => [                      // resolved per request → per-user / per-project mounts
-    { id: "ws", label: "Workspace", driver: local({ root: "/work/foo" }) },
+    { id: "ws", label: "Workspace", driver: ws },
     { id: "drive", label: "My files", driver: managed({ db, owner: ctx.user.id, blobs: s3(...) }) },
   ],
   authorize: async (ctx, action, target) => boolean | FmCaps, // host policy (Zanzibar, project roles…)
   onEvent?: (ctx, event: FmChangeEvent) => void | Promise<void>,
   limits: { maxUploadBytes, maxListEntries, archiveMaxBytes, archiveMaxEntries,
-            uploadPartSize, maxSessionUploadBytes, uploadSessionTtlMs },
+            uploadPartSize, maxSessionUploadBytes, uploadSessionTtlMs,
+            thumbnailConcurrency }, // thumbnail hooks running at once (default 4); the rest queue FIFO
 });
 // → Hono sub-app, host mounts it: app.route("/api/fm", fm.routes)
 ```
@@ -240,6 +242,13 @@ createFmRouter({
 - The hook is awaited, so hosts can write audit rows transactionally; an error
   it throws is logged and never changes the response.
 - Effective caps = `driver.caps ∩ authorize(...)`; returned on every `FmEntry`.
+- `authorize` is called per path. Listings apply a directory's caps to its
+  children. Recursive operations (archive, usage, search, copy, cross-mount
+  move) call it for every directory they descend into: archive, usage and
+  search silently skip a subtree whose directory lacks `read`; copy and
+  cross-mount move fail the item with `FORBIDDEN` before writing anything when
+  the source holds such a subtree. Same-mount move, rename and delete check
+  only the top path.
 - Fail-closed: unknown mount or denied read → `404` (bithk ADR-003 behaviour).
 - Unknown/unsafe MIME for inline (`html`, `svg`, `js`) → served as attachment / octet-stream (bithk rule).
 
@@ -282,6 +291,24 @@ on the session target; unknown or expired sessions answer `404`. Limits:
 and resumes after a reload via a `localStorage` key fingerprinting mount, path,
 size, `lastModified` and name. sha256 dedupe (bithk's instant-upload trick) is
 not implemented yet.
+
+List paging: the `cursor` of `/list` is opaque (`<snapshotId>.<offset>`). The
+first page (no cursor) always lists the driver fresh and stores the filtered,
+sorted result (plus the folder entry and `ignored` count) as a snapshot in the
+router: per router instance, at most 64, kept for 5 s. Later pages whose cursor
+names a live snapshot of the same mount, path, `sort`, `order`, `q`, `hidden`
+and `ignored` are sliced from it, so a folder is listed once however many pages
+are read. A snapshot also has to come from the same driver instance, so a
+cursor never serves one storage's listing to another mount with the same id;
+snapshots (and so cheap paging) therefore need hosts to reuse driver instances
+across requests. A fresh driver per request from `mounts` still works but
+re-lists on every page. An expired, evicted or mismatched snapshot, or a legacy numeric
+cursor, re-lists and serves the requested offset from the fresh listing (with a
+new snapshot). Every mutation through the router (`write`, `mkdir`, `ops`
+including both mounts of a cross-mount move/copy, trash restore/purge, upload
+`complete`) drops all snapshots of the affected mounts, successful or not.
+Changes made outside the router (other processes, other router instances) show
+up in later pages only after the TTL; the first page is always current.
 
 OpenAPI via `hono-openapi` per the pma-bun baseline; the client is typed
 from the same zod schemas in `fm/core`.
