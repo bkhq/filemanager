@@ -77,3 +77,6 @@ Each task is a single line linking to its detail file. All detailed information 
 - [x] [**20261109-0125-dialog-fullscreen Preview dialogs can go full screen**](20261109-0125-dialog-fullscreen.md) `P1`
 - [x] [**20261109-0211-audit-cleanup Remove redundant code and stale docs found by the audit**](20261109-0211-audit-cleanup.md) `P2`
 - [x] [**20261109-0221-shared-shell-ui Share the common UI of DriveShell and WorkspaceShell**](20261109-0221-shared-shell-ui.md) `P2`
+- [x] [**20261110-0614-drive-ui-iteration Drive and workspace UI iteration**](20261110-0614-drive-ui-iteration.md) `P2`
+- [ ] [**20261110-0300-flaky-minimap-e2e Flaky e2e: minimap moves the view**](20261110-0300-flaky-minimap-e2e.md) `P3`
+- [ ] [**20261110-0621-preview-dialog-resize Preview and review dialogs: resizable size**](20261110-0621-preview-dialog-resize.md) `P3`

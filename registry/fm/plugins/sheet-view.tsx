@@ -20,6 +20,10 @@ const MAX_BYTES = 20 * 1024 * 1024;
 const ROW_H = 28;
 const ROW_HEAD = 56;
 const COL_W = 160;
+const MIN_COL_W = 40;
+const MAX_COL_W = 1000;
+/** Arrow keys on a column edge resize by this. */
+const COL_KEY_STEP = 16;
 
 /** Unsaved CSV edits, against the version they started from. */
 interface Draft {
@@ -58,6 +62,8 @@ export function SheetPreview(props: PreviewProps) {
   const [saveError, setSaveError] = useState<{ conflict: boolean; message: string }>();
   const [saving, setSaving] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
+  /** Column widths per sheet, for this preview only. */
+  const [widths, setWidths] = useState<Record<number, Record<number, number>>>({});
 
   const table = tables.data?.[Math.min(active, tables.data.length - 1)];
   const editable = !!table?.csv && entry.caps.write;
@@ -191,7 +197,16 @@ export function SheetPreview(props: PreviewProps) {
     void tables.refetch();
   };
 
-  const columns = `${ROW_HEAD}px repeat(${width}, ${COL_W}px)`;
+  const colW = (c: number) => widths[active]?.[c] ?? COL_W;
+  const resizeColumn = (c: number, w: number) => setWidths(all => ({
+    ...all,
+    [active]: {
+      ...all[active],
+      [c]: Math.round(Math.min(MAX_COL_W, Math.max(MIN_COL_W, w))),
+    },
+  }));
+  const colWidths = Array.from({ length: width }, (_, c) => colW(c));
+  const columns = `${ROW_HEAD}px ${colWidths.map(w => `${w}px`).join(" ")}`;
   const cellClass = "truncate border-r border-b px-2 leading-[27px]";
 
   return (
@@ -221,10 +236,42 @@ export function SheetPreview(props: PreviewProps) {
         className="min-h-0 flex-1 overflow-auto text-xs outline-none"
         onKeyDown={onGridKeyDown}
       >
-        <div role="table" aria-label={table.name} aria-rowcount={rows.length + 1} style={{ width: ROW_HEAD + width * COL_W }}>
+        <div role="table" aria-label={table.name} aria-rowcount={rows.length + 1} style={{ width: ROW_HEAD + colWidths.reduce((a, b) => a + b, 0) }}>
           <div role="row" className="sticky top-0 z-20 grid bg-muted text-muted-foreground" style={{ gridTemplateColumns: columns, height: ROW_H }}>
             <div role="columnheader" className="sticky left-0 z-10 border-r border-b bg-muted" />
-            {Array.from({ length: width }, (_, c) => <div key={c} role="columnheader" className={cn(cellClass, "text-center")}>{columnName(c)}</div>)}
+            {Array.from({ length: width }, (_, c) => (
+              <div key={c} role="columnheader" className={cn(cellClass, "relative text-center")}>
+                {columnName(c)}
+                {/* Drag or arrow keys resize the column; the keys stay off the grid's cursor. */}
+                <div
+                  role="separator"
+                  tabIndex={0}
+                  aria-orientation="vertical"
+                  aria-label={labels.resizeColumn(columnName(c))}
+                  aria-valuenow={colW(c)}
+                  aria-valuemin={MIN_COL_W}
+                  aria-valuemax={MAX_COL_W}
+                  className="absolute inset-y-0 right-0 w-1.5 cursor-col-resize touch-none outline-none hover:bg-primary/40 focus-visible:bg-primary/60"
+                  onPointerDown={(e) => {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    e.currentTarget.dataset.start = String(e.clientX - colW(c));
+                  }}
+                  onPointerMove={(e) => {
+                    if (e.currentTarget.hasPointerCapture(e.pointerId))
+                      resizeColumn(c, e.clientX - Number(e.currentTarget.dataset.start));
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight")
+                      return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    resizeColumn(c, colW(c) + (e.key === "ArrowLeft"
+                      ? -COL_KEY_STEP
+                      : COL_KEY_STEP));
+                  }}
+                />
+              </div>
+            ))}
           </div>
           <div
             className="relative"

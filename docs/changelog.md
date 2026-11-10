@@ -406,3 +406,25 @@ Audit clean-up (20261109-0211-audit-cleanup): no compatibility layer existed. Re
 ## 2026-11-09 03:40 [progress]
 
 `DriveShell` and `WorkspaceShell` share their common UI through `react/shell-parts.tsx` in `fm-react` (20261109-0221-shared-shell-ui): drop section, notices, trash, details, breadcrumb, search, sort and upload menu items, view toggle, empty trash and selection actions. Props and behaviour are unchanged.
+
+## 2026-11-10 06:14 [progress]
+
+Drive and workspace UI iteration (20261110-0614-drive-ui-iteration), ideas from the Filen web drive (AGPL, no code copied):
+
+- `FileList` prop `roomy` (drive always, workspace outside pick mode): 40px rows, list thumbnails, a more button that opens the entry context menu and stays while it is open, 160px square tiles, list columns by container width.
+- Drive toolbar in two rows that no longer change with the selection; `FloatingSelectionBar` at the bottom centre with a red delete; workspace sort as an icon button.
+- List views use the explorer `PathBar` (pickers per step, folders navigate via `onOpenFolder`); the trash keeps plain crumbs.
+- Storage menu: one separator before the tree sections instead of two in a row after them (since b6790c4); section icons in the menu colour.
+- Image wheel zoom: one mouse notch is 1.2x around the pointer (`wheelFactor`), instead of jumping to the maximum.
+- Resizable archive and Markdown splits (`fm-archive:panels`, `fm-markdown:panels`) and spreadsheet columns (40..1000px, drag or arrow keys). New labels `resizePanes`, `resizeColumn`.
+- Demo header View menu (Workspace / Drive) rewriting `?variant`.
+
+Verified: `bun run check` (357 unit tests), 122 e2e, registry smoke. The tracking records 20261109-1815-drive-ui-refresh, 20261110-0235-workspace-roomy-single, 20261110-0253-more-button-stays, 20261110-0325-unify-toolbar-path, 20261110-0420-wheel-zoom-step, 20261110-0510-demo-view-switch, 20261110-0540-resizable-preview-splits and 20261110-0620-sheet-column-resize were never committed and are merged into 20261110-0614-drive-ui-iteration (task and plan); their detail files and index lines are removed. Open follow-ups: 20261110-0300-flaky-minimap-e2e, 20261110-0621-preview-dialog-resize.
+
+## 2026-11-10 06:14 [pitfall]
+
+- `PathBar`'s `root` arrives after the first render; in the slot of the controlled mount-step menu React reused that `Menu.Root`, which stayed controlled and closed. Keep the two keyed apart.
+- react-resizable-panels puts `className` on the inner element and an inline `display: flex` on the panel element; hiding a panel needs an attribute on the panel and an `!important` rule on the group.
+- react-zoom-pan-pinch with `smooth` scales the wheel step by `|deltaY|` additively; a mouse notch adds 8.
+- The serial `fm.spec.ts` fills the root: folders near the bottom leave the virtual list's first screen or sit under the floating selection bar, which swallows a double click's second press. It runs at a 1200px tall viewport; new fixtures should sort early (`/0-…`).
+- `image.spec.ts` "shows a minimap while zoomed that moves the view" is flaky on `main` (3 of 15 runs); tracked as 20261110-0300-flaky-minimap-e2e.

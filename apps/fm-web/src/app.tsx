@@ -1,7 +1,7 @@
 import type { FmEntry } from "@/fm/core/schema";
 import type { FmSidebarOptions } from "@/fm/react/file-manager";
 import type { FmMeta, FmRef } from "@/fm/react/meta";
-import { LanguagesIcon, MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
+import { LanguagesIcon, LayoutPanelLeftIcon, MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
 import { useState } from "react";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
@@ -45,6 +45,8 @@ const demoText = {
     askMessage: "Ask for change notes",
     mounted: "Mounted",
     language: "Language",
+    view: "View",
+    views: { workspace: "Workspace", drive: "Drive" },
     theme: "Theme",
     themes: { light: "Light", dark: "Dark", system: "System" },
   },
@@ -54,12 +56,24 @@ const demoText = {
     askMessage: "询问修改说明",
     mounted: "已挂载",
     language: "语言",
+    view: "视图",
+    views: { workspace: "工作区", drive: "网盘" },
     theme: "主题",
     themes: { light: "浅色", dark: "深色", system: "跟随系统" },
   },
 } as const;
 
 const langNames: Record<Lang, string> = { en: "English", zh: "中文" };
+
+/** The view is read once at load, so switching rewrites `?variant` and reloads. */
+function switchView(view: "workspace" | "drive") {
+  const params = new URLSearchParams(location.search);
+  if (view === "drive")
+    params.set("variant", "drive");
+  else
+    params.delete("variant");
+  location.search = params.toString();
+}
 const themeIcon = { light: <SunIcon />, dark: <MoonIcon />, system: <MonitorIcon /> };
 
 /** Demo switch: ask for a change note before every change. */
@@ -218,6 +232,24 @@ function ManagerDemo() {
           <Checkbox checked={readOnly} onCheckedChange={setReadOnly} />
           {text.viewOnly}
         </label>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="sm" aria-label={text.view} />}>
+            <LayoutPanelLeftIcon />
+            {text.views[drive
+              ? "drive"
+              : "workspace"]}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-36">
+            <DropdownMenuRadioGroup
+              value={drive
+                ? "drive"
+                : "workspace"}
+              onValueChange={switchView}
+            >
+              {(["workspace", "drive"] as const).map(v => <DropdownMenuRadioItem closeOnClick key={v} value={v}>{text.views[v]}</DropdownMenuRadioItem>)}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button variant="ghost" size="sm" aria-label={text.language} />}>
             <LanguagesIcon />

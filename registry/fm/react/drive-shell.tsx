@@ -10,7 +10,6 @@ import {
   InfoIcon,
   PlusIcon,
   UploadIcon,
-  XIcon,
 } from "lucide-react";
 import { useDefaultLayout } from "react-resizable-panels";
 
@@ -32,7 +31,7 @@ import { shellDetailsEntry } from "./manager-shared";
 import { ManagerTree } from "./manager-tree";
 import {
   EmptyTrashButton,
-  SelectionActions,
+  FloatingSelectionBar,
   ShellBreadcrumb,
   ShellDetails,
   ShellDropSection,
@@ -43,7 +42,7 @@ import {
   UploadMenuItems,
   ViewToggle,
 } from "./shell-parts";
-import { EMPTY_SELECTION, formatSize } from "./state";
+import { formatSize } from "./state";
 
 /**
  * Drive layout: the folder tree (folders only) on the left, the chosen folder on the right,
@@ -65,7 +64,6 @@ export function DriveShell({ props, fm }: { props: FileManagerProps; fm: FmContr
     filters,
     changeFilters,
     selected,
-    setRawSelection,
     detailsOpen,
     setDetailsOpen,
     setDialog,
@@ -153,17 +151,8 @@ export function DriveShell({ props, fm }: { props: FileManagerProps; fm: FmContr
               {inTrash && (
                 <EmptyTrashButton fm={fm} />
               )}
-              {!inTrash && features.search && (
-                <ShellSearch fm={fm} width="w-56" />
-              )}
               {!inTrash && (
                 <>
-                  <ViewToggle fm={fm} />
-                  {features.details && (
-                    <IconButton label={labels.details} aria-pressed={detailsOpen} onClick={() => setDetailsOpen(!detailsOpen)}>
-                      <InfoIcon />
-                    </IconButton>
-                  )}
                   {(canMkdir || canNewFile) && (
                     <DropdownMenu>
                       <DropdownMenuTrigger render={<Button size="sm" />}>
@@ -201,38 +190,39 @@ export function DriveShell({ props, fm }: { props: FileManagerProps; fm: FmContr
               )}
             </header>
 
-            {!inTrash && (selected.length > 0
-              ? (
-                  <div className="flex flex-wrap items-center gap-1 border-b bg-muted/40 px-2 py-1" role="toolbar" aria-label={labels.selected(selected.length)}>
-                    <IconButton label={labels.cancel} onClick={() => setRawSelection(EMPTY_SELECTION)}><XIcon /></IconButton>
-                    <span className="px-1 text-sm">{labels.selected(selected.length)}</span>
-                    <span className="flex-1" />
-                    <SelectionActions fm={fm} actions={actions} />
-                  </div>
-                )
-              : (
-                  <div className="flex flex-wrap items-center gap-1 border-b px-2 py-1">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger render={<Button size="sm" variant="ghost" aria-pressed={hasFilters(filters)} />}>
-                        <FilterIcon />
-                        {labels.filter}
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="w-48">
-                        <FilterMenuItems filters={filters} onChange={changeFilters} labels={labels} columns={columns} values={columnValues} />
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger render={<Button size="sm" variant="ghost" />}>
-                        <ArrowUpDownIcon />
-                        {labels.sortBy}
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="w-40">
-                        <SortMenuItems fm={fm} />
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    <FilterChips filters={filters} onChange={changeFilters} labels={labels} columns={columns} className="border-0 p-0" />
-                  </div>
-                ))}
+            {!inTrash && (
+              <div className="flex flex-wrap items-center gap-1 border-b px-2 py-1">
+                <DropdownMenu>
+                  <DropdownMenuTrigger render={<Button size="sm" variant="ghost" aria-pressed={hasFilters(filters)} />}>
+                    <FilterIcon />
+                    {labels.filter}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-48">
+                    <FilterMenuItems filters={filters} onChange={changeFilters} labels={labels} columns={columns} values={columnValues} />
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <DropdownMenu>
+                  <DropdownMenuTrigger render={<Button size="sm" variant="ghost" />}>
+                    <ArrowUpDownIcon />
+                    {labels.sortBy}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-40">
+                    <SortMenuItems fm={fm} />
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <FilterChips filters={filters} onChange={changeFilters} labels={labels} columns={columns} className="border-0 p-0" />
+                <span className="flex-1" />
+                {features.search && (
+                  <ShellSearch fm={fm} width="w-56" />
+                )}
+                <ViewToggle fm={fm} />
+                {features.details && (
+                  <IconButton label={labels.details} aria-pressed={detailsOpen} onClick={() => setDetailsOpen(!detailsOpen)}>
+                    <InfoIcon />
+                  </IconButton>
+                )}
+              </div>
+            )}
 
             <ShellNotices fm={fm} />
 
@@ -240,7 +230,9 @@ export function DriveShell({ props, fm }: { props: FileManagerProps; fm: FmContr
               ? (
                   <ShellTrash fm={fm} mount={mount} />
                 )
-              : <ManagerList fm={fm} />}
+              : <ManagerList fm={fm} roomy />}
+
+            {!inTrash && selected.length > 0 && <FloatingSelectionBar fm={fm} actions={actions} />}
 
           </ShellDropSection>
         </ResizablePanel>

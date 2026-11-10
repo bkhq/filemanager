@@ -56,6 +56,7 @@ import { PreviewBody } from "./preview-pane";
 import { ReviewView } from "./review-dialog";
 import {
   EmptyTrashButton,
+  FloatingSelectionBar,
   SelectionActions,
   ShellBreadcrumb,
   ShellDetails,
@@ -131,6 +132,8 @@ export function WorkspaceShell({ props, fm }: { props: FileManagerProps; fm: FmC
     columns,
     columnValues,
   } = fm;
+  // Without the sidebar the listing takes the drive look.
+  const roomy = !split && !pick;
   const uploadMenu = (
     <DropdownMenu>
       <DropdownMenuTrigger render={<IconButton label={labels.upload} />}><UploadIcon /></DropdownMenuTrigger>
@@ -234,9 +237,11 @@ export function WorkspaceShell({ props, fm }: { props: FileManagerProps; fm: FmC
                                         ))
                                       : shownMounts.map(m => <DropdownMenuRadioItem key={m.id} value={m.id} closeOnClick>{m.label}</DropdownMenuRadioItem>)}
                                   </DropdownMenuRadioGroup>
+                                  {treeSections.length > 0 && <DropdownMenuSeparator />}
                                   {treeSections.map(sec => (
                                     <DropdownMenuSub key={sec.id}>
-                                      <DropdownMenuSubTrigger>
+                                      {/* Muted tree icons take the menu colour here; accent colours stay. */}
+                                      <DropdownMenuSubTrigger className="[&_svg.text-muted-foreground]:text-current">
                                         {sec.icon}
                                         {sec.label}
                                       </DropdownMenuSubTrigger>
@@ -252,7 +257,6 @@ export function WorkspaceShell({ props, fm }: { props: FileManagerProps; fm: FmC
                                       </DropdownMenuSubContent>
                                     </DropdownMenuSub>
                                   ))}
-                                  {treeSections.length > 0 && <DropdownMenuSeparator />}
                                   {currentMount?.trash && features.trash && (
                                     <>
                                       <DropdownMenuSeparator />
@@ -297,7 +301,7 @@ export function WorkspaceShell({ props, fm }: { props: FileManagerProps; fm: FmC
                         <div ref={setPaneActions} className="flex items-center gap-1" />
                       </div>
                     )
-                  : selected.length > 0
+                  : selected.length > 0 && !roomy
                     ? (
                         <div className="flex items-center gap-1" role="toolbar" aria-label={labels.selected(selected.length)}>
                           <span className="px-2 text-xs text-muted-foreground">{labels.selected(selected.length)}</span>
@@ -323,9 +327,7 @@ export function WorkspaceShell({ props, fm }: { props: FileManagerProps; fm: FmC
                             </DropdownMenuContent>
                           </DropdownMenu>
                           <DropdownMenu>
-                            {narrow
-                              ? <DropdownMenuTrigger render={<IconButton label={labels.sortBy} />}><ArrowUpDownIcon /></DropdownMenuTrigger>
-                              : <DropdownMenuTrigger render={<Button size="sm" variant="ghost" />}>{labels.sortBy}</DropdownMenuTrigger>}
+                            <DropdownMenuTrigger render={<IconButton label={labels.sortBy} />}><ArrowUpDownIcon /></DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-40">
                               <SortMenuItems fm={fm} />
                             </DropdownMenuContent>
@@ -419,8 +421,10 @@ export function WorkspaceShell({ props, fm }: { props: FileManagerProps; fm: FmC
                           </ContextMenu>
                         ))
                 : (
-                    <ManagerList fm={fm} />
+                    <ManagerList fm={fm} roomy={roomy} />
                   )}
+
+            {roomy && !explorer && !inTrash && selected.length > 0 && <FloatingSelectionBar fm={fm} />}
 
             {pick && (() => {
               const total = selected.reduce((n, e) => n + e.size, 0);

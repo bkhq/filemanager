@@ -5,8 +5,10 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "cn";
 import { ChevronRightIcon, DownloadIcon, FolderIcon, LockIcon, SearchIcon } from "lucide-react";
 import { lazy, Suspense, useMemo, useRef, useState } from "react";
+import { useDefaultLayout } from "react-resizable-panels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { EntryIcon } from "../react/file-list";
 import { FallbackPreview } from "../react/previewers";
@@ -95,6 +97,13 @@ export function ArchivePreview(props: PreviewProps) {
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState<FmArchiveNode>();
+  const panes = useDefaultLayout({
+    id: "fm-archive:panels",
+    panelIds: ["tree", "entry"],
+    ...(typeof localStorage !== "undefined"
+      ? { storage: localStorage }
+      : {}),
+  });
   const rows = useMemo(() => archiveRows(tree, open, filter), [tree, open, filter]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -119,8 +128,8 @@ export function ArchivePreview(props: PreviewProps) {
   });
 
   return (
-    <div className="flex h-full min-h-0">
-      <div className="flex w-1/2 min-w-0 flex-col border-r">
+    <ResizablePanelGroup id="fm-archive:panels" orientation="horizontal" className="min-h-0" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
+      <ResizablePanel id="tree" defaultSize="50%" minSize="20%" className="flex min-w-0 flex-col">
         <div className="relative border-b p-1.5">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-3.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input type="search" aria-label={labels.archiveFilter} placeholder={labels.archiveFilter} className="h-7 pl-7 text-xs md:text-xs" value={filter} onChange={e => setFilter(e.target.value)} />
@@ -179,12 +188,13 @@ export function ArchivePreview(props: PreviewProps) {
           {labels.archiveSummary(listing.data.entries.filter(e => !e.dir).length, tree.size)}
           {listing.data.truncated && ` · ${labels.archiveTruncated}`}
         </div>
-      </div>
-      <div className="min-w-0 flex-1">
+      </ResizablePanel>
+      <ResizableHandle withHandle aria-label={labels.resizePanes} />
+      <ResizablePanel id="entry" minSize="20%" className="min-w-0">
         {selected
           ? <EntryPreview key={selected.path} node={selected} props={props} />
           : <div className="flex h-full items-center justify-center p-4 text-sm text-muted-foreground">{labels.archiveSelect}</div>}
-      </div>
-    </div>
+      </ResizablePanel>
+    </ResizablePanelGroup>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { centerOn, clampPan, INITIAL_VIEW, layoutOf, maxZoomOf, rotateBy, zoomAround } from "./transform";
+import { centerOn, clampPan, INITIAL_VIEW, layoutOf, maxZoomOf, rotateBy, wheelFactor, zoomAround } from "./transform";
 
 describe("media transform", () => {
   it("rotates in quarter turns both ways", () => {
@@ -52,5 +52,18 @@ describe("media transform", () => {
     expect(maxZoomOf(1)).toBe(4);
     expect(maxZoomOf(0.5)).toBe(8);
     expect(maxZoomOf(0.17) * 0.17).toBeCloseTo(4);
+  });
+
+  it("zooms by a fixed factor per wheel notch, whatever the delta unit", () => {
+    expect(wheelFactor(-100, 0, 800)).toBeCloseTo(1.2, 5);
+    expect(wheelFactor(100, 0, 800)).toBeCloseTo(1 / 1.2, 5);
+    // A huge pixel delta is capped at one notch.
+    expect(wheelFactor(-1000, 0, 800)).toBeCloseTo(1.2, 5);
+    // Lines and pages are converted to pixels first.
+    expect(wheelFactor(-3, 1, 800)).toBeCloseTo(1.2 ** 0.48, 5);
+    expect(wheelFactor(-1, 2, 800)).toBeCloseTo(1.2, 5);
+    // Trackpad deltas stay small and continuous.
+    expect(wheelFactor(-10, 0, 800)).toBeCloseTo(1.2 ** 0.1, 5);
+    expect(wheelFactor(0, 0, 800)).toBe(1);
   });
 });

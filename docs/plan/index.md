@@ -78,3 +78,4 @@ Each plan is a single line linking to its detail file. All detailed information 
 - [x] [**20261109-0125-dialog-fullscreen Full-screen preview dialogs**](20261109-0125-dialog-fullscreen.md) `2026-11-09`
 - [x] [**20261109-0211-audit-cleanup Audit cleanup: redundant code and stale docs**](20261109-0211-audit-cleanup.md) `2026-11-09`
 - [x] [**20261109-0221-shared-shell-ui Share the common shell UI**](20261109-0221-shared-shell-ui.md) `2026-11-09`
+- [x] [**20261110-0614-drive-ui-iteration Drive and workspace UI iteration**](20261110-0614-drive-ui-iteration.md) `2026-11-10`

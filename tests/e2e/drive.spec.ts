@@ -319,3 +319,104 @@ test("shows the tree, then the folder, on narrow containers", async ({ page }) =
   await page.getByRole("button", { name: "Back to folders" }).click();
   await expect(tree(page)).toBeVisible();
 });
+
+async function putPng(page: Page, path: string) {
+  await page.goto("/");
+  expect(await page.evaluate(async (path) => {
+    const canvas = Object.assign(document.createElement("canvas"), { width: 600, height: 300 });
+    canvas.getContext("2d")!.fillRect(0, 0, 600, 300);
+    const blob = await new Promise<Blob>(done => canvas.toBlob(b => done(b!), "image/png"));
+    return (await fetch(`/api/fm/m/local/write?path=${encodeURIComponent(path)}&conflict=overwrite`, { method: "PUT", body: blob })).ok;
+  }, path)).toBe(true);
+}
+
+test("keeps the toolbars in place and floats the bulk bar over the list", async ({ page }) => {
+  await put(page, `${DIR}/float.txt`, "1");
+  await openDrive(page, DIR);
+  const filter = page.getByRole("button", { name: "Filter" });
+  await expect(filter).toBeVisible();
+  const before = await filter.boundingBox();
+  await row(page, `${DIR}/float.txt`).click();
+  const bar = page.getByRole("toolbar", { name: "1 selected" });
+  await expect(bar).toBeVisible();
+  await expect(filter).toBeVisible();
+  expect(await filter.boundingBox()).toEqual(before);
+  const box = (await bar.boundingBox())!;
+  const list = (await page.getByRole("grid").boundingBox())!;
+  expect(box.y + box.height).toBeGreaterThan(list.y + list.height - 40);
+});
+
+test("groups navigation and creation apart from the view controls", async ({ page }) => {
+  await openDrive(page);
+  const y = async (name: string) => (await page.getByRole("button", { name, exact: true }).boundingBox())!.y;
+  await expect(page.getByRole("button", { name: "New", exact: true })).toBeVisible();
+  expect(await y("Upload")).toBeLessThan(await y("Filter") - 10);
+  expect(await y("Details")).toBe(await y("Filter"));
+  const search = (await page.getByRole("searchbox").boundingBox())!;
+  expect(search.y).toBeGreaterThan(await y("Upload") + 10);
+});
+
+test("opens the entry menu from the row more button", async ({ page }) => {
+  await put(page, `${DIR}/more.txt`, "1");
+  await openDrive(page, DIR);
+  const target = row(page, `${DIR}/more.txt`);
+  for (const view of ["Grid", "List"]) {
+    await target.hover();
+    await target.getByRole("button", { name: "More" }).click();
+    await expect(page.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    await expect(target).toHaveAttribute("aria-selected", "true");
+    // Stays visible while its menu is open, even with the pointer inside the menu.
+    await page.getByRole("menuitem", { name: "Rename" }).hover();
+    await expect(target.locator("button[aria-label=More]")).toHaveCSS("opacity", "1");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menuitem", { name: "Rename" })).toHaveCount(0);
+    if (view === "Grid")
+      await page.getByRole("button", { name: "List view" }).click();
+  }
+});
+
+test("shows thumbnails in the list and square tiles in the grid", async ({ page }) => {
+  await putPng(page, `${DIR}/pic.png`);
+  await openDrive(page, DIR);
+  const target = row(page, `${DIR}/pic.png`);
+  const face = target.locator("[data-fm-face]");
+  await expect(face).toBeVisible();
+  const box = (await face.boundingBox())!;
+  expect(box.width).toBe(box.height);
+  await page.getByRole("button", { name: "List view" }).click();
+  const img = target.locator("img");
+  await expect(img).toHaveAttribute("src", /\/thumb\?.*w=256/);
+  expect((await img.boundingBox())!.width).toBe(24);
+});
+
+test("hides list columns by container width", async ({ page }) => {
+  await page.setViewportSize({ width: 420, height: 800 });
+  await openDrive(page);
+  await treeItem(page, "notes", 3).getByRole("button").click();
+  await page.getByRole("button", { name: "List view" }).click();
+  await expect(page.getByRole("button", { name: "Name", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Size", exact: true })).toBeHidden();
+});
+
+test("each path step opens a picker; folders navigate", async ({ page }) => {
+  await openDrive(page, DIR);
+  const bar = page.getByRole("navigation", { name: "Path" });
+  await bar.getByRole("button", { name: "drive-e2e" }).click();
+  await page.getByRole("menuitem", { name: "notes" }).click();
+  await expect(row(page, "/notes/todo.txt")).toBeVisible();
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(bar).toContainText("notes");
+});
+
+test("switches between the workspace and drive views from the demo header", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "View", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "Drive" }).click();
+  await expect(page).toHaveURL(/[?&]variant=drive/);
+  await expect(page.getByRole("button", { name: "View", exact: true })).toContainText("Drive");
+  await expect(treeItem(page, "Shared with me", 1)).toBeVisible();
+  await page.getByRole("button", { name: "View", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "Workspace" }).click();
+  await expect(page).not.toHaveURL(/variant=drive/);
+  await expect(page.getByRole("button", { name: "View", exact: true })).toContainText("Workspace");
+});

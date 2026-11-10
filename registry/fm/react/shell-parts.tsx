@@ -35,6 +35,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { DetailsPanel } from "./details-panel";
 import { IconButton } from "./icon-button";
+import { PathBar } from "./path-bar";
+import { EMPTY_SELECTION } from "./state";
 import { TrashView } from "./trash-view";
 
 interface PartProps {
@@ -180,39 +182,35 @@ export function UploadMenuItems({ fm }: PartProps) {
   );
 }
 
-/** `root` replaces the link or page of the first crumb. */
+/** Path of the current folder: each step opens a picker of its folder. `root` replaces the mount step. The trash keeps plain crumbs. */
 export function ShellBreadcrumb({ fm, root, className }: PartProps & { root?: ReactNode | undefined; className?: string | undefined }) {
-  const { path, inTrash, mount, currentMount, navigate, labels } = fm;
-  const crumbs = path === "/"
-    ? []
-    : path.slice(1).split("/");
+  const { client, path, inTrash, mount, currentMount, shownMounts, filter, navigate, open, labels } = fm;
+  if (!inTrash || !mount) {
+    return (
+      <PathBar
+        client={client}
+        mounts={shownMounts ?? []}
+        mount={mount ?? ""}
+        path={path}
+        labels={labels}
+        filter={filter}
+        root={root}
+        className={className}
+        onOpenFile={open}
+        onOpenFolder={open}
+      />
+    );
+  }
   return (
     <Breadcrumb className={cn("min-w-0 flex-1 px-1", className)}>
       <BreadcrumbList className="flex-nowrap overflow-hidden">
         <BreadcrumbItem>
-          {root ?? (crumbs.length || inTrash
-            ? <BreadcrumbLink render={<button type="button" onClick={() => mount && navigate(mount, "/")} />}>{currentMount?.label}</BreadcrumbLink>
-            : <BreadcrumbPage>{currentMount?.label}</BreadcrumbPage>)}
+          {root ?? <BreadcrumbLink render={<button type="button" onClick={() => navigate(mount, "/")} />}>{currentMount?.label}</BreadcrumbLink>}
         </BreadcrumbItem>
-        {inTrash && (
-          <>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage>{labels.trash}</BreadcrumbPage>
-            </BreadcrumbItem>
-          </>
-        )}
-        {!inTrash && crumbs.map((name, i) => {
-          const target = `/${crumbs.slice(0, i + 1).join("/")}`;
-          return [
-            <BreadcrumbSeparator key={`s-${target}`} />,
-            <BreadcrumbItem key={target} className="min-w-0">
-              {i === crumbs.length - 1
-                ? <BreadcrumbPage className="truncate">{name}</BreadcrumbPage>
-                : <BreadcrumbLink className="truncate" render={<button type="button" onClick={() => mount && navigate(mount, target)} />}>{name}</BreadcrumbLink>}
-            </BreadcrumbItem>,
-          ];
-        })}
+        <BreadcrumbSeparator />
+        <BreadcrumbItem>
+          <BreadcrumbPage>{labels.trash}</BreadcrumbPage>
+        </BreadcrumbItem>
       </BreadcrumbList>
     </Breadcrumb>
   );
@@ -260,7 +258,7 @@ export function ShellSearch({ fm, width, children }: PartProps & { width: string
 }
 
 /** Buttons acting on the selection; `actions` come before delete. */
-export function SelectionActions({ fm, actions = [] }: PartProps & { actions?: FmFileAction[] }) {
+export function SelectionActions({ fm, actions = [] }: PartProps & { actions?: FmFileAction[] | undefined }) {
   const { selected, features, labels, download, copyToClipboard, setDialog, runAction, requestDelete } = fm;
   return (
     <>
@@ -269,7 +267,25 @@ export function SelectionActions({ fm, actions = [] }: PartProps & { actions?: F
       {selected.every(s => s.caps.move) && <IconButton label={labels.cut} onClick={() => copyToClipboard("cut", selected)}><ScissorsIcon /></IconButton>}
       {selected.length === 1 && selected[0]!.caps.rename && <IconButton label={labels.rename} onClick={() => setDialog({ kind: "rename", entry: selected[0]! })}><PencilIcon /></IconButton>}
       {actions.map(a => <IconButton key={a.id} label={a.label} onClick={() => runAction(a, selected)}>{a.icon}</IconButton>)}
-      {selected.every(s => s.caps.delete) && <IconButton label={labels.delete} onClick={() => requestDelete(selected.map(s => s.path))}><Trash2Icon /></IconButton>}
+      {selected.every(s => s.caps.delete) && <IconButton label={labels.delete} className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => requestDelete(selected.map(s => s.path))}><Trash2Icon /></IconButton>}
     </>
+  );
+}
+
+/** Bulk actions floating at the bottom centre of the listing, above the undo notice. */
+export function FloatingSelectionBar({ fm, actions }: PartProps & { actions?: FmFileAction[] | undefined }) {
+  const { selected, notice, setRawSelection, labels } = fm;
+  return (
+    <div
+      className={cn("absolute left-1/2 z-10 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 flex-wrap items-center gap-1 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg", notice
+        ? "bottom-14"
+        : "bottom-3")}
+      role="toolbar"
+      aria-label={labels.selected(selected.length)}
+    >
+      <IconButton label={labels.cancel} onClick={() => setRawSelection(EMPTY_SELECTION)}><XIcon /></IconButton>
+      <span className="px-1 text-sm">{labels.selected(selected.length)}</span>
+      <SelectionActions fm={fm} actions={actions} />
+    </div>
   );
 }

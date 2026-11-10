@@ -1,9 +1,10 @@
+import type { ReactNode } from "react";
 import type { FmClient, FmListFilter } from "../client/client";
 import type { FmEntry, FmMountInfo } from "../core/schema";
 import type { FmLabels } from "./labels";
 import { cn } from "cn";
 import { ChevronRightIcon } from "lucide-react";
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,8 +23,8 @@ import { MenuScroll } from "./menu-scroll";
 const PICKER = "w-auto max-w-72 min-w-40 overflow-hidden p-0";
 const PICKER_ITEM = "gap-1.5 py-1 text-xs whitespace-nowrap";
 
-/** Entries of `path`: folders unfold into their own entries, files open. */
-function PickerEntries({ client, mount, path, current, labels, filter, onOpenFile }: {
+/** Entries of `path`: folders unfold into their own entries (and open on click with `onOpenFolder`), files open. */
+function PickerEntries({ client, mount, path, current, labels, filter, onOpenFile, onOpenFolder }: {
   client: FmClient;
   mount: string;
   path: string;
@@ -31,6 +32,7 @@ function PickerEntries({ client, mount, path, current, labels, filter, onOpenFil
   labels: FmLabels;
   filter: FmListFilter | undefined;
   onOpenFile: (entry: FmEntry) => void;
+  onOpenFolder?: ((entry: FmEntry) => void) | undefined;
 }) {
   const listing = useListing(client, mount, path, "name", "asc", "", filter);
   const entries = listing.data?.pages.flatMap(p => p.items) ?? [];
@@ -41,13 +43,13 @@ function PickerEntries({ client, mount, path, current, labels, filter, onOpenFil
     if (entry.kind === "dir") {
       return (
         <DropdownMenuSub key={entry.path}>
-          <DropdownMenuSubTrigger className={cn(PICKER_ITEM, here && "font-medium")} title={entry.name}>
+          <DropdownMenuSubTrigger className={cn(PICKER_ITEM, here && "font-medium")} title={entry.name} onClick={onOpenFolder && (() => onOpenFolder(entry))}>
             <EntryIcon entry={entry} className="size-3.5" />
             <span className="truncate">{entry.name}</span>
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className={PICKER}>
             <MenuScroll>
-              <PickerEntries client={client} mount={mount} path={entry.path} current={current} labels={labels} filter={filter} onOpenFile={onOpenFile} />
+              <PickerEntries client={client} mount={mount} path={entry.path} current={current} labels={labels} filter={filter} onOpenFile={onOpenFile} onOpenFolder={onOpenFolder} />
             </MenuScroll>
           </DropdownMenuSubContent>
         </DropdownMenuSub>
@@ -67,7 +69,7 @@ function PickerEntries({ client, mount, path, current, labels, filter, onOpenFil
  * open): the mount, each folder and the file. Every step opens a picker of what
  * sits beside it: folders unfold, files open.
  */
-export function PathBar({ client, mounts, mount, path, file, labels, filter, onOpenFile }: {
+export function PathBar({ client, mounts, mount, path, file, labels, filter, root, className, onOpenFile, onOpenFolder }: {
   client: FmClient;
   mounts: FmMountInfo[];
   /** Current mount and folder, shown while no file is open. */
@@ -77,8 +79,14 @@ export function PathBar({ client, mounts, mount, path, file, labels, filter, onO
   labels: FmLabels;
   /** Hidden / ignored filter for the pickers. */
   filter?: FmListFilter | undefined;
+  /** Replaces the mount step. */
+  root?: ReactNode | undefined;
+  className?: string | undefined;
   onOpenFile: (entry: FmEntry) => void;
+  /** Clicking a folder in a picker opens it; without it folders only unfold. */
+  onOpenFolder?: ((entry: FmEntry) => void) | undefined;
 }) {
+  const [openStep, setOpenStep] = useState<string>();
   const at = file?.mount ?? mount;
   const dir = file
     ? dirname(file.path)
@@ -93,7 +101,12 @@ export function PathBar({ client, mounts, mount, path, file, labels, filter, onO
     ? "font-medium text-foreground"
     : "text-muted-foreground");
   const step = (target: string, label: string, last: boolean) => (
-    <DropdownMenu>
+    <DropdownMenu
+      open={openStep === target}
+      onOpenChange={o => setOpenStep(o
+        ? target
+        : undefined)}
+    >
       <DropdownMenuTrigger render={<button type="button" className={crumb(last)} />}>{label}</DropdownMenuTrigger>
       <DropdownMenuContent align="start" className={PICKER}>
         <MenuScroll>
@@ -109,14 +122,21 @@ export function PathBar({ client, mounts, mount, path, file, labels, filter, onO
             labels={labels}
             filter={filter}
             onOpenFile={onOpenFile}
+            onOpenFolder={onOpenFolder && ((e) => {
+              setOpenStep(undefined);
+              onOpenFolder(e);
+            })}
           />
         </MenuScroll>
       </DropdownMenuContent>
     </DropdownMenu>
   );
   return (
-    <nav aria-label={labels.path} className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1 text-sm whitespace-nowrap [scrollbar-width:none]">
-      {step("/", mounts.find(m => m.id === at)?.label ?? at, trail.length === 0)}
+    <nav aria-label={labels.path} className={cn("flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1 text-sm whitespace-nowrap [scrollbar-width:none]", className)}>
+      {/* Keyed apart: `root` often arrives after the first render and must not inherit the step's controlled menu. */}
+      {root
+        ? <Fragment key="root">{root}</Fragment>
+        : <Fragment key="/">{step("/", mounts.find(m => m.id === at)?.label ?? at, trail.length === 0)}</Fragment>}
       {trail.map((target, i) => (
         <Fragment key={target}>
           <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" />

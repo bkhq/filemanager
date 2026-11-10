@@ -57,6 +57,10 @@ async function contextAction(page: Page, path: string, action: string) {
 }
 
 test.describe.configure({ mode: "serial" });
+// The serial tests fill the root; keep its folders inside the first screen of the virtual list.
+test.use({
+  viewport: { width: 1280, height: 1200 },
+});
 
 // Most tests act on the file list, which the split layout replaces with the preview.
 // The demo's starred / recent lists stay off unless a test turns them on (withMeta).
@@ -199,6 +203,17 @@ test("previews spreadsheets with the sheet plugin", async ({ page }) => {
   await expect(dialog.getByRole("table", { name: "Crew" })).toContainText("Captain");
 });
 
+/** Drags a resize handle by `dx` pixels; returns the width of `pane` before and after. */
+async function dragHandle(page: Page, handle: ReturnType<Page["locator"]>, pane: ReturnType<Page["locator"]>, dx: number) {
+  const before = (await pane.boundingBox())!.width;
+  const box = (await handle.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + dx, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.up();
+  return { before, after: (await pane.boundingBox())!.width };
+}
+
 test("opens markdown in the editor and toggles the preview", async ({ page }) => {
   await openMount(page, "Local disk");
   await row(page, "/samples").dblclick();
@@ -211,7 +226,11 @@ test("opens markdown in the editor and toggles the preview", async ({ page }) =>
   await expect(dialog.locator("[data-streamdown='link']")).toContainText("project page");
   await expect(dialog.locator("[data-streamdown='code-block']")).toContainText("console.log(greeting)");
   await expect(dialog.locator(".cm-content")).toBeHidden();
+  // With the editor hidden the preview takes the whole row.
+  const width = async (sel: string) => (await dialog.locator(sel).boundingBox())!.width;
+  expect(await width("[data-fm-markdown-preview]")).toBeGreaterThan(await width("[data-slot=resizable-panel-group]") - 2);
   await dialog.getByRole("button", { name: "Reopen as source", exact: true }).click();
+  expect(await width(".cm-editor")).toBeGreaterThan(await width("[data-slot=resizable-panel-group]") - 2);
   await expect(dialog.locator(".cm-content")).toContainText("# Guide");
 });
 
@@ -224,6 +243,8 @@ test("previews markdown to the side, following unsaved edits", async ({ page }) 
   const preview = dialog.locator("[data-fm-markdown-preview]");
   await expect(preview.getByRole("heading", { name: "Guide", exact: true })).toBeVisible();
   await expect(dialog.locator(".cm-content")).toBeVisible();
+  const sized = await dragHandle(page, dialog.getByRole("separator", { name: "Resize panes" }), preview, -120);
+  expect(sized.after).toBeGreaterThan(sized.before + 80);
   await dialog.locator(".cm-content").click();
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("\n\n## Live heading\n");
@@ -1654,6 +1675,8 @@ test("browses a zip archive and previews its entries", async ({ page }) => {
   const tree = dialog.getByRole("tree", { name: "archive.zip" });
   await expect(tree.getByRole("treeitem", { name: "src" })).toBeVisible();
   await expect(dialog).toContainText("4 files");
+  const sized = await dragHandle(page, dialog.getByRole("separator", { name: "Resize panes" }), tree, -120);
+  expect(sized.after).toBeLessThan(sized.before - 80);
   await tree.getByRole("treeitem", { name: "src" }).click();
   await tree.getByRole("treeitem", { name: "main.ts" }).click();
   await expect(dialog.locator("[data-fm-archive-text]")).toContainText("answer = 42");
@@ -1850,4 +1873,74 @@ test("keeps folders created on implicit-folder mounts until a file lands in them
     buffer: Buffer.from("x"),
   });
   await expect(row(page, "/flat-e2e/in-flat.txt")).toBeVisible();
+});
+
+test("the single workspace layout uses the drive list look", async ({ page }) => {
+  await putText(page, "/roomy-e2e/a.txt", "1");
+  await openMount(page, "Local disk");
+  await row(page, "/roomy-e2e").dblclick();
+  const target = row(page, "/roomy-e2e/a.txt");
+  await expect(target).toBeVisible();
+  expect((await target.boundingBox())!.height).toBe(40);
+  await target.hover();
+  await target.getByRole("button", { name: "More" }).click();
+  await expect(page.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menuitem", { name: "Rename" })).toHaveCount(0);
+  const bar = page.getByRole("toolbar", { name: "1 selected" });
+  await expect(bar).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Delete" })).toHaveClass(/text-destructive/);
+  await expect(page.getByRole("button", { name: "New folder" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sort by" })).toHaveText("");
+  const box = (await bar.boundingBox())!;
+  const list = (await page.getByRole("grid").boundingBox())!;
+  expect(box.y + box.height).toBeGreaterThan(list.y + list.height - 40);
+});
+
+test("pick mode keeps the dense list without a more button", async ({ page }) => {
+  await page.goto("/?pick");
+  const target = page.locator("[data-path]").first();
+  await expect(target).toBeVisible();
+  await target.hover();
+  await expect(target.getByRole("button", { name: "More" })).toHaveCount(0);
+  expect((await target.boundingBox())!.height).toBe(36);
+});
+
+test("the storage menu has no back-to-back separators", async ({ page }) => {
+  await withMeta(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Storage" }).click();
+  const menu = page.getByRole("menu");
+  await expect(menu).toBeVisible();
+  const slots = await menu.locator("[data-slot]").evaluateAll(els => els.map(e => e.getAttribute("data-slot")));
+  const seps = slots.filter(s => s?.endsWith("separator") || s?.endsWith("item") || s?.endsWith("trigger"));
+  expect(seps.some((s, i) => s!.endsWith("separator") && seps[i + 1]?.endsWith("separator"))).toBe(false);
+  expect(seps[0]).not.toMatch(/separator$/);
+  await expect(menu.getByRole("menuitem", { name: "Recent" })).toBeVisible();
+  // Section icons take the menu colour like the other entries.
+  const iconColor = (name: string) => menu.getByRole("menuitem", { name }).locator("svg").first().evaluate(el => getComputedStyle(el).color);
+  expect(await iconColor("Recent")).toBe(await iconColor("Trash"));
+  await page.keyboard.press("Escape");
+});
+
+test("resizes spreadsheet columns by dragging the header edge or with the keys", async ({ page }) => {
+  await putText(page, "/0-sheet-cols-e2e/w.csv", "name,note\nPiraeus,a very long note that does not fit into the default column width\n");
+  await openMount(page, "Local disk");
+  await row(page, "/0-sheet-cols-e2e").dblclick();
+  await row(page, "/0-sheet-cols-e2e/w.csv").dblclick();
+  const dialog = page.getByRole("dialog");
+  const cell = dialog.getByRole("cell", { name: /a very long note/ });
+  await expect(cell).toBeVisible();
+  const before = (await cell.boundingBox())!.width;
+  const handle = dialog.getByRole("separator", { name: "Resize column B" });
+  const box = (await handle.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 200, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(async () => (await cell.boundingBox())!.width).toBeGreaterThan(before + 180);
+  const dragged = (await cell.boundingBox())!.width;
+  await handle.focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect.poll(async () => (await cell.boundingBox())!.width).toBe(dragged - 16);
 });

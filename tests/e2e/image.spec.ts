@@ -180,6 +180,20 @@ test("shows a minimap while zoomed that moves the view", async ({ page }) => {
   await expect(minimap).toHaveCount(0);
 });
 
+test("one wheel notch zooms by about 1.2x around the pointer", async ({ page }) => {
+  const { img, percent } = await openImage(page, "huge.png");
+  const fit = await percent();
+  const box = (await img.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -100);
+  await expect.poll(percent).toBe(Math.round(fit * 1.2));
+  await page.mouse.wheel(0, -100);
+  await expect.poll(percent).toBe(Math.round(fit * 1.44));
+  await page.mouse.wheel(0, 100);
+  await page.mouse.wheel(0, 100);
+  await expect.poll(percent).toBe(fit);
+});
+
 test("shows the image's pixel size", async ({ page }) => {
   const { dialog } = await openImage(page, "huge.png");
   await expect(dialog.getByText("6000 × 4000")).toBeVisible();
