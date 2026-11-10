@@ -173,4 +173,119 @@ describe("FileManager", () => {
     expect(await show(["one"])).toBe(false);
     expect(await show(["one", "two"])).toBe(true);
   });
+
+  describe("headerActions", () => {
+    /** Renders the manager in a container `width` px wide (0: never measured, the wide layout). */
+    const show = async (props: Record<string, unknown>, width = 0) => {
+      const RealObserver = globalThis.ResizeObserver;
+      if (width > 0) {
+        globalThis.ResizeObserver = class {
+          constructor(private cb: ResizeObserverCallback) {}
+          observe(target: Element) {
+            queueMicrotask(() => this.cb([
+              {
+                target,
+                contentRect: { width },
+              } as unknown as ResizeObserverEntry,
+            ], this as unknown as ResizeObserver));
+          }
+
+          unobserve() {}
+          disconnect() {}
+        } as unknown as typeof ResizeObserver;
+      }
+      const app = new Hono();
+      app.route("/fm", createFmRouter({
+        mounts: () => [
+          {
+            id: "m",
+            label: "Main",
+            driver: memoryDriver({
+              files: { "/b.txt": "b" },
+            }),
+          },
+        ],
+      }));
+      const client = createFmClient({
+        baseUrl: "http://localhost/fm",
+        fetch: (input, init) => app.request(input, init),
+      });
+      const qc = new QueryClient({
+        defaultOptions: {
+          queries: { retry: false, staleTime: Infinity },
+        },
+      });
+      const container = document.createElement("div");
+      document.body.append(container);
+      const root = createRoot(container);
+      await act(async () => root.render(createElement(QueryClientProvider, { client: qc }, createElement(FileManager, {
+        client,
+        storageKey: `fm-test-${crypto.randomUUID()}`,
+        ...props,
+      }))));
+      for (let i = 0; i < 20 && !container.textContent?.includes("b.txt"); i++)
+        await act(() => new Promise(r => setTimeout(r, 50)));
+      return {
+        container,
+        host: () => [
+          ...container.querySelectorAll("[aria-label='Host action']"),
+        ],
+        done: () => {
+          act(() => root.unmount());
+          container.remove();
+          globalThis.ResizeObserver = RealObserver;
+        },
+      };
+    };
+    const hostAction = createElement("button", { "type": "button", "aria-label": "Host action" });
+
+    it("sits at the end of the main header beside the tree", async () => {
+      const m = await show({ headerActions: hostAction });
+      const found = m.host();
+      expect(found).toHaveLength(1);
+      expect(found[0]!.closest("header")).not.toBeNull();
+      expect(found[0]!.closest("header")!.lastElementChild!.contains(found[0]!)).toBe(true);
+      m.done();
+    });
+
+    it("sits in the main header of the single layout", async () => {
+      const m = await show({ headerActions: hostAction, layout: "single" });
+      const found = m.host();
+      expect(found).toHaveLength(1);
+      expect(found[0]!.closest("header")).not.toBeNull();
+      m.done();
+    });
+
+    it("moves to the explorer row when a narrow manager shows the tree", async () => {
+      const m = await show({ headerActions: hostAction }, 400);
+      const found = m.host();
+      expect(found).toHaveLength(1);
+      expect(found[0]!.closest("header")).toBeNull();
+      const more = m.container.querySelector("[aria-label='More']")!;
+      const row = more.closest("[class*='group/explorer']")!;
+      expect(row.contains(found[0]!)).toBe(true);
+      // Outside the hover-revealed toolbar, after "More".
+      expect(found[0]!.closest("[role=toolbar]")).toBeNull();
+      expect(more.compareDocumentPosition(found[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      m.done();
+    });
+
+    it("adds nothing without the prop", async () => {
+      const m = await show({});
+      const header = m.container.querySelector("header")!;
+      expect(header.lastElementChild!.getAttribute("aria-label")).toBe("Details");
+      m.done();
+    });
+
+    it("is ignored in pick mode", async () => {
+      const m = await show({
+        headerActions: hostAction,
+        pick: {
+          onPick: () => {},
+        },
+      });
+      expect(m.host()).toHaveLength(0);
+      m.done();
+    });
+  });
 });

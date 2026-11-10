@@ -9,7 +9,7 @@ import { enLabels } from "./labels";
 import { ManagerFrame } from "./manager-frame";
 import { useFileManager } from "./use-file-manager";
 
-export type FmDriveManagerProps = Omit<FileManagerProps, "layout" | "pick">;
+export type FmDriveManagerProps = Omit<FileManagerProps, "layout" | "pick" | "headerActions">;
 
 /**
  * Cloud-drive presentation of the file manager: the folder tree on the left, the chosen

@@ -440,3 +440,11 @@ Audit fixes delivered (20261110-0700-filen-audit-fixes), uncommitted in the main
 ## 2026-11-10 08:20 [pitfall]
 
 `tests/e2e/fm.spec.ts:446` (trash multi-select) fails in about half of full e2e runs, also on `d90448a`; `fm.spec.ts` runs serially, so one failure skips ~75 tests. Tracked as 20261110-0815-flaky-trash-e2e. Router state keyed by driver instance does not work for hosts that build drivers per request; key by mount id or document instance reuse.
+
+## 2026-11-10 19:40 [progress]
+
+`FileManager` takes `headerActions` (20261110-1911-header-actions): host controls at the right end of the bar in the manager's top-right corner — the main pane header, or the explorer row while a narrow manager shows the tree; ignored in pick mode, not on `DriveManager`. Requested for BKD's issue workspace panel. Verified: `bun run check` (449 pass), full e2e 134 passed (Playwright container).
+
+## 2026-11-10 19:40 [pitfall]
+
+A Playwright run clears `test-results/`; two suites running at once in the same checkout (e.g. one in a container that skips the port lock) break each other's trace writes with ENOENT. Take `/tmp/fm-e2e-4317.lock` around container runs too.

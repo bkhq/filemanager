@@ -171,6 +171,12 @@ export function WorkspaceShell({ props, fm }: { props: FileManagerProps; fm: FmC
       : {}),
   });
 
+  // Host controls go in the bar at the manager's top-right corner: the explorer row while a
+  // narrow manager shows only the tree, the main header otherwise. Never in pick mode.
+  const hostActions = props.headerActions != null && !pick
+    ? <div className="ml-auto flex shrink-0 items-center gap-0.5">{props.headerActions}</div>
+    : undefined;
+
   // Tree toolbar and folder tree; a side panel, or a full-size view on narrow containers.
 
   return (
@@ -346,6 +352,7 @@ export function WorkspaceShell({ props, fm }: { props: FileManagerProps; fm: FmC
                   <InfoIcon />
                 </IconButton>
               )}
+              {!treeOnly && hostActions}
             </header>
 
             {!explorer && !inTrash && <FilterChips filters={filters} onChange={changeFilters} labels={labels} columns={columns} />}
@@ -451,7 +458,7 @@ export function WorkspaceShell({ props, fm }: { props: FileManagerProps; fm: FmC
         )}
       </ResizablePanelGroup>
 
-      {treeOnly && <div className="absolute inset-0 z-10 flex flex-col bg-background"><WorkspaceTreePane props={props} fm={fm} /></div>}
+      {treeOnly && <div className="absolute inset-0 z-10 flex flex-col bg-background"><WorkspaceTreePane props={props} fm={fm} actions={hostActions} /></div>}
 
       {detailsEntry && narrow && (
         <ShellDetails fm={fm} props={props} entry={detailsEntry} overlay />

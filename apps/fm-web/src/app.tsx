@@ -1,7 +1,7 @@
 import type { FmEntry } from "@/fm/core/schema";
 import type { FmSidebarOptions } from "@/fm/react/file-manager";
 import type { FmMeta, FmRef } from "@/fm/react/meta";
-import { LanguagesIcon, LayoutPanelLeftIcon, MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
+import { LanguagesIcon, LayoutPanelLeftIcon, Maximize2Icon, MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
 import { useState } from "react";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
@@ -177,6 +177,13 @@ const features = params.has("review")
 
 const max = Number(params.get("max"));
 
+// `?actions`: a host control in the manager's top bar, as a panel's maximize button would be.
+const headerActions = params.has("actions") && !drive
+  ? {
+      headerActions: <Button variant="ghost" size="icon-sm" aria-label="Host action" title="Host action"><Maximize2Icon /></Button>,
+    }
+  : {};
+
 function PickerDemo() {
   const [picked, setPicked] = useState("");
   return (
@@ -289,6 +296,7 @@ function ManagerDemo() {
           sidebar={sidebar}
           features={features}
           {...driveExtras(lang)}
+          {...headerActions}
           meta={meta}
           changeMessage={askMessage
             ? {

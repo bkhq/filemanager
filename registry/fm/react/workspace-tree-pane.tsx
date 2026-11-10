@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { FileManagerProps } from "./file-manager";
 import type { FmController } from "./use-file-manager";
 import {
@@ -32,8 +33,8 @@ import { IconButton } from "./icon-button";
 import { onPathKeys } from "./manager-shared";
 import { ManagerTree } from "./manager-tree";
 
-/** Explorer header and folder tree of the workspace shell. */
-export function WorkspaceTreePane({ props, fm }: { props: FileManagerProps; fm: FmController }) {
+/** Explorer header and folder tree of the workspace shell; `actions` (host controls) end the explorer row. */
+export function WorkspaceTreePane({ props, fm, actions }: { props: FileManagerProps; fm: FmController; actions?: ReactNode }) {
   const {
     client,
     setExpanded,
@@ -179,6 +180,7 @@ export function WorkspaceTreePane({ props, fm }: { props: FileManagerProps; fm: 
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+          {actions}
         </div>
       )}
       {explorer && <FilterChips filters={filters} onChange={changeFilters} labels={labels} columns={columns} />}

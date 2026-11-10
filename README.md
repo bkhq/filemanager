@@ -87,6 +87,10 @@ import { FileManager } from "@/fm/react/file-manager";
 // Start without the folder tree; users can toggle it. Below 640px it is always single-pane.
 // The tree and details panes are resizable (drag or arrow keys); sizes persist per `storageKey`.
 <FileManager baseUrl="/api/fm" layout="single" />;
+
+// Host controls (panel maximize, close …) at the right end of the top bar: the main pane
+// header, or the explorer row while a narrow manager shows the tree. Not in pick mode.
+<FileManager baseUrl="/api/fm" headerActions={<PanelButtons />} />;
 ```
 
 ### Drive view (optional)

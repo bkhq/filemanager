@@ -90,3 +90,4 @@ Each task is a single line linking to its detail file. All detailed information 
 - [x] [**20261110-0700-spring-loaded-folders Spring-loaded folders while dragging**](20261110-0700-spring-loaded-folders.md) `P2`
 - [x] [**20261110-0700-shortcuts-help Keyboard shortcuts catalog and help dialog**](20261110-0700-shortcuts-help.md) `P3`
 - [ ] [**20261110-0815-flaky-trash-e2e Flaky e2e: restores and deletes several trash items**](20261110-0815-flaky-trash-e2e.md) `P3`
+- [x] [**20261110-1911-header-actions Host actions in the file manager's top bar**](20261110-1911-header-actions.md) `P1`
