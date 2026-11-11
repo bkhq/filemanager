@@ -1,6 +1,8 @@
 import { formatSize } from "./state";
 
 export const enLabels = {
+  /** BCP 47 locale for dates. */
+  locale: "en-US",
   name: "Name",
   size: "Size",
   modified: "Modified",
@@ -119,6 +121,7 @@ export const enLabels = {
   failed: (n: number) => `${n} item(s) failed`,
   search: "Search in this folder",
   clearSearch: "Clear search",
+  searchPlaceholder: "Search…",
   noMatches: "No matching items",
   searchHere: "This folder",
   searchBelow: "Everywhere below",
@@ -275,6 +278,7 @@ export const enLabels = {
 export type FmLabels = typeof enLabels;
 
 export const zhLabels: FmLabels = {
+  locale: "zh-CN",
   name: "名称",
   size: "大小",
   modified: "修改时间",
@@ -387,6 +391,7 @@ export const zhLabels: FmLabels = {
   failed: n => `${n} 项操作失败`,
   search: "在当前文件夹中搜索",
   clearSearch: "清空搜索",
+  searchPlaceholder: "搜索…",
   noMatches: "没有匹配的项目",
   searchHere: "当前文件夹",
   searchBelow: "所有子文件夹",

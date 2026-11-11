@@ -261,7 +261,7 @@ function ListRow({ p, entry, top }: { p: FileListProps; entry: FmEntry; top: num
       </span>
       <span className={cn("w-40 shrink-0 text-right text-xs text-muted-foreground tabular-nums", modifiedClass(p, "block"))} role="gridcell">
         {Date.parse(entry.mtime) > 0
-          ? new Date(entry.mtime).toLocaleString()
+          ? new Date(entry.mtime).toLocaleString(p.labels.locale)
           : ""}
       </span>
       {p.roomy && (

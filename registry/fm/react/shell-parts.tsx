@@ -245,7 +245,7 @@ export function ShellSearch({ fm, width, children }: PartProps & { width: string
         <InputGroupInput
           type="search"
           aria-label={labels.search}
-          placeholder={labels.search}
+          placeholder={labels.searchPlaceholder}
           className="h-full text-xs md:text-xs [&::-webkit-search-cancel-button]:appearance-none"
           value={query}
           onChange={e => changeQuery(e.target.value)}

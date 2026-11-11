@@ -50,7 +50,7 @@ import { basename, dirname } from "../core/path";
 import { EntryIcon } from "./file-list";
 import { FilterChips, FilterMenuItems } from "./filter-menu";
 import { hasFilters } from "./filters";
-import { IconButton } from "./icon-button";
+import { IconButton, RefreshButton } from "./icon-button";
 import { ManagerList } from "./manager-list";
 import { shellDetailsEntry } from "./manager-shared";
 import { MenuScroll } from "./menu-scroll";
@@ -149,14 +149,12 @@ export function WorkspaceShell({ props, fm }: { props: FileManagerProps; fm: FmC
     </DropdownMenu>
   );
   const refreshButton = (
-    <IconButton
+    <RefreshButton
       label={labels.refresh}
-      onClick={() => void qc.invalidateQueries({
+      onRefresh={() => qc.invalidateQueries({
         queryKey: fmKeys.all(client),
       })}
-    >
-      <RefreshCwIcon />
-    </IconButton>
+    />
   );
 
   const detailsEntry = shellDetailsEntry(fm);
