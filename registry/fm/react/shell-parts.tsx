@@ -5,6 +5,7 @@ import type { FmFileAction } from "./plugins";
 import type { FmController } from "./use-file-manager";
 import { cn } from "cn";
 import {
+  ChevronDownIcon,
   CopyIcon,
   DownloadIcon,
   FolderUpIcon,
@@ -12,7 +13,6 @@ import {
   ListIcon,
   PencilIcon,
   ScissorsIcon,
-  SearchIcon,
   Trash2Icon,
   UploadIcon,
   XIcon,
@@ -27,12 +27,15 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { DetailsPanel } from "./details-panel";
 import { IconButton } from "./icon-button";
 import { PathBar } from "./path-bar";
@@ -216,43 +219,47 @@ export function ShellBreadcrumb({ fm, root, className }: PartProps & { root?: Re
   );
 }
 
-/** `children` sit between the input and the scope buttons. */
+/** `children` sit after the input. The scope menu leads the input; a clear button ends it while there is a query. */
 export function ShellSearch({ fm, width, children }: PartProps & { width: string; children?: ReactNode }) {
   const { narrow, query, changeQuery, searchScope, setSearchScope, labels } = fm;
+  const scopeLabel = (s: typeof searchScope) => s === "folder"
+    ? labels.searchHere
+    : labels.searchBelow;
   return (
-    <div className={cn("relative flex items-center gap-1", narrow && "order-last basis-full")}>
-      <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-      <Input
-        type="search"
-        aria-label={labels.search}
-        placeholder={labels.search}
-        className={cn("h-7 pl-7 text-xs md:text-xs", narrow
-          ? "w-full"
-          : width)}
-        value={query}
-        onChange={e => changeQuery(e.target.value)}
-        onKeyDown={e => e.key === "Escape" && changeQuery("")}
-      />
+    <div className={cn("flex items-center gap-1", narrow && "order-last basis-full")}>
+      <InputGroup className={cn("h-7", narrow
+        ? "w-full"
+        : width)}
+      >
+        <InputGroupAddon className="py-0">
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<InputGroupButton size="xs" variant="secondary" className="h-5 px-1.5 text-xs" />}>
+              {scopeLabel(searchScope)}
+              <ChevronDownIcon />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-auto min-w-0">
+              {(["folder", "below"] as const).map(s => <DropdownMenuItem key={s} className="text-xs" onClick={() => setSearchScope(s)}>{scopeLabel(s)}</DropdownMenuItem>)}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </InputGroupAddon>
+        <InputGroupInput
+          type="search"
+          aria-label={labels.search}
+          placeholder={labels.search}
+          className="h-full text-xs md:text-xs [&::-webkit-search-cancel-button]:appearance-none"
+          value={query}
+          onChange={e => changeQuery(e.target.value)}
+          onKeyDown={e => e.key === "Escape" && changeQuery("")}
+        />
+        {query && (
+          <InputGroupAddon align="inline-end" className="py-0">
+            <InputGroupButton size="icon-xs" aria-label={labels.clearSearch} title={labels.clearSearch} onClick={() => changeQuery("")}>
+              <XIcon />
+            </InputGroupButton>
+          </InputGroupAddon>
+        )}
+      </InputGroup>
       {children}
-      {query.trim() && (
-        <div className="flex shrink-0 items-center gap-0.5" role="group" aria-label={labels.search}>
-          {(["folder", "below"] as const).map(s => (
-            <Button
-              key={s}
-              size="xs"
-              variant={searchScope === s
-                ? "secondary"
-                : "ghost"}
-              aria-pressed={searchScope === s}
-              onClick={() => setSearchScope(s)}
-            >
-              {s === "folder"
-                ? labels.searchHere
-                : labels.searchBelow}
-            </Button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -277,14 +284,14 @@ export function FloatingSelectionBar({ fm, actions }: PartProps & { actions?: Fm
   const { selected, notice, setRawSelection, labels } = fm;
   return (
     <div
-      className={cn("absolute left-1/2 z-10 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 flex-wrap items-center gap-1 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg", notice
+      className={cn("absolute left-1/2 z-10 flex max-w-[calc(100%-1.5rem)] w-max -translate-x-1/2 flex-wrap items-center gap-1 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg", notice
         ? "bottom-14"
         : "bottom-3")}
       role="toolbar"
       aria-label={labels.selected(selected.length)}
     >
       <IconButton label={labels.cancel} onClick={() => setRawSelection(EMPTY_SELECTION)}><XIcon /></IconButton>
-      <span className="px-1 text-sm">{labels.selected(selected.length)}</span>
+      <span className="px-1 text-sm whitespace-nowrap">{labels.selected(selected.length)}</span>
       <SelectionActions fm={fm} actions={actions} />
     </div>
   );

@@ -250,6 +250,8 @@
       "registryDependencies": [
         "button",
         "input",
+        "input-group",
+        "toggle-group",
         "dialog",
         "alert-dialog",
         "dropdown-menu",

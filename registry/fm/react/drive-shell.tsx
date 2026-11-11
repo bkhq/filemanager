@@ -213,7 +213,7 @@ export function DriveShell({ props, fm }: { props: FileManagerProps; fm: FmContr
                 <FilterChips filters={filters} onChange={changeFilters} labels={labels} columns={columns} className="border-0 p-0" />
                 <span className="flex-1" />
                 {features.search && (
-                  <ShellSearch fm={fm} width="w-56" />
+                  <ShellSearch fm={fm} width="w-72" />
                 )}
                 <ViewToggle fm={fm} />
                 {features.details && (

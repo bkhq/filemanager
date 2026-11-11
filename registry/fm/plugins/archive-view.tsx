@@ -3,11 +3,11 @@ import type { FmArchiveNode } from "./archive-tree";
 import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "cn";
-import { ChevronRightIcon, DownloadIcon, FolderIcon, LockIcon, SearchIcon } from "lucide-react";
+import { ChevronRightIcon, DownloadIcon, FolderIcon, LockIcon, SearchIcon, XIcon } from "lucide-react";
 import { lazy, Suspense, useMemo, useRef, useState } from "react";
 import { useDefaultLayout } from "react-resizable-panels";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { EntryIcon } from "../react/file-list";
@@ -130,9 +130,20 @@ export function ArchivePreview(props: PreviewProps) {
   return (
     <ResizablePanelGroup id="fm-archive:panels" orientation="horizontal" className="min-h-0" defaultLayout={panes.defaultLayout} onLayoutChanged={panes.onLayoutChanged}>
       <ResizablePanel id="tree" defaultSize="50%" minSize="20%" className="flex min-w-0 flex-col">
-        <div className="relative border-b p-1.5">
-          <SearchIcon className="pointer-events-none absolute top-1/2 left-3.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input type="search" aria-label={labels.archiveFilter} placeholder={labels.archiveFilter} className="h-7 pl-7 text-xs md:text-xs" value={filter} onChange={e => setFilter(e.target.value)} />
+        <div className="border-b p-1.5">
+          <InputGroup className="h-7">
+            <InputGroupAddon>
+              <SearchIcon className="size-3.5" />
+            </InputGroupAddon>
+            <InputGroupInput type="search" aria-label={labels.archiveFilter} placeholder={labels.archiveFilter} className="h-full text-xs md:text-xs [&::-webkit-search-cancel-button]:appearance-none" value={filter} onChange={e => setFilter(e.target.value)} />
+            {filter && (
+              <InputGroupAddon align="inline-end" className="py-0">
+                <InputGroupButton size="icon-xs" aria-label={labels.clearSearch} title={labels.clearSearch} onClick={() => setFilter("")}>
+                  <XIcon />
+                </InputGroupButton>
+              </InputGroupAddon>
+            )}
+          </InputGroup>
         </div>
         <ScrollArea className="min-h-0 flex-1" ref={viewportRef(scrollRef)}>
           <div className="p-1 text-sm">

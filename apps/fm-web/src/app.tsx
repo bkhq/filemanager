@@ -1,13 +1,14 @@
 import type { FmEntry } from "@/fm/core/schema";
 import type { FmSidebarOptions } from "@/fm/react/file-manager";
 import type { FmMeta, FmRef } from "@/fm/react/meta";
-import { LanguagesIcon, LayoutPanelLeftIcon, Maximize2Icon, MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
+import { LanguagesIcon, LayoutPanelLeftIcon, Maximize2Icon, MonitorIcon, MoonIcon, SlidersHorizontalIcon, SunIcon } from "lucide-react";
 import { useState } from "react";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -44,6 +45,8 @@ const demoText = {
     viewOnly: "View only",
     askMessage: "Ask for change notes",
     mounted: "Mounted",
+    headerActions: "Header actions",
+    options: "Options",
     language: "Language",
     view: "View",
     views: { workspace: "Workspace", drive: "Drive" },
@@ -55,6 +58,8 @@ const demoText = {
     viewOnly: "只读",
     askMessage: "询问修改说明",
     mounted: "已挂载",
+    headerActions: "标题栏按钮",
+    options: "选项",
     language: "语言",
     view: "视图",
     views: { workspace: "工作区", drive: "网盘" },
@@ -177,12 +182,9 @@ const features = params.has("review")
 
 const max = Number(params.get("max"));
 
-// `?actions`: a host control in the manager's top bar, as a panel's maximize button would be.
-const headerActions = params.has("actions") && !drive
-  ? {
-      headerActions: <Button variant="ghost" size="icon-sm" aria-label="Host action" title="Host action"><Maximize2Icon /></Button>,
-    }
-  : {};
+/** Demo switch: a host control in the manager's top bar, as a panel's maximize button would be (`?actions` forces it on). */
+const ACTIONS_KEY = "fm-web:header-actions";
+const hostAction = <Button variant="ghost" size="icon-sm" aria-label="Host action" title="Host action"><Maximize2Icon /></Button>;
 
 function PickerDemo() {
   const [picked, setPicked] = useState("");
@@ -213,6 +215,11 @@ function ManagerDemo() {
     localStorage.setItem(ASK_KEY, on ? "1" : "0");
     setAskMessage(on);
   };
+  const [headerActions, setHeaderActions] = useState(() => params.has("actions") || localStorage.getItem(ACTIONS_KEY) === "1");
+  const changeHeaderActions = (on: boolean) => {
+    localStorage.setItem(ACTIONS_KEY, on ? "1" : "0");
+    setHeaderActions(on);
+  };
   // Unmounting and mounting again keeps the query cache, as a host switching tabs would.
   const [mounted, setMounted] = useState(true);
   const [lang, setLang] = useState<Lang>(initialLang);
@@ -224,27 +231,46 @@ function ManagerDemo() {
   };
   return (
     <main className="flex h-svh flex-col gap-3 p-4">
+      {/* Below `sm` the toggles fold into one menu and the buttons keep only their icons. */}
       <header className="flex items-center gap-2">
-        <h1 className="text-lg font-medium">{text.title}</h1>
-        <span className="flex-1" />
-        <label className="mr-2 flex items-center gap-2 text-sm text-muted-foreground">
+        <h1 className="min-w-0 flex-1 truncate text-lg font-medium">{text.title}</h1>
+        <label className="mr-2 flex items-center gap-2 text-sm whitespace-nowrap text-muted-foreground max-sm:hidden">
           <Checkbox checked={mounted} onCheckedChange={setMounted} />
           {text.mounted}
         </label>
-        <label className="mr-2 flex items-center gap-2 text-sm text-muted-foreground">
+        <label className="mr-2 flex items-center gap-2 text-sm whitespace-nowrap text-muted-foreground max-sm:hidden">
           <Checkbox checked={askMessage} onCheckedChange={changeAskMessage} />
           {text.askMessage}
         </label>
-        <label className="mr-2 flex items-center gap-2 text-sm text-muted-foreground">
+        <label className="mr-2 flex items-center gap-2 text-sm whitespace-nowrap text-muted-foreground max-sm:hidden">
           <Checkbox checked={readOnly} onCheckedChange={setReadOnly} />
           {text.viewOnly}
         </label>
+        {!drive && (
+          <label className="mr-2 flex items-center gap-2 text-sm whitespace-nowrap text-muted-foreground max-sm:hidden">
+            <Checkbox checked={headerActions} onCheckedChange={changeHeaderActions} />
+            {text.headerActions}
+          </label>
+        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" title={text.options} aria-label={text.options} className="sm:hidden" />}>
+            <SlidersHorizontalIcon />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuCheckboxItem closeOnClick={false} checked={mounted} onCheckedChange={setMounted}>{text.mounted}</DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem closeOnClick={false} checked={askMessage} onCheckedChange={changeAskMessage}>{text.askMessage}</DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem closeOnClick={false} checked={readOnly} onCheckedChange={setReadOnly}>{text.viewOnly}</DropdownMenuCheckboxItem>
+            {!drive && <DropdownMenuCheckboxItem closeOnClick={false} checked={headerActions} onCheckedChange={changeHeaderActions}>{text.headerActions}</DropdownMenuCheckboxItem>}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button variant="ghost" size="sm" aria-label={text.view} />}>
             <LayoutPanelLeftIcon />
-            {text.views[drive
-              ? "drive"
-              : "workspace"]}
+            <span className="max-sm:hidden">
+              {text.views[drive
+                ? "drive"
+                : "workspace"]}
+            </span>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-36">
             <DropdownMenuRadioGroup
@@ -260,7 +286,7 @@ function ManagerDemo() {
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button variant="ghost" size="sm" aria-label={text.language} />}>
             <LanguagesIcon />
-            {langNames[lang]}
+            <span className="max-sm:hidden">{langNames[lang]}</span>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-36">
             <DropdownMenuRadioGroup value={lang} onValueChange={changeLang}>
@@ -296,7 +322,9 @@ function ManagerDemo() {
           sidebar={sidebar}
           features={features}
           {...driveExtras(lang)}
-          {...headerActions}
+          {...(headerActions && !drive
+            ? { headerActions: hostAction }
+            : {})}
           meta={meta}
           changeMessage={askMessage
             ? {

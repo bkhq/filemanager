@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useListing } from "../client/hooks";
 import { dirname, isWithin } from "../core/path";
 
@@ -54,21 +55,16 @@ export function DriveFolderPicker({ mode, entries, from, mounts, client, labels,
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        <div className="flex flex-wrap gap-1" role="group" aria-label={labels.storage}>
-          {writable.map(m => (
-            <Button
-              key={m.id}
-              size="xs"
-              variant={m.id === at.mount
-                ? "secondary"
-                : "ghost"}
-              aria-pressed={m.id === at.mount}
-              onClick={() => setAt({ mount: m.id, path: "/" })}
-            >
-              {m.label}
-            </Button>
-          ))}
-        </div>
+        <ToggleGroup
+          size="sm"
+          spacing={1}
+          className="flex-wrap"
+          aria-label={labels.storage}
+          value={[at.mount]}
+          onValueChange={v => v[0] && setAt({ mount: v[0] as string, path: "/" })}
+        >
+          {writable.map(m => <ToggleGroupItem key={m.id} value={m.id} className="text-xs">{m.label}</ToggleGroupItem>)}
+        </ToggleGroup>
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem>

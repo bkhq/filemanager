@@ -66,3 +66,15 @@ test.describe("narrow manager", () => {
     await expect(page.locator("header").getByRole("button", { name: "Host action" })).toHaveCount(0);
   });
 });
+
+test("the demo's Header actions switch shows the control and remembers it", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("fm:layout", "single"));
+  await page.goto("/");
+  await expect(hostAction(page)).toHaveCount(0);
+  await page.getByRole("checkbox", { name: "Header actions" }).click();
+  await expect(hostAction(page)).toHaveCount(1);
+  await page.reload();
+  await expect(hostAction(page)).toHaveCount(1);
+  await page.getByRole("checkbox", { name: "Header actions" }).click();
+  await expect(hostAction(page)).toHaveCount(0);
+});

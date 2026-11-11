@@ -493,13 +493,13 @@ test("filters the current folder by name", async ({ page }) => {
 test("searches everywhere below the current folder", async ({ page }) => {
   await openMount(page, "Local disk");
   await page.getByRole("searchbox", { name: "Search in this folder" }).fill("todo");
-  await page.getByRole("button", { name: "Everywhere below" }).click();
+  await page.getByRole("button", { name: "This folder" }).click();
+  await page.getByRole("menuitem", { name: "Everywhere below" }).click();
   const hit = row(page, "/notes/todo.txt");
   await expect(hit).toBeVisible();
   await expect(hit).toContainText("/notes");
   await hit.dblclick();
   await expect(page.getByRole("searchbox")).toHaveValue("");
-  await expect(page.getByRole("button", { name: "Everywhere below" })).toHaveCount(0);
   await expect(page.getByRole("navigation").getByText("notes", { exact: true })).toBeVisible();
   await expect(row(page, "/notes/config.json")).toBeVisible();
   await expect(row(page, "/notes/todo.txt")).toHaveAttribute("aria-selected", "true");
@@ -993,6 +993,25 @@ test("leaves host-hidden drives out of the tree, menu and Manage drives", async 
   await expect(page.getByRole("menuitemradio", { name: "Read-only view" })).toHaveCount(0);
 });
 
+test.describe("in a narrow single layout", () => {
+  test.use({
+    viewport: { width: 460, height: 800 },
+  });
+
+  test("keeps the floating selection bar on one line", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("fm:layout", "single"));
+    const res = await page.request.put("/api/fm/m/local/write?path=%2F0-narrow-select.txt&conflict=overwrite", { data: "x" });
+    expect(res.ok()).toBe(true);
+    await page.goto("/");
+    await row(page, "/0-narrow-select.txt").click();
+    const bar = page.getByRole("toolbar", { name: "1 selected" });
+    await expect(bar.getByRole("button", { name: "Delete" })).toBeVisible();
+    const cancel = (await bar.getByRole("button", { name: "Cancel" }).boundingBox())!;
+    const del = (await bar.getByRole("button", { name: "Delete" }).boundingBox())!;
+    expect(Math.abs(del.y - cancel.y)).toBeLessThan(4);
+  });
+});
+
 test.describe("on a phone", () => {
   test.use({
     viewport: { width: 390, height: 844 },
@@ -1010,8 +1029,52 @@ test.describe("on a phone", () => {
     await row(page, "/notes/todo.txt").tap();
     await expect(page.getByRole("dialog").getByRole("heading", { name: "todo.txt" })).toBeVisible();
     await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: "Details" }).click();
+    await page.locator("header").getByRole("button", { name: "More" }).click();
+    await page.getByRole("menuitemcheckbox", { name: "Details" }).click();
     await expect(page.getByRole("complementary", { name: "Details" })).toContainText("2 files, 0 folders");
+  });
+
+  test("keeps the search scope inside the search box and clears it", async ({ page }) => {
+    await page.goto("/");
+    await expect(row(page, "/notes")).toBeVisible();
+    const box = page.getByRole("searchbox", { name: "Search in this folder" });
+    await box.fill("no");
+    const scope = page.getByRole("button", { name: "This folder" });
+    expect((await scope.boundingBox())!.x + (await scope.boundingBox())!.width).toBeLessThanOrEqual(390);
+    await scope.click();
+    await page.getByRole("menuitem", { name: "Everywhere below" }).click();
+    await expect(page.getByRole("button", { name: "Everywhere below" })).toBeVisible();
+    await page.getByRole("button", { name: "Clear search" }).click();
+    await expect(box).toHaveValue("");
+    await expect(page.getByRole("button", { name: "Clear search" })).toHaveCount(0);
+  });
+
+  test("fits the demo header on one line", async ({ page }) => {
+    await page.goto("/");
+    const title = (await page.getByRole("heading", { name: "File manager" }).boundingBox())!;
+    const theme = (await page.getByRole("button", { name: "Theme", exact: true }).boundingBox())!;
+    expect(Math.abs(theme.y + theme.height / 2 - (title.y + title.height / 2))).toBeLessThan(4);
+    await expect(page.getByRole("checkbox", { name: "Mounted" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Options", exact: true }).click();
+    await expect(page.getByRole("menuitemcheckbox", { name: "Mounted" })).toBeChecked();
+    await expect(page.getByRole("menuitemcheckbox", { name: "View only" })).toBeVisible();
+    await expect(page.getByRole("menuitemcheckbox", { name: "Ask for change notes" })).toBeVisible();
+  });
+
+  test("folds the folder toolbar into one menu on the path row", async ({ page }) => {
+    await page.goto("/");
+    await expect(row(page, "/notes")).toBeVisible();
+    const header = page.locator("header");
+    for (const name of ["New folder", "Refresh", "Details"])
+      await expect(header.getByRole("button", { name })).toHaveCount(0);
+    const up = (await header.getByRole("button", { name: "Up" }).boundingBox())!;
+    const more = (await header.getByRole("button", { name: "More" }).boundingBox())!;
+    expect(Math.abs(more.y - up.y)).toBeLessThan(4);
+    await header.getByRole("button", { name: "More" }).click();
+    await page.getByRole("menuitem", { name: "Grid view" }).click();
+    await header.getByRole("button", { name: "More" }).click();
+    await expect(page.getByRole("menuitem", { name: "List view" })).toBeVisible();
+    await page.getByRole("menuitem", { name: "List view" }).click();
   });
 
   test("shows the tree or the open file with a back button in the tree layout", async ({ page }) => {
@@ -1683,7 +1746,8 @@ test("browses a zip archive and previews its entries", async ({ page }) => {
   await dialog.getByRole("searchbox", { name: "Filter files in the archive" }).fill("math");
   await expect(tree.getByRole("treeitem", { name: "math.ts" })).toBeVisible();
   await expect(tree.getByRole("treeitem", { name: "main.ts" })).toHaveCount(0);
-  await dialog.getByRole("searchbox", { name: "Filter files in the archive" }).fill("");
+  await dialog.getByRole("button", { name: "Clear search" }).click();
+  await expect(dialog.getByRole("searchbox", { name: "Filter files in the archive" })).toHaveValue("");
   await tree.getByRole("treeitem", { name: "images" }).click();
   await tree.getByRole("treeitem", { name: "dot.png" }).click();
   await expect.poll(() => dialog.locator("img[alt='dot.png']").evaluate((el: HTMLImageElement) => el.naturalWidth)).toBe(2);
