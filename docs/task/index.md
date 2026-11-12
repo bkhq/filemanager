@@ -91,3 +91,5 @@ Each task is a single line linking to its detail file. All detailed information 
 - [x] [**20261110-0700-shortcuts-help Keyboard shortcuts catalog and help dialog**](20261110-0700-shortcuts-help.md) `P3`
 - [ ] [**20261110-0815-flaky-trash-e2e Flaky e2e: restores and deletes several trash items**](20261110-0815-flaky-trash-e2e.md) `P3`
 - [x] [**20261110-1911-header-actions Host actions in the file manager's top bar**](20261110-1911-header-actions.md) `P1`
+- [x] [**20261111-1600-compact-folder-toolbar Compact folder toolbar in the workspace header**](20261111-1600-compact-folder-toolbar.md) `P2`
+- [x] [**20261112-0900-path-bar-navigate Path bar steps navigate; separators open the pickers**](20261112-0900-path-bar-navigate.md) `P2`

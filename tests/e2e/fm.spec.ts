@@ -45,6 +45,23 @@ async function openTreeMount(page: Page, label: string) {
 }
 
 // Explorer header actions take no room until the header is hovered, as a mouse user does.
+/** The manager's top bar; the demo page has a header of its own before it. */
+function fmHeader(page: Page) {
+  return page.locator("header").last();
+}
+
+/** Picks an item of the folder toolbar's "New" menu. */
+async function toolbarNew(page: Page, item: string) {
+  await page.getByRole("button", { name: "New", exact: true }).click();
+  await page.getByRole("menuitem", { name: item, exact: true }).click();
+}
+
+/** Picks an item of the folder toolbar's "View" menu. */
+async function toolbarView(page: Page, item: string) {
+  await fmHeader(page).getByRole("button", { name: "View", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: item }).click();
+}
+
 async function explorerAction(page: Page, name: string) {
   const actions = page.getByRole("toolbar", { name: "Folder actions" });
   await actions.locator("..").hover();
@@ -97,7 +114,7 @@ test("browses folders with the list and breadcrumb", async ({ page }) => {
 
 test("creates a folder, uploads into it and renames", async ({ page }) => {
   await openMount(page, "Local disk");
-  await page.getByRole("button", { name: "New folder" }).click();
+  await toolbarNew(page, "New folder");
   await page.getByRole("dialog").getByRole("textbox").fill("e2e");
   await page.getByRole("button", { name: "Create" }).click();
   await row(page, "/e2e").dblclick();
@@ -271,7 +288,7 @@ test("moves with cut and paste", async ({ page }) => {
 test("drags entries onto a folder row to move them", async ({ page }) => {
   await openMount(page, "Local disk");
   await row(page, "/e2e").dblclick();
-  await page.getByRole("button", { name: "New folder" }).click();
+  await toolbarNew(page, "New folder");
   await page.getByRole("dialog").getByRole("textbox").fill("inner");
   await page.getByRole("button", { name: "Create" }).click();
   await row(page, "/e2e/renamed.txt").dragTo(row(page, "/e2e/inner"));
@@ -281,7 +298,7 @@ test("drags entries onto a folder row to move them", async ({ page }) => {
 });
 
 async function newFolderWithFile(page: Page, name: string, file: string) {
-  await page.getByRole("button", { name: "New folder" }).click();
+  await toolbarNew(page, "New folder");
   await page.getByRole("dialog").getByRole("textbox").fill(name);
   await page.getByRole("button", { name: "Create" }).click();
   await row(page, `/${name}`).dblclick();
@@ -316,7 +333,7 @@ test("copies a folder from Local disk to Scratch with paste", async ({ page }) =
 test("drags tree rows onto folders: moves within a mount, copies to another", async ({ page }) => {
   await openMount(page, "Local disk");
   await newFolderWithFile(page, "xm-drop", "dropped.txt");
-  await page.getByRole("button", { name: "New folder" }).click();
+  await toolbarNew(page, "New folder");
   await page.getByRole("dialog").getByRole("textbox").fill("xm-target");
   await page.getByRole("button", { name: "Create" }).click();
   await expect(row(page, "/xm-target")).toBeVisible();
@@ -394,7 +411,7 @@ test("creates a folder inside a collapsed tree folder without opening it", async
 
 test("creates a file inside a list folder row without opening it", async ({ page }) => {
   await openMount(page, "Local disk");
-  await page.getByRole("button", { name: "New folder" }).click();
+  await toolbarNew(page, "New folder");
   await page.getByRole("dialog").getByRole("textbox").fill("xm-here-list");
   await page.getByRole("button", { name: "Create" }).click();
   await contextAction(page, "/xm-here-list", "New file here");
@@ -557,7 +574,7 @@ test("shows details with the folder size", async ({ page }) => {
 test("creates a text file, duplicates it and undoes the copy", async ({ page }) => {
   await openMount(page, "Local disk");
   await row(page, "/e2e").dblclick();
-  await page.getByRole("button", { name: "New text file" }).click();
+  await toolbarNew(page, "New text file");
   await page.getByRole("dialog").getByRole("textbox").fill("note.txt");
   await page.getByRole("button", { name: "Create" }).click();
   await expect(page.getByRole("dialog").getByRole("heading", { name: "note.txt" })).toBeVisible();
@@ -597,8 +614,7 @@ test("view-only mode hides every changing action", async ({ page }) => {
   await openMount(page, "Local disk");
   await page.getByRole("checkbox", { name: "View only" }).check();
   await expect(page.getByRole("searchbox")).toBeVisible();
-  for (const name of ["New folder", "New text file", "Upload files"])
-    await expect(page.getByRole("button", { name })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "New", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Storage" }).click();
   await expect(page.getByRole("menuitem", { name: "Manage drives" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Trash" })).toHaveCount(0);
@@ -627,8 +643,7 @@ test("view-only mode hides every changing action", async ({ page }) => {
 test("hides write actions on a read-only mount", async ({ page }) => {
   await openMount(page, "Read-only view");
   await expect(row(page, "/docs")).toBeVisible();
-  await expect(page.getByRole("button", { name: "New folder" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Upload files" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "New", exact: true })).toHaveCount(0);
   await row(page, "/docs").click({ button: "right" });
   await expect(page.getByRole("menuitem", { name: "Download" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Delete" })).toHaveCount(0);
@@ -742,11 +757,37 @@ test("jumps between files from the path bar", async ({ page }) => {
   await bar.getByRole("button", { name: "todo.txt" }).click();
   await page.getByRole("menuitem", { name: "config.json" }).click();
   await expect(page.getByRole("toolbar", { name: "config.json" })).toBeVisible();
-  await bar.getByRole("button", { name: "Local disk" }).click();
+  await bar.getByRole("button", { name: "Contents of Local disk" }).click();
   await page.getByRole("menuitem", { name: "docs" }).click();
   await page.getByRole("menuitem", { name: "sample.pdf" }).click();
   await expect(page.locator("iframe[title='sample.pdf']")).toBeVisible();
   await expect(bar).toHaveText(/Local disk.*docs.*sample\.pdf/);
+});
+
+test("a folder step of the path bar lists that folder in the pane", async ({ page }) => {
+  await openTreeMount(page, "Local disk");
+  const item = (name: string) => page.getByRole("tree").getByRole("treeitem", { name, exact: true });
+  const bar = page.getByRole("navigation", { name: "Path" });
+  await item("notes").click();
+  await item("todo.txt").click();
+  await expect(page.getByRole("toolbar", { name: "todo.txt" })).toBeVisible();
+  await bar.getByRole("button", { name: "notes", exact: true }).click();
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(page.getByRole("toolbar", { name: "todo.txt" })).toHaveCount(0);
+  await expect(item("notes")).toHaveAttribute("aria-selected", "true");
+  await expect(row(page, "/notes/config.json")).toBeVisible();
+  await expect(bar).toHaveText(/Local disk.*notes$/);
+  // The list follows the path bar; a file opens in the pane again.
+  await bar.getByRole("button", { name: "Local disk", exact: true }).click();
+  await expect(row(page, "/notes")).toBeVisible();
+  await row(page, "/notes").dblclick();
+  await row(page, "/notes/config.json").click();
+  await expect(page.getByRole("toolbar", { name: "config.json" })).toBeVisible();
+  await expect(bar).toHaveText(/Local disk.*notes.*config\.json/);
+  // The separator lists what its folder holds.
+  await bar.getByRole("button", { name: "Contents of notes" }).click();
+  await page.getByRole("menuitem", { name: "todo.txt" }).click();
+  await expect(page.getByRole("toolbar", { name: "todo.txt" })).toBeVisible();
 });
 
 test("toggles hidden files in the tree", async ({ page }) => {
@@ -868,7 +909,7 @@ test("collapses every tree row at once", async ({ page }) => {
   await expect(item("Local disk")).toHaveAttribute("aria-expanded", "false");
   // The next location opens its path again.
   const bar = page.getByRole("navigation", { name: "Path" });
-  await bar.getByRole("button", { name: "Local disk" }).click();
+  await bar.getByRole("button", { name: "Contents of Local disk" }).click();
   await page.getByRole("menuitem", { name: "docs" }).click();
   await page.getByRole("menuitem", { name: "sample.pdf" }).click();
   await expect(page.locator("iframe[title='sample.pdf']")).toBeVisible();
@@ -1157,7 +1198,7 @@ test("uploads a large file in parts", async ({ page }) => {
   });
 
   await openMount(page, "Local disk");
-  await page.getByRole("button", { name: "New folder" }).click();
+  await toolbarNew(page, "New folder");
   await page.getByRole("dialog").getByRole("textbox").fill("big");
   await page.getByRole("button", { name: "Create" }).click();
   await row(page, "/big").dblclick();
@@ -1659,11 +1700,11 @@ test("the grid shows server thumbnails", async ({ page }) => {
   await putPng(page, "/thumbs-e2e/wide.png", 600, 300);
   await openMount(page, "Local disk");
   await row(page, "/thumbs-e2e").dblclick();
-  await page.getByRole("button", { name: "Grid view" }).click();
+  await toolbarView(page, "Grid view");
   const img = row(page, "/thumbs-e2e/wide.png").locator("img");
   await expect(img).toHaveAttribute("src", /\/thumb\?.*w=256/);
   await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBe(256);
-  await page.getByRole("button", { name: "List view" }).click();
+  await toolbarView(page, "List view");
 });
 
 async function putText(page: Page, path: string, body: string) {
@@ -1924,7 +1965,7 @@ test("keeps folders created on implicit-folder mounts until a file lands in them
     await route.fulfill({ response: res, json: body });
   });
   await openMount(page, "Scratch (memory)");
-  await page.getByRole("button", { name: "New folder" }).click();
+  await toolbarNew(page, "New folder");
   await page.getByRole("dialog").getByRole("textbox").fill("flat-e2e");
   await page.getByRole("button", { name: "Create" }).click();
   await expect(row(page, "/flat-e2e")).toBeVisible();
@@ -1954,8 +1995,8 @@ test("the single workspace layout uses the drive list look", async ({ page }) =>
   const bar = page.getByRole("toolbar", { name: "1 selected" });
   await expect(bar).toBeVisible();
   await expect(bar.getByRole("button", { name: "Delete" })).toHaveClass(/text-destructive/);
-  await expect(page.getByRole("button", { name: "New folder" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Sort by" })).toHaveText("");
+  await expect(page.getByRole("button", { name: "New", exact: true })).toBeVisible();
+  await expect(fmHeader(page).getByRole("button", { name: "View", exact: true })).toHaveText("");
   const box = (await bar.boundingBox())!;
   const list = (await page.getByRole("grid").boundingBox())!;
   expect(box.y + box.height).toBeGreaterThan(list.y + list.height - 40);

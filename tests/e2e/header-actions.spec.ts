@@ -28,6 +28,45 @@ test("sits after Empty trash in the trash view", async ({ page }) => {
   expect(host.x).toBeGreaterThan(empty.x);
 });
 
+test.describe("mid-width manager", () => {
+  test.use({
+    viewport: { width: 700, height: 600 },
+  });
+
+  test("keeps the path, search, toolbar and host action on one row", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("fm:layout", "single"));
+    await page.goto("/?actions");
+    const header = page.locator("header").filter({
+      has: page.getByRole("button", { name: "Up" }),
+    });
+    const y = async (name: string) => (await header.getByRole("button", { name, exact: true }).boundingBox())!.y;
+    const up = await y("Up");
+    for (const name of [
+      "New",
+      "Filter",
+      "View",
+      "Refresh",
+      "Details",
+      "Host action",
+    ])
+      expect(Math.abs(await y(name) - up)).toBeLessThan(4);
+    const path = (await header.getByRole("navigation", { name: "Path" }).boundingBox())!;
+    expect(path.width).toBeGreaterThanOrEqual(96);
+    await header.getByRole("button", { name: "New", exact: true }).click();
+    for (const name of [
+      "New folder",
+      "New text file",
+      "Upload files",
+      "Upload folder",
+    ])
+      await expect(page.getByRole("menuitem", { name, exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await header.getByRole("button", { name: "View", exact: true }).click();
+    await expect(page.getByRole("menuitemradio", { name: "Grid view" })).toBeVisible();
+    await expect(page.getByRole("menuitemradio", { name: "Descending" })).toBeVisible();
+  });
+});
+
 test.describe("narrow manager", () => {
   // The manager is narrower than 640px: it shows the tree or the main pane, one at a time.
   test.use({

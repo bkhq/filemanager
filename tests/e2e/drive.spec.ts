@@ -398,14 +398,25 @@ test("hides list columns by container width", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Size", exact: true })).toBeHidden();
 });
 
-test("each path step opens a picker; folders navigate", async ({ page }) => {
+test("the last path step opens a picker; earlier steps navigate", async ({ page }) => {
   await openDrive(page, DIR);
   const bar = page.getByRole("navigation", { name: "Path" });
-  await bar.getByRole("button", { name: "drive-e2e" }).click();
+  await bar.getByRole("button", { name: "drive-e2e", exact: true }).click();
   await page.getByRole("menuitem", { name: "notes" }).click();
   await expect(row(page, "/notes/todo.txt")).toBeVisible();
   await expect(page.getByRole("menu")).toHaveCount(0);
   await expect(bar).toContainText("notes");
+  // The mount step goes back to the root; its separator lists the root.
+  await bar.getByRole("button").first().click();
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(row(page, "/notes")).toBeVisible();
+  await row(page, "/notes").dblclick();
+  await expect(row(page, "/notes/todo.txt")).toBeVisible();
+  await bar.getByRole("button", { name: /^Contents of / }).click();
+  await page.getByRole("menuitem", {
+    name: DIR.slice(1),
+  }).click();
+  await expect(bar).toContainText("drive-e2e");
 });
 
 test("switches between the workspace and drive views from the demo header", async ({ page }) => {

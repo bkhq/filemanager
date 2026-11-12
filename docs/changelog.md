@@ -448,3 +448,11 @@ Audit fixes delivered (20261110-0700-filen-audit-fixes), uncommitted in the main
 ## 2026-11-10 19:40 [pitfall]
 
 A Playwright run clears `test-results/`; two suites running at once in the same checkout (e.g. one in a container that skips the port lock) break each other's trace writes with ENOENT. Take `/tmp/fm-e2e-4317.lock` around container runs too.
+
+## 2026-11-11 16:20 [progress]
+
+Workspace header compacted (20261111-1600-compact-folder-toolbar): one row at 640px and wider, "New" menu (folder, text file, uploads) and "View" menu (list / grid, sort) replace five icon buttons. Pitfall: a Base UI radio item keeps its menu open unless it has `closeOnClick`; without it the next click on the trigger closes the menu instead of opening it.
+
+## 2026-11-12 09:30 [progress]
+
+Path bar (20261112-0900-path-bar-navigate): a folder step goes to its folder, the separator after it opens the picker of its entries, the last step keeps the sibling picker. In the explorer layout the step closes the open file and the main pane lists that folder (`ManagerList` under the explorer header, no folder toolbar) until a file opens again; tree clicks still keep the open file. Workspace header at 640px and wider: the path keeps its content width and the search box shrinks first (`shrink-100`, down to `min-w-40`). Pitfall for e2e: the separators are buttons named "Contents of <folder>", so a non-exact `getByRole("button", { name: "<folder>" })` in the path bar now matches two elements.
