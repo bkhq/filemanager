@@ -463,7 +463,7 @@ Path bar (20261112-0900-path-bar-navigate): a folder step goes to its folder, th
 
 ## 2026-11-16 [progress]
 
-v1.0.0 released: the first stable registry, published at `/v1.0.0/r/` and `/r/`.
+v1.0.0 tagged: the first stable registry. The Pages deploy for the tag is pending the `v*` tag rule on the `github-pages` environment (needs repository admin); until then `/next/r/` serves the same code.
 
 ## 2026-11-16 [pitfall]
 
