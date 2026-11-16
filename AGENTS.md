@@ -110,4 +110,5 @@ beyond a trivial change gets a task and an approved plan before implementation.
 
 Write code, comments, docs and commit messages in English; user-facing strings follow
 `labels.ts`. Update `README.md` when an option a host sets changes, and `docs/architecture.md`
-when an interface or route changes. Record new pitfalls in `docs/changelog.md`.
+plus `docs/http-api.md` (the wire contract for non-TypeScript backends) when an interface or
+route changes. Record new pitfalls in `docs/changelog.md`.

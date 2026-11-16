@@ -449,6 +449,10 @@ Audit fixes delivered (20261110-0700-filen-audit-fixes), uncommitted in the main
 
 A Playwright run clears `test-results/`; two suites running at once in the same checkout (e.g. one in a container that skips the port lock) break each other's trace writes with ENOENT. Take `/tmp/fm-e2e-4317.lock` around container runs too.
 
+## 2026-11-11 15:50 [progress]
+
+`docs/http-api.md` added (20261111-1535-http-api-doc): the wire contract for hosts that implement the routes in another language — sidecar vs native, error codes, JSON shapes, required and optional routes, upload sessions, trash, the security rules a port must keep. `docs/architecture.md` §3.4 brought back in line with the router (`order` not `dir`, `GET /archive`, `/thumb`, `/zip/*`, `/changes*`, the `ops` body, the `authorize` signature; `versions` / `watch` marked as planned). Route changes now update both documents.
+
 ## 2026-11-11 16:20 [progress]
 
 Workspace header compacted (20261111-1600-compact-folder-toolbar): one row at 640px and wider, "New" menu (folder, text file, uploads) and "View" menu (list / grid, sort) replace five icon buttons. Pitfall: a Base UI radio item keeps its menu open unless it has `closeOnClick`; without it the next click on the trigger closes the menu instead of opening it.
@@ -456,3 +460,11 @@ Workspace header compacted (20261111-1600-compact-folder-toolbar): one row at 64
 ## 2026-11-12 09:30 [progress]
 
 Path bar (20261112-0900-path-bar-navigate): a folder step goes to its folder, the separator after it opens the picker of its entries, the last step keeps the sibling picker. In the explorer layout the step closes the open file and the main pane lists that folder (`ManagerList` under the explorer header, no folder toolbar) until a file opens again; tree clicks still keep the open file. Workspace header at 640px and wider: the path keeps its content width and the search box shrinks first (`shrink-100`, down to `min-w-40`). Pitfall for e2e: the separators are buttons named "Contents of <folder>", so a non-exact `getByRole("button", { name: "<folder>" })` in the path bar now matches two elements.
+
+## 2026-11-16 [progress]
+
+v1.0.0 released: the first stable registry, published at `/v1.0.0/r/` and `/r/`.
+
+## 2026-11-16 [pitfall]
+
+The first tag deploy was rejected ("Tag is not allowed to deploy to github-pages due to environment protection rules"): the `github-pages` environment only allowed `main`. Add the `v*` tag rule before pushing a release tag; a rejected run can be retried with `gh run rerun <id> --failed` once the rule exists.

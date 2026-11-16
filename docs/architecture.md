@@ -140,19 +140,20 @@ interface FmEntry {
   id?: string;               // stable id from drivers that have one (managed store, host adapters)
   name: string;
   kind: "file" | "dir";
-  size?: number;             // dirs: optional (indexed drivers only)
+  size: number;              // 0 for dirs
   mtime: string;             // ISO
   mime?: string;
   etag: string;              // optimistic concurrency token
-  caps: EntryCaps;           // effective capabilities for the caller
+  caps: FmCaps;              // effective capabilities for the caller
   ignored?: boolean;         // matched by an ignore rule (git)
   hasSubfolders?: boolean;   // folders: holds folders (drivers that know cheaply)
   extra?: Record<string, string | number | boolean | null>; // host data shown by the UI (owner, shared…)
 }
 ```
 
-`etag` unifies bkd's `baseModifiedAt` and bithk's `version`: writes, renames
-and deletes accept `If-Match`, conflicts return `412 ETAG_MISMATCH`.
+`etag` unifies bkd's `baseModifiedAt` and bithk's `version`: `PUT /write`
+accepts `If-Match`, conflicts return `412 ETAG_MISMATCH`. Renames, moves and
+deletes are not conditional.
 
 ### 3.2 `FmDriver` interface (server)
 
@@ -223,11 +224,11 @@ createFmRouter({
     { id: "ws", label: "Workspace", driver: ws },
     { id: "drive", label: "My files", driver: managed({ db, owner: ctx.user.id, blobs: s3(...) }) },
   ],
-  authorize: async (ctx, action, target) => boolean | FmCaps, // host policy (Zanzibar, project roles…)
+  authorize: async (ctx, { mount, path }) => FmCaps, // host policy (Zanzibar, project roles…); no `read` → 404
   onEvent?: (ctx, event: FmChangeEvent) => void | Promise<void>,
   limits: { maxUploadBytes, maxListEntries, archiveMaxBytes, archiveMaxEntries,
             uploadPartSize, maxSessionUploadBytes, uploadSessionTtlMs,
-            thumbnailConcurrency }, // thumbnail hooks running at once (default 4); the rest queue FIFO
+            thumbnailMaxBytes, thumbnailConcurrency }, // thumbnail hooks running at once (default 4); the rest queue FIFO
 });
 // → Hono sub-app, host mounts it: app.route("/api/fm", fm.routes)
 ```
@@ -255,28 +256,35 @@ createFmRouter({
 ### 3.4 HTTP API
 
 All under the host prefix, mount id in the path, entry path in the query
-(avoids bkd's URL-marker parsing and base58 roots).
+(avoids bkd's URL-marker parsing and base58 roots). The table is the overview;
+[`http-api.md`](http-api.md) is the wire contract (JSON shapes, headers, error
+codes, behaviour rules) for hosts that implement these routes in another
+language.
 
 | Method | Path | Notes |
 | --- | --- | --- |
 | GET | `/mounts` | Mounts visible to caller + driver caps |
 | GET | `/m/:mount/stat?path=` | |
-| GET | `/m/:mount/list?path=&cursor=&limit=&sort=&dir=&q=&hidden=&ignored=` | Cursor paging, dirs first, `q` = name filter of direct children; `hidden=0\|1` / `ignored=0\|1` (default 1) drop dot entries / driver-ignored entries; entries carry an optional `ignored` flag and the result an `ignored` count |
+| GET | `/m/:mount/list?path=&cursor=&limit=&sort=&order=&q=&hidden=&ignored=` | Cursor paging, dirs first, `q` = name filter of direct children; `hidden=0\|1` / `ignored=0\|1` (default 1) drop dot entries / driver-ignored entries; entries carry an optional `ignored` flag and the result an `ignored` count |
 | GET | `/m/:mount/usage?path=` | Folder size `{ bytes, files, dirs, truncated }`, walk capped by `archiveMaxEntries` |
-| GET | `/m/:mount/read?path=&inline=&thumb=` | Range, ETag, presign 302 when allowed, `thumb` widths whitelist |
-| PUT | `/m/:mount/write?path=` | Small writes / editor save, `If-Match` |
-| POST | `/m/:mount/mkdir` | `{ path }` |
-| POST | `/m/:mount/ops` | Batch `{ op: move/copy/delete/rename, items, dest, destMount?, conflict: "fail"/"rename"/"overwrite" }`; bounded size, per-item results. A `destMount` other than `:mount` streams content between the two drivers file by file: `copy`/`move` on the source and `write` on the destination are authorized, the walk is bounded by `archiveMaxEntries` / `archiveMaxBytes` before anything is written, a failed item removes its partial copy, and `move` deletes the source (to the trash when enabled) only after the whole copy landed. An item whose computed target lands in a hidden folder (trash or `/.fm-uploads`) is rejected with `INVALID`. Such a copy runs inside one request, so on Workers it can hit the request-duration limit; the walk limits bound it |
-| GET | `/m/:mount/search?q=&hidden=&ignored=` | Driver search or fallback walk with limits; `hidden=0\|1` / `ignored=0\|1` (default 1) drop results below a dot segment / driver-ignored entries |
-| POST | `/m/:mount/archive` | Streamed zip (fflate passthrough, caps from bithk) |
+| GET | `/m/:mount/read?path=&download=` | Range, ETag / `If-None-Match`; inline only for safe types (script-capable ones as `text/plain`), `download=1` forces an attachment |
+| GET | `/m/:mount/thumb?path=&w=` | Resized image from the `thumbnail` hook, `w` ∈ 128 / 256 / 512; 404 when there is none |
+| PUT | `/m/:mount/write?path=&conflict=` | Raw body: uploads below the session threshold and editor saves; `If-Match`; `conflict` `overwrite` (default) / `fail` / `rename` |
+| POST | `/m/:mount/mkdir` | `{ path }` → `201` |
+| POST | `/m/:mount/ops` | Batch, one of `{ op: "delete", paths, permanent? }`, `{ op: "rename", path, name }`, `{ op: "move" / "copy", paths, dest, destMount?, conflict: "fail"/"rename"/"overwrite" }`; at most 200 paths, per-item results. A `destMount` other than `:mount` streams content between the two drivers file by file: `copy`/`move` on the source and `write` on the destination are authorized, the walk is bounded by `archiveMaxEntries` / `archiveMaxBytes` before anything is written, a failed item removes its partial copy, and `move` deletes the source (to the trash when enabled) only after the whole copy landed. An item whose computed target lands in a hidden folder (trash or `/.fm-uploads`) is rejected with `INVALID`. Such a copy runs inside one request, so on Workers it can hit the request-duration limit; the walk limits bound it |
+| GET | `/m/:mount/search?path=&q=&limit=&mode=&hidden=&ignored=` | Driver search or fallback walk with limits; `mode` `substring` (name) or `fuzzy` (path, ranked); `hidden=0\|1` / `ignored=0\|1` (default 1) drop results below a dot segment / driver-ignored entries |
+| GET | `/m/:mount/archive?path=` | Streamed zip (fflate passthrough, caps from bithk); `path` repeats, at most 100 |
+| GET | `/m/:mount/zip/entries?path=`, `/zip/read?path=&entry=` | Browse a stored zip without extracting: central directory, then one entry's bytes (archive plugin) |
+| GET | `/m/:mount/changes`, `/changes/base?path=` | When the driver has `changes`: files that differ from its baseline, and the baseline bytes of one (review plugin) |
 | POST | `/m/:mount/uploads` | Create session `{ path, size, conflict }` → `{ id, mode: "chunked" / "s3-multipart", path, size, partSize, parts, received, urls?, expiresAt }`; `path` is the final target (a free name for `conflict: "rename"`). `s3-multipart` when the driver presigns parts (`urls`), else `chunked` |
 | GET | `/m/:mount/uploads/:id` | Session status: `received` part numbers, fresh `urls` |
 | PUT | `/m/:mount/uploads/:id/parts/:n` | Raw part body, parts numbered from 1; length must be `partSize` (the last part the remainder); `chunked` only → `{ n, size }` |
 | POST | `/m/:mount/uploads/:id/complete` | Assembles the parts into `path` → `FmEntry`; one `write` change event; retryable on failure |
 | DELETE | `/m/:mount/uploads/:id` | Abort, discards stored parts |
 | GET/POST | `/m/:mount/trash`, `/trash/restore`, `/trash/purge` | When the mount sets `trash: true`. Implemented in the router on top of any driver: `/.fm-trash/<id>/<name>` + `<id>.json`, hidden from every other route; items are authorized against their original path. A driver-native `TrashApi` (managed store) can replace it later |
-| GET/POST | `/m/:mount/versions?path=`, `/versions/restore` | When `caps.versions` |
-| GET | `/m/:mount/watch?path=` (SSE) | When `caps.watch` (local via fs.watch; Bun only) |
+
+Planned, not built: `/m/:mount/versions`, `/versions/restore` and an SSE
+`/m/:mount/watch`.
 
 Upload: own simple chunked protocol (resume = query received parts) rather
 than full tus, so S3 multipart and local chunk assembly share one client path.
@@ -310,8 +318,9 @@ including both mounts of a cross-mount move/copy, trash restore/purge, upload
 Changes made outside the router (other processes, other router instances) show
 up in later pages only after the TTL; the first page is always current.
 
-OpenAPI via `hono-openapi` per the pma-bun baseline; the client is typed
-from the same zod schemas in `fm/core`.
+OpenAPI via `hono-openapi` per the pma-bun baseline (`apps/fm-api` serves the
+document at `/openapi.json`); the client is typed from the same zod schemas in
+`fm/core`.
 
 ## 4. UI (`fm/react`)
 

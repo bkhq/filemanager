@@ -18,7 +18,7 @@ Register the namespace in the host's `components.json`:
 ```
 
 `/r/` is the latest release. To pin a release, use its tag in the path, e.g.
-`https://bkhq.github.io/filemanager/v0.1.0/r/{name}.json`; `/next/r/` tracks `main`.
+`https://bkhq.github.io/filemanager/v1.0.0/r/{name}.json`; `/next/r/` tracks `main`.
 
 Then add what you need (dependencies are pulled in automatically):
 
@@ -377,6 +377,15 @@ Folder entries may also carry `hasSubfolders` when the driver knows it cheaply (
 local set it, S3 / R2 do not); the drive tree then shows folders without subfolders as
 leaves before they are opened. The contract suite checks the hint when it is given.
 
+### Backend in another language
+
+The UI only speaks HTTP, so a host without a Bun or Workers backend has two options: run
+`createFmRouter` as a sidecar behind its own reverse proxy and authentication, or implement
+the routes natively. [`docs/http-api.md`](docs/http-api.md) is the wire contract for the
+second case: JSON shapes, headers, error codes, which routes are optional and the security
+rules a port must keep. `apps/fm-api` serves the matching OpenAPI 3.1 document at
+`/openapi.json`.
+
 ## Publishing
 
 The Registry workflow (`.github/workflows/registry.yml`) deploys to GitHub Pages:
@@ -406,7 +415,7 @@ Repository map for maintainers:
 | `registry.json` | registry items; add every new shipped file here or `shadcn add` will miss it (`registry:smoke` catches this) |
 | `apps/fm-api`, `apps/fm-web` | dev / e2e host; `seed.ts` fills `.tmp/fm-root` once when empty |
 | `tests/e2e` | Playwright flows against the built app |
-| `docs/architecture.md` | design and API surface; `docs/changelog.md` records decisions and pitfalls |
+| `docs/architecture.md` | design and API surface; `docs/http-api.md` is the wire contract for non-TypeScript backends; `docs/changelog.md` records decisions and pitfalls |
 
 Dev apps (two processes, routed by nsl at `fm.localhost:3355`; `nsl` is a global CLI, not a dependency):
 
