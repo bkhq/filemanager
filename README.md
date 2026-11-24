@@ -193,9 +193,10 @@ context-menu actions.
 ```tsx
 import { archivePlugin } from "@/fm/plugins/archive";   // bunx shadcn add @bkhq/fm-plugin-archive
 import { markdownPlugin } from "@/fm/plugins/markdown"; // bunx shadcn add @bkhq/fm-plugin-markdown
+import { mermaidPlugin } from "@/fm/plugins/mermaid";   // bunx shadcn add @bkhq/fm-plugin-mermaid
 import { sheetPlugin } from "@/fm/plugins/sheet";       // bunx shadcn add @bkhq/fm-plugin-sheet
 
-<FileManager baseUrl="/api/fm" plugins={[sheetPlugin(), markdownPlugin(), archivePlugin()]} />;
+<FileManager baseUrl="/api/fm" plugins={[sheetPlugin(), markdownPlugin(), mermaidPlugin(), archivePlugin()]} />;
 ```
 
 The Markdown plugin renders with streamdown, whose classes Tailwind must see.
@@ -211,6 +212,12 @@ URLs; others show their alt text, so opening an untrusted file does not tell a
 third-party host the viewer's IP address or when the file was read.
 `markdownPlugin({ remoteImages: true })` loads images from any URL. Links are
 unaffected.
+
+The Mermaid plugin opens `.mmd` / `.mermaid` files as the diagram (with the
+source editor instead or beside it) and, next to the Markdown plugin, draws
+```` ```mermaid ```` blocks in the Markdown preview. `mermaid` loads with the
+first diagram; diagrams follow the `dark` class on `<html>` and render with
+mermaid's `strict` security level.
 
 A plugin is a plain object (`FmPlugin` in `src/fm/react/plugins.ts`):
 
@@ -236,7 +243,11 @@ const logPlugin: FmPlugin = {
 ```
 
 Previewers get `actions` (an element in the preview header to portal buttons
-into) and `onDirtyChange` (to guard unsaved edits). Actions get `ctx` with the
+into), `onDirtyChange` (to guard unsaved edits) and `codeRenderers` (every
+plugin's fenced code block renderers, for previewers that render text). A plugin
+adds one with `codeRenderers: [{ language: "mermaid", component }]`; the
+component receives `{ code, language }`. A previewer for a text format can wrap
+`SourcePreview` (`src/fm/react/source-preview.tsx`) and pass only `render`. Actions get `ctx` with the
 client, current mount / path, `refresh`, `preview` and `fail`.
 
 ### Large uploads

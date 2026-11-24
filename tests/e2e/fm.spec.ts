@@ -251,7 +251,7 @@ test("opens markdown in the editor and toggles the preview", async ({ page }) =>
   await expect(dialog.locator(".cm-content")).toBeHidden();
   // With the editor hidden the preview takes the whole row.
   const width = async (sel: string) => (await dialog.locator(sel).boundingBox())!.width;
-  expect(await width("[data-fm-markdown-preview]")).toBeGreaterThan(await width("[data-slot=resizable-panel-group]") - 2);
+  expect(await width("[data-fm-rendered]")).toBeGreaterThan(await width("[data-slot=resizable-panel-group]") - 2);
   await dialog.getByRole("button", { name: "Reopen as source", exact: true }).click();
   expect(await width(".cm-editor")).toBeGreaterThan(await width("[data-slot=resizable-panel-group]") - 2);
   await expect(dialog.locator(".cm-content")).toContainText("# Guide");
@@ -263,7 +263,7 @@ test("previews markdown to the side, following unsaved edits", async ({ page }) 
   await row(page, "/samples/guide.md").dblclick();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "Open preview to the side" }).click();
-  const preview = dialog.locator("[data-fm-markdown-preview]");
+  const preview = dialog.locator("[data-fm-rendered]");
   await expect(preview.getByRole("heading", { name: "Guide", exact: true })).toBeVisible();
   await expect(dialog.locator(".cm-content")).toBeVisible();
   const sized = await dragHandle(page, dialog.getByRole("separator", { name: "Resize panes" }), preview, -120);
@@ -275,6 +275,23 @@ test("previews markdown to the side, following unsaved edits", async ({ page }) 
   await dialog.getByRole("button", { name: "More" }).click();
   await page.getByRole("menuitem", { name: "Discard changes" }).click();
   await expect(preview.getByRole("heading", { name: "Live heading" })).toHaveCount(0);
+});
+
+test("draws Mermaid files and Mermaid blocks in Markdown", async ({ page }) => {
+  await openMount(page, "Local disk");
+  await row(page, "/samples").dblclick();
+  await row(page, "/samples/flow.mmd").dblclick();
+  const dialog = page.getByRole("dialog");
+  const diagram = dialog.locator("[data-fm-rendered] [data-fm-mermaid]");
+  await expect(diagram.locator("svg")).toBeVisible();
+  await expect(diagram).toContainText("Ask the user");
+  await dialog.getByRole("button", { name: "Reopen as source" }).click();
+  await expect(dialog.locator(".cm-content")).toContainText("flowchart LR");
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await row(page, "/samples/diagram.md").dblclick();
+  await dialog.getByRole("button", { name: "Open preview", exact: true }).click();
+  await expect(diagram.locator("svg")).toBeVisible();
+  await expect(diagram).toContainText("Router");
 });
 
 test("moves with cut and paste", async ({ page }) => {

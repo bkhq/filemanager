@@ -345,7 +345,15 @@ Extension points:
 
 - **Preview registry**: plugins add `previewers: [{ id, match: (entry) => bool, component, priority }]`.
   Built-ins: image (thumb + full), pdf, video/audio, text/code (CodeMirror, from bkd),
-  markdown, unknown → download. Hosts add e.g. Univer spreadsheet.
+  markdown, unknown → download. Hosts add e.g. Univer spreadsheet. Built-ins need nothing beyond
+  the browser and CodeMirror; formats with their own dependencies are plugin registry items
+  (markdown, sheet, archive, mermaid).
+- **Code block renderers**: plugins add `codeRenderers: [{ language, component }]`; previewers
+  that render text with fenced code (the Markdown preview) get every plugin's renderers as
+  `PreviewProps.codeRenderers`, so `mermaidPlugin()` draws ```` ```mermaid ```` blocks without
+  the Markdown plugin depending on mermaid.
+- **`SourcePreview`** (`react/source-preview.tsx`): the text editor plus a rendered view
+  (instead of it or beside it, following unsaved edits); text-format plugins build on it.
 - **Editor registry**: text/code editor with draft persistence and `etag` conflict handling.
 - **Actions**: the `actions` prop (`FmFileAction[]`) extends the entry context menu
   (bithk's `getCustomActions`, generalised to multi-select); host adds Share, Attach to issue…

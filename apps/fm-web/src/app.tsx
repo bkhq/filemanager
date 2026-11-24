@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { archivePlugin } from "@/fm/plugins/archive";
 import { markdownPlugin } from "@/fm/plugins/markdown";
+import { mermaidPlugin } from "@/fm/plugins/mermaid";
 import { reviewPlugin } from "@/fm/plugins/review";
 import { sheetPlugin } from "@/fm/plugins/sheet";
 import { DriveManager } from "@/fm/react/drive-manager";
@@ -26,6 +27,7 @@ import { enLabels, zhLabels } from "@/fm/react/labels";
 const plugins = [
   sheetPlugin(),
   markdownPlugin(),
+  mermaidPlugin(),
   archivePlugin(),
   reviewPlugin(),
 ];

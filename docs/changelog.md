@@ -476,3 +476,11 @@ Cleaner workspace header (20261124-0900-cleaner-header): search behind an icon b
 ## 2026-11-24 10:30 [pitfall]
 
 A new e2e folder at the shared root sorts in among the fixtures and can push later tests' rows out of the virtualized list (`/pause-e2e` in `upload.spec.ts`), or become the tree's first child (keyboard tree test). Delete such fixtures in `finally`, or name them so they sort out of the way.
+
+## 2026-11-24 13:30 [progress]
+
+Mermaid plugin (20261124-1200-mermaid-plugin): `fm-plugin-mermaid` opens `.mmd` / `.mermaid` as diagrams and draws ```` ```mermaid ```` blocks in the Markdown preview through the new `FmPlugin.codeRenderers`. The Markdown view now builds on the shared `SourcePreview`. Verified: `bun run check`, full e2e (143 passed); mermaid stays in lazy chunks.
+
+## 2026-11-24 13:30 [pitfall]
+
+streamdown's `CustomRenderer.component` is `ComponentType<CustomRendererProps>`; under `exactOptionalPropertyTypes` a plugin's `ComponentType<{ code, language }>` is not assignable (class component variance), so the Markdown view wraps each renderer in a function component.

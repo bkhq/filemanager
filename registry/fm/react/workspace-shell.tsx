@@ -90,6 +90,7 @@ export function WorkspaceShell({ props, fm }: { props: FileManagerProps; fm: FmC
     labels,
     qc,
     pluginPreviewers,
+    pluginCodeRenderers,
     features,
     storageKey,
     mount,
@@ -508,6 +509,7 @@ export function WorkspaceShell({ props, fm }: { props: FileManagerProps; fm: FmC
                               labels={labels}
                               editable={features.edit}
                               previewers={pluginPreviewers}
+                              codeRenderers={pluginCodeRenderers}
                               actions={paneActions}
                               onDirtyChange={(d) => {
                                 paneDirtyRef.current = d;

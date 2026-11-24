@@ -381,6 +381,11 @@
           "target": "~/src/fm/react/shortcuts-dialog.tsx"
         },
         {
+          "path": "registry/fm/react/source-preview.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/react/source-preview.tsx"
+        },
+        {
           "path": "registry/fm/react/spring-load.ts",
           "type": "registry:file",
           "target": "~/src/fm/react/spring-load.ts"
@@ -706,6 +711,30 @@
           "path": "registry/fm/plugins/markdown-images.ts",
           "type": "registry:file",
           "target": "~/src/fm/plugins/markdown-images.ts"
+        }
+      ]
+    },
+    {
+      "name": "fm-plugin-mermaid",
+      "type": "registry:block",
+      "title": "File manager: Mermaid diagrams",
+      "description": "Optional plugin: .mmd / .mermaid files open as diagrams with a source toggle, and ```mermaid blocks render as diagrams in the Markdown preview. Pass mermaidPlugin() to <FileManager plugins>.",
+      "dependencies": [
+        "mermaid@12.3.0"
+      ],
+      "registryDependencies": [
+        "@bkhq/fm-react"
+      ],
+      "files": [
+        {
+          "path": "registry/fm/plugins/mermaid.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/plugins/mermaid.ts"
+        },
+        {
+          "path": "registry/fm/plugins/mermaid-view.tsx",
+          "type": "registry:file",
+          "target": "~/src/fm/plugins/mermaid-view.tsx"
         }
       ]
     }
