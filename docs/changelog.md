@@ -484,3 +484,11 @@ Mermaid plugin (20261124-1200-mermaid-plugin): `fm-plugin-mermaid` opens `.mmd` 
 ## 2026-11-24 13:30 [pitfall]
 
 streamdown's `CustomRenderer.component` is `ComponentType<CustomRendererProps>`; under `exactOptionalPropertyTypes` a plugin's `ComponentType<{ code, language }>` is not assignable (class component variance), so the Markdown view wraps each renderer in a function component.
+
+## 2026-11-24 08:15 [progress]
+
+v1.1.0 released: `fm-plugin-mermaid`, `FmPlugin.codeRenderers`, `SourcePreview`, cleaner workspace header. `/r/` and `/v1.1.0/r/` serve it; the `github-pages` environment now has the `v*` tag rule.
+
+## 2026-11-24 08:15 [pitfall]
+
+A Registry run on a tag ref reports a successful Pages deploy, but the site keeps serving the last deploy from `main` (checked by `last-modified`). Every run builds all tags, so after pushing a release tag, publish with `gh workflow run registry.yml --ref main` and check `/r/` and `/v{version}/r/`. Missing files on Pages may answer 503 instead of 404.
