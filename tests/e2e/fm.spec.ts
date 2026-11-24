@@ -50,6 +50,12 @@ function fmHeader(page: Page) {
   return page.locator("header").last();
 }
 
+/** Opens the search box behind the header's search button. */
+async function openSearch(page: Page) {
+  await page.getByRole("button", { name: "Search in this folder" }).click();
+  return page.getByRole("searchbox", { name: "Search in this folder" });
+}
+
 /** Picks an item of the folder toolbar's "New" menu. */
 async function toolbarNew(page: Page, item: string) {
   await page.getByRole("button", { name: "New", exact: true }).click();
@@ -500,7 +506,7 @@ test("restores and deletes several trash items at once", async ({ page }) => {
 
 test("filters the current folder by name", async ({ page }) => {
   await openMount(page, "Local disk");
-  await page.getByRole("searchbox", { name: "Search in this folder" }).fill("NOT");
+  await (await openSearch(page)).fill("NOT");
   await expect(row(page, "/notes")).toBeVisible();
   await expect(row(page, "/docs")).toHaveCount(0);
   await page.getByRole("searchbox").fill("zzz");
@@ -509,17 +515,81 @@ test("filters the current folder by name", async ({ page }) => {
 
 test("searches everywhere below the current folder", async ({ page }) => {
   await openMount(page, "Local disk");
-  await page.getByRole("searchbox", { name: "Search in this folder" }).fill("todo");
+  await (await openSearch(page)).fill("todo");
   await page.getByRole("button", { name: "This folder" }).click();
   await page.getByRole("menuitem", { name: "Everywhere below" }).click();
   const hit = row(page, "/notes/todo.txt");
   await expect(hit).toBeVisible();
   await expect(hit).toContainText("/notes");
   await hit.dblclick();
-  await expect(page.getByRole("searchbox")).toHaveValue("");
+  await expect(page.getByRole("searchbox")).toHaveCount(0);
   await expect(page.getByRole("navigation").getByText("notes", { exact: true })).toBeVisible();
   await expect(row(page, "/notes/config.json")).toBeVisible();
   await expect(row(page, "/notes/todo.txt")).toHaveAttribute("aria-selected", "true");
+});
+
+test("search sits behind a button and folds back when left empty", async ({ page }) => {
+  await openMount(page, "Local disk");
+  const button = page.getByRole("button", { name: "Search in this folder" });
+  const box = await openSearch(page);
+  await expect(box).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(box).toHaveCount(0);
+  await expect(button).toBeVisible();
+  // A query keeps the box open after the focus leaves it.
+  await (await openSearch(page)).fill("notes");
+  await row(page, "/notes").click();
+  await expect(box).toHaveValue("notes");
+  // Picking a scope does not fold an empty box.
+  await box.fill("");
+  await page.getByRole("button", { name: "This folder" }).click();
+  await page.getByRole("menuitem", { name: "Everywhere below" }).click();
+  await expect(box).toBeVisible();
+  await page.getByRole("button", { name: "Everywhere below" }).click();
+  await page.getByRole("menuitem", { name: "This folder" }).click();
+  await menuClosed(page);
+  await row(page, "/notes").click();
+  await expect(box).toHaveCount(0);
+});
+
+test("the path bar folds the middle of a long path", async ({ page }) => {
+  for (const dir of [
+    "/path-deep-e2e",
+    "/path-deep-e2e/a",
+    "/path-deep-e2e/a/b",
+    "/path-deep-e2e/a/b/c",
+  ]) {
+    await page.request.post("/api/fm/m/local/mkdir", {
+      data: { path: dir },
+    });
+  }
+  await putText(page, "/path-deep-e2e/a/b/c/deep.txt", "x");
+  try {
+    await openMount(page, "Local disk");
+    await (await openSearch(page)).fill("path-deep-e2e");
+    await row(page, "/path-deep-e2e").dblclick();
+    await row(page, "/path-deep-e2e/a").dblclick();
+    await row(page, "/path-deep-e2e/a/b").dblclick();
+    await row(page, "/path-deep-e2e/a/b/c").dblclick();
+    const bar = page.getByRole("navigation", { name: "Path" });
+    // Mount, first folder, "…", the last two steps (separators are icons).
+    await expect(bar).toHaveText("Local diskpath-deep-e2e…bc");
+    await expect(bar.getByRole("button", { name: "a", exact: true })).toHaveCount(0);
+    await bar.getByRole("button", { name: "Show full path" }).click();
+    await page.getByRole("menuitem", { name: "a", exact: true }).click();
+    await expect(row(page, "/path-deep-e2e/a/b")).toBeVisible();
+    await expect(bar.getByRole("button", { name: "Show full path" })).toHaveCount(0);
+  }
+  finally {
+    // Off the shared root again: a late folder pushes later fixtures out of the virtualized list.
+    await page.request.post("/api/fm/m/local/ops", {
+      data: {
+        op: "delete",
+        paths: ["/path-deep-e2e"],
+        permanent: true,
+      },
+    });
+  }
 });
 
 test("quick open finds a nested file with Ctrl+P", async ({ page }) => {
@@ -613,7 +683,7 @@ test("steps through previews and guards unsaved edits", async ({ page }) => {
 test("view-only mode hides every changing action", async ({ page }) => {
   await openMount(page, "Local disk");
   await page.getByRole("checkbox", { name: "View only" }).check();
-  await expect(page.getByRole("searchbox")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Search in this folder" })).toBeVisible();
   await expect(page.getByRole("button", { name: "New", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Storage" }).click();
   await expect(page.getByRole("menuitem", { name: "Manage drives" })).toBeVisible();
@@ -1078,7 +1148,7 @@ test.describe("on a phone", () => {
   test("keeps the search scope inside the search box and clears it", async ({ page }) => {
     await page.goto("/");
     await expect(row(page, "/notes")).toBeVisible();
-    const box = page.getByRole("searchbox", { name: "Search in this folder" });
+    const box = await openSearch(page);
     await box.fill("no");
     const scope = page.getByRole("button", { name: "This folder" });
     expect((await scope.boundingBox())!.x + (await scope.boundingBox())!.width).toBeLessThanOrEqual(390);
@@ -1827,7 +1897,7 @@ test("previews SVG as an image with a source toggle", async ({ page }) => {
   await putText(page, "/svg-e2e/logo.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"20\"><rect width=\"40\" height=\"20\" fill=\"tomato\"/></svg>");
   await openMount(page, "Local disk");
   // The root holds many test folders by now; filter so the row is rendered.
-  await page.getByRole("searchbox", { name: "Search in this folder" }).fill("svg-e2e");
+  await (await openSearch(page)).fill("svg-e2e");
   await row(page, "/svg-e2e").dblclick();
   await row(page, "/svg-e2e/logo.svg").dblclick();
   const dialog = page.getByRole("dialog");
@@ -1842,7 +1912,7 @@ test("previews SVG as an image with a source toggle", async ({ page }) => {
 test("follows changes made on disk while a file is open", async ({ page }) => {
   await putText(page, "/watch-e2e/a.txt", "first");
   await openMount(page, "Local disk");
-  await page.getByRole("searchbox", { name: "Search in this folder" }).fill("watch-e2e");
+  await (await openSearch(page)).fill("watch-e2e");
   await row(page, "/watch-e2e").dblclick();
   await row(page, "/watch-e2e/a.txt").dblclick();
   const editor = page.getByRole("dialog").locator(".cm-content");

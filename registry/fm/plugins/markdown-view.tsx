@@ -1,7 +1,7 @@
 import type { Components, StreamdownProps, UrlTransform } from "streamdown";
 import type { PreviewProps } from "../react/previewers";
 import { code } from "@streamdown/code";
-import { BookOpenIcon, Columns2Icon, FileCodeIcon } from "lucide-react";
+import { Columns2Icon, EyeIcon, FileCodeIcon } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useDefaultLayout } from "react-resizable-panels";
@@ -105,7 +105,7 @@ function Markdown({ remoteImages, ...props }: PreviewProps & { remoteImages: boo
         <>
           {mode === "preview"
             ? <IconButton label={labels.reopenSource} onClick={() => setMode("source")}><FileCodeIcon /></IconButton>
-            : <IconButton label={labels.openPreview} onClick={() => setMode("preview")}><BookOpenIcon /></IconButton>}
+            : <IconButton label={labels.openPreview} onClick={() => setMode("preview")}><EyeIcon /></IconButton>}
           <IconButton
             label={labels.openPreviewToSide}
             aria-pressed={mode === "side"}

@@ -94,3 +94,4 @@ Each task is a single line linking to its detail file. All detailed information 
 - [x] [**20261111-1535-http-api-doc Wire contract for backends in another language**](20261111-1535-http-api-doc.md) `P2`
 - [x] [**20261111-1600-compact-folder-toolbar Compact folder toolbar in the workspace header**](20261111-1600-compact-folder-toolbar.md) `P2`
 - [x] [**20261112-0900-path-bar-navigate Path bar steps navigate; separators open the pickers**](20261112-0900-path-bar-navigate.md) `P2`
+- [x] [**20261124-0900-cleaner-header Cleaner workspace header: search icon, path ellipsis, folded toolbar**](20261124-0900-cleaner-header.md) `P2`

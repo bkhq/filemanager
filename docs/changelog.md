@@ -468,3 +468,11 @@ v1.0.0 tagged: the first stable registry. The Pages deploy for the tag is pendin
 ## 2026-11-16 [pitfall]
 
 The first tag deploy was rejected ("Tag is not allowed to deploy to github-pages due to environment protection rules"): the `github-pages` environment only allowed `main`. Add the `v*` tag rule before pushing a release tag; a rejected run can be retried with `gh run rerun <id> --failed` once the rule exists.
+
+## 2026-11-24 10:30 [progress]
+
+Cleaner workspace header (20261124-0900-cleaner-header): search behind an icon button, quick open only on Ctrl/Cmd+P and the tree pane menu, long paths fold their middle into "…", and a header under 760px folds the folder toolbar into "More". Verified: `bun run check`, full e2e (142 passed).
+
+## 2026-11-24 10:30 [pitfall]
+
+A new e2e folder at the shared root sorts in among the fixtures and can push later tests' rows out of the virtualized list (`/pause-e2e` in `upload.spec.ts`), or become the tree's first child (keyboard tree test). Delete such fixtures in `finally`, or name them so they sort out of the way.

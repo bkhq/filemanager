@@ -2,7 +2,7 @@ import type { FmClient } from "../client/client";
 import type { FmEntry } from "../core/schema";
 import type { FmLabels } from "./labels";
 import { useQuery } from "@tanstack/react-query";
-import { DownloadIcon, FileCodeIcon, ImageIcon } from "lucide-react";
+import { DownloadIcon, EyeIcon, FileCodeIcon } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
@@ -39,7 +39,7 @@ export function SvgPreview(props: PreviewProps) {
     <>
       {actions && createPortal(
         source
-          ? <IconButton label={labels.openPreview} onClick={() => setSource(false)}><ImageIcon /></IconButton>
+          ? <IconButton label={labels.openPreview} onClick={() => setSource(false)}><EyeIcon /></IconButton>
           : <IconButton label={labels.reopenSource} onClick={() => setSource(true)}><FileCodeIcon /></IconButton>,
         actions,
       )}

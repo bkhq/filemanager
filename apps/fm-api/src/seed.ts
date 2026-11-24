@@ -25,6 +25,8 @@ export const SEED: Record<string, string | Uint8Array> = {
   "notes/config.json": "{\n  \"region\": \"aegean\",\n  \"ports\": [\"Piraeus\", \"Mykonos\", \"Naxos\"]\n}\n",
   "images/dot.png": PNG,
   "docs/sample.pdf": PDF,
+  // Deep enough for the path bar to fold its middle into "…".
+  "samples/project/src/shared/components/button.tsx": "export function Button() {\n  return <button type=\"button\">OK</button>;\n}\n",
   "samples/hosts": "127.0.0.1 localhost\n::1 localhost\n",
   "samples/archive.zip": zipSync({
     "README.txt": new TextEncoder().encode("Files inside this archive are listed without extracting it.\n"),

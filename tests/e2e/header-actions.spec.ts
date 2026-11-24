@@ -33,7 +33,7 @@ test.describe("mid-width manager", () => {
     viewport: { width: 700, height: 600 },
   });
 
-  test("keeps the path, search, toolbar and host action on one row", async ({ page }) => {
+  test("folds the folder toolbar into More and keeps one row with the host action", async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem("fm:layout", "single"));
     await page.goto("/?actions");
     const header = page.locator("header").filter({
@@ -42,28 +42,29 @@ test.describe("mid-width manager", () => {
     const y = async (name: string) => (await header.getByRole("button", { name, exact: true }).boundingBox())!.y;
     const up = await y("Up");
     for (const name of [
-      "New",
-      "Filter",
-      "View",
-      "Refresh",
-      "Details",
+      "Search in this folder",
+      "More",
+      "Show sidebar",
       "Host action",
     ])
       expect(Math.abs(await y(name) - up)).toBeLessThan(4);
+    await expect(header.getByRole("button", { name: "Filter", exact: true })).toHaveCount(0);
     const path = (await header.getByRole("navigation", { name: "Path" }).boundingBox())!;
     expect(path.width).toBeGreaterThanOrEqual(96);
-    await header.getByRole("button", { name: "New", exact: true }).click();
+    // An open search box shares the row too, without covering the buttons after it.
+    await header.getByRole("button", { name: "Search in this folder" }).click();
+    const box = (await header.getByRole("searchbox").boundingBox())!;
+    const more = (await header.getByRole("button", { name: "More" }).boundingBox())!;
+    expect(Math.abs(more.y - up)).toBeLessThan(4);
+    expect(box.x + box.width).toBeLessThanOrEqual(more.x);
+    await header.getByRole("button", { name: "More" }).click();
     for (const name of [
       "New folder",
       "New text file",
       "Upload files",
-      "Upload folder",
+      "Refresh",
     ])
       await expect(page.getByRole("menuitem", { name, exact: true })).toBeVisible();
-    await page.keyboard.press("Escape");
-    await header.getByRole("button", { name: "View", exact: true }).click();
-    await expect(page.getByRole("menuitemradio", { name: "Grid view" })).toBeVisible();
-    await expect(page.getByRole("menuitemradio", { name: "Descending" })).toBeVisible();
   });
 });
 

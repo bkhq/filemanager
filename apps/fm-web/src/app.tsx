@@ -1,7 +1,7 @@
 import type { FmEntry } from "@/fm/core/schema";
 import type { FmSidebarOptions } from "@/fm/react/file-manager";
 import type { FmMeta, FmRef } from "@/fm/react/meta";
-import { LanguagesIcon, LayoutPanelLeftIcon, Maximize2Icon, MonitorIcon, MoonIcon, SlidersHorizontalIcon, SunIcon } from "lucide-react";
+import { LanguagesIcon, LayoutPanelLeftIcon, Maximize2Icon, MonitorIcon, MoonIcon, MoveHorizontalIcon, SlidersHorizontalIcon, SunIcon } from "lucide-react";
 import { useState } from "react";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,8 @@ const demoText = {
     views: { workspace: "Workspace", drive: "Drive" },
     theme: "Theme",
     themes: { light: "Light", dark: "Dark", system: "System" },
+    width: "Width",
+    widths: { full: "Full", panel: "Panel (720px)", narrow: "Narrow (480px)" },
   },
   zh: {
     title: "文件管理器",
@@ -65,10 +67,21 @@ const demoText = {
     views: { workspace: "工作区", drive: "网盘" },
     theme: "主题",
     themes: { light: "浅色", dark: "深色", system: "跟随系统" },
+    width: "宽度",
+    widths: { full: "铺满", panel: "面板（720px）", narrow: "窄（480px）" },
   },
 } as const;
 
 const langNames: Record<Lang, string> = { en: "English", zh: "中文" };
+
+/** Manager widths to try the header's folding without resizing the window. */
+type DemoWidth = "full" | "panel" | "narrow";
+const WIDTH_KEY = "fm-web:width";
+const widthClass: Record<DemoWidth, string> = {
+  full: "",
+  panel: "w-[720px] max-w-full self-center",
+  narrow: "w-[480px] max-w-full self-center",
+};
 
 /** The view is read once at load, so switching rewrites `?variant` and reloads. */
 function switchView(view: "workspace" | "drive") {
@@ -223,6 +236,16 @@ function ManagerDemo() {
   // Unmounting and mounting again keeps the query cache, as a host switching tabs would.
   const [mounted, setMounted] = useState(true);
   const [lang, setLang] = useState<Lang>(initialLang);
+  const [width, setWidth] = useState<DemoWidth>(() => {
+    const v = localStorage.getItem(WIDTH_KEY);
+    return v === "panel" || v === "narrow"
+      ? v
+      : "full";
+  });
+  const changeWidth = (next: DemoWidth) => {
+    localStorage.setItem(WIDTH_KEY, next);
+    setWidth(next);
+  };
   const { theme, setTheme } = useTheme();
   const text = demoText[lang];
   const changeLang = (next: Lang) => {
@@ -284,6 +307,16 @@ function ManagerDemo() {
           </DropdownMenuContent>
         </DropdownMenu>
         <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" title={text.width} aria-label={text.width} />}>
+            <MoveHorizontalIcon />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuRadioGroup value={width} onValueChange={v => changeWidth(v as DemoWidth)}>
+              {(["full", "panel", "narrow"] as const).map(w => <DropdownMenuRadioItem closeOnClick key={w} value={w}>{text.widths[w]}</DropdownMenuRadioItem>)}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <DropdownMenu>
           <DropdownMenuTrigger render={<Button variant="ghost" size="sm" aria-label={text.language} />}>
             <LanguagesIcon />
             <span className="max-sm:hidden">{langNames[lang]}</span>
@@ -316,7 +349,7 @@ function ManagerDemo() {
           labels={lang === "zh"
             ? zhLabels
             : enLabels}
-          className="flex-1"
+          className={`flex-1 ${widthClass[width]}`}
           readOnly={readOnly}
           plugins={plugins}
           sidebar={sidebar}

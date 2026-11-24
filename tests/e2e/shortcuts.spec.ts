@@ -21,8 +21,8 @@ test("? opens the keyboard shortcuts and Escape closes them", async ({ page }) =
 
 test("? typed into the search box does not open the shortcuts", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: "Search in this folder" }).click();
   const search = page.getByRole("searchbox", { name: "Search in this folder" });
-  await search.click();
   await page.keyboard.press("?");
   await expect(search).toHaveValue("?");
   await expect(page.getByRole("dialog")).toHaveCount(0);
