@@ -290,8 +290,10 @@ test("draws Mermaid files and Mermaid blocks in Markdown", async ({ page }) => {
   await dialog.getByRole("button", { name: "Close" }).click();
   await row(page, "/samples/diagram.md").dblclick();
   await dialog.getByRole("button", { name: "Open preview", exact: true }).click();
-  await expect(diagram.locator("svg")).toBeVisible();
-  await expect(diagram).toContainText("Router");
+  // Both blocks draw: mermaid's global initialize is serialized with each render.
+  await expect(diagram).toHaveCount(2);
+  await expect(diagram.first()).toContainText("Router");
+  await expect(diagram.last()).toContainText("Draft");
 });
 
 test("moves with cut and paste", async ({ page }) => {

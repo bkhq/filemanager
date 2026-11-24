@@ -26,7 +26,7 @@ export const SEED: Record<string, string | Uint8Array> = {
   "images/dot.png": PNG,
   "docs/sample.pdf": PDF,
   "samples/flow.mmd": "flowchart LR\n  upload[Upload] --> check{Conflict?}\n  check -- no --> done[Saved]\n  check -- yes --> ask[Ask the user]\n  ask --> done\n",
-  "samples/diagram.md": "# Diagram\n\nA Mermaid block renders as a diagram:\n\n```mermaid\nsequenceDiagram\n  Browser->>Router: PUT /write\n  Router->>Driver: write()\n  Driver-->>Router: entry\n  Router-->>Browser: 200\n```\n",
+  "samples/diagram.md": "# Diagram\n\nA Mermaid block renders as a diagram:\n\n```mermaid\nsequenceDiagram\n  Browser->>Router: PUT /write\n  Router->>Driver: write()\n  Driver-->>Router: entry\n  Router-->>Browser: 200\n```\n\nSeveral diagrams render one at a time:\n\n```mermaid\nflowchart LR\n  draft[Draft] --> saved[Saved]\n```\n",
   // Deep enough for the path bar to fold its middle into "…".
   "samples/project/src/shared/components/button.tsx": "export function Button() {\n  return <button type=\"button\">OK</button>;\n}\n",
   "samples/hosts": "127.0.0.1 localhost\n::1 localhost\n",

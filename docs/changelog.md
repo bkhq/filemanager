@@ -492,3 +492,7 @@ v1.1.0 released: `fm-plugin-mermaid`, `FmPlugin.codeRenderers`, `SourcePreview`,
 ## 2026-11-24 08:15 [pitfall]
 
 A Registry run on a tag ref reports a successful Pages deploy, but the site keeps serving the last deploy from `main` (checked by `last-modified`). Every run builds all tags, so after pushing a release tag, publish with `gh workflow run registry.yml --ref main` and check `/r/` and `/v{version}/r/`. Missing files on Pages may answer 503 instead of 404.
+
+## 2026-11-24 09:00 [pitfall]
+
+`mermaid.initialize()` sets site-wide config, and a call during another diagram's render can reset it and leave that diagram blank. `mermaid-render.ts` queues each initialize + render pair; several diagrams (or a theme switch) render one at a time.

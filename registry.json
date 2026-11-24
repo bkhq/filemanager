@@ -735,6 +735,11 @@
           "path": "registry/fm/plugins/mermaid-view.tsx",
           "type": "registry:file",
           "target": "~/src/fm/plugins/mermaid-view.tsx"
+        },
+        {
+          "path": "registry/fm/plugins/mermaid-render.ts",
+          "type": "registry:file",
+          "target": "~/src/fm/plugins/mermaid-render.ts"
         }
       ]
     }
